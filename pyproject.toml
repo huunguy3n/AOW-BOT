@@ -1,0 +1,73 @@
+# F0 (docs/strategy/implementation-roadmap.md): chi them cong cu, khong doi hanh vi runtime.
+# Chua dong goi package nao: bot/ va web/ la ten top-level qua chung chung de cai vao site-packages
+# (de dung ten voi goi khac). Package `aowbot` (src/aowbot, ADR-0013) se duoc khai bao khi co ma dau tien (B2a).
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aowbot"
+version = "0.1.0"
+description = "Bot farm Age of Warpath tren LDPlayer (ADB + OpenCV + Tesseract)"
+requires-python = ">=3.12"
+# Giu dong bo voi requirements.txt (nguon cu, van dung duoc)
+dependencies = ["opencv-python", "numpy", "pyyaml", "pytesseract", "flask"]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "mypy", "import-linter", "coverage"]
+
+[tool.setuptools]
+packages = []
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+norecursedirs = ["tests/fixtures", "fixtures"]
+markers = [
+    "fixtures: can anh trong tests/fixtures/ (khong co trong git) - tu skip khi thieu",
+    "ocr: can Tesseract cai tren may",
+    "device: can LDPlayer that - khong bao gio chay trong CI",
+]
+
+# ---------------------------------------------------------------- ruff
+# Cau hinh nay la muc NGHIEM cho ma moi (src/aowbot, tests). Ma cu (bot/, web/, tools/, main.py) chi kiem
+# loi cu phap / ten chua dinh nghia bang lenh rieng (testing-strategy.md §4):
+#   ruff check bot web tools main.py --select E9,F63,F7,F82
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["bot", "web", "tools", "main.py", "poc", "templates", "data", "logs", "backups"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "B", "UP", "SIM", "RUF",
+    "C90",      # do phuc tap vong
+    "PL",       # pylint (gom so tham so)
+    "BLE",      # except Exception rong
+    "S110",     # try/except/pass
+]
+ignore = ["PLR2004"]  # so "ma thuat" trong test va toa do man hinh 540x960 la binh thuong
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 5
+
+# ---------------------------------------------------------------- mypy
+# Chi kiem ma moi: `mypy src/aowbot` (tu B2a). Ma cu khong co type hint.
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+
+# ---------------------------------------------------------------- coverage
+[tool.coverage.run]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

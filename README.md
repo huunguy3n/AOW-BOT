@@ -24,6 +24,17 @@ Bat/tat tung buoc trong `config.yaml` -> `modules`, hoac tam thoi: `python main.
 
 Log: `logs/bot-YYYYMMDD.log`; anh loi: `logs/shots/`.
 
+## Phat trien (cong cu kiem tra)
+Cai mot lan: `pip install -e .[dev]` (pytest, ruff, mypy, import-linter, coverage - chi dung khi phat trien,
+bot chay khong can). Truoc moi commit:
+```
+python -m pytest                                          # test (anh fixture chi co tren may local)
+python -m ruff check .                                    # ma moi: luat nghiem
+python -m ruff check bot web tools main.py --select E9,F63,F7,F82   # ma cu: loi cu phap / ten chua dinh nghia
+python tools/check_screens.py && python tools/check_tutorial.py      # hoi quy nhan dien (can tests/fixtures)
+```
+Kien truc va lo trinh: `docs/strategy/MASTER-IMPLEMENTATION-PLAN.md`, `docs/architecture/`.
+
 ## Giao dien quan ly (web)
 `run.bat` (hoac `python main.py --web`) -> mo http://localhost:8080
 - Moi may: bat/tat auto, "Chay ngay" (auto dang tat thi chi chay rieng may do), bat/tat tung buoc.

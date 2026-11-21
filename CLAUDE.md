@@ -113,11 +113,11 @@ python tools/learn.py report           # (hoặc web http://localhost:8080/hoc) 
 python tools/learn.py train / eval     # nạp mẫu kNN từ ảnh cũ / đo độ chính xác
 python main.py --web                   # web quản lý (launch config: .claude/launch.json "aow-web")
 ```
-Không có test tự động; kiểm chứng bằng chạy thật trên instance + đọc `logs/` và ảnh `logs/shots/`.
+Công cụ dev (từ F0, 2026-11-21): `pip install -e .[dev]` → `python -m pytest`, `python -m ruff check .` (luật nghiêm cho mã mới), `python -m ruff check bot web tools main.py --select E9,F63,F7,F82` (mã cũ). Cấu hình trong `pyproject.toml`. Test tự động mới bắt đầu có; ảnh fixture không có trong git (hồi quy ảnh chỉ chạy local). Kiểm chứng chính vẫn là chạy thật trên instance + đọc `logs/` và ảnh `logs/shots/`. Kế hoạch tổng: [docs/strategy/MASTER-IMPLEMENTATION-PLAN.md](docs/strategy/MASTER-IMPLEMENTATION-PLAN.md).
 
 ### Môi trường
 - Windows 11, Python 3.12, LDPlayer 9 tại `D:\LDPlayer\LDPlayer9\` (`ldconsole.exe`, `adb.exe`).
 - ADB serial: `emulator-<5554 + 2·idx>` (vd #0 = `emulator-5554`, #5 = `emulator-5564`).
 - Game: bản VN `com.ageofwarpath.globalwarzone.vn` 2.5.16 (bot dùng bản này) và bản Global `com.ageofwarpath.globalwarzone` 3.6.0 trên #2–#6.
 - Tesseract: `C:\Program Files\Tesseract-OCR\tesseract.exe`.
-- Thư mục chưa phải git repo.
+- Git repo (remote `origin` trên GitHub). `data/`, `logs/`, `backups/`, `tests/fixtures/` bị gitignore.

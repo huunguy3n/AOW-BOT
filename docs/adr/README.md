@@ -18,5 +18,8 @@ Trạng thái: **Đề xuất** · **Chấp nhận** · **Thay thế** · **Lo�
 | [0010](0010-an-toan-tai-khoan-khach.md) | Tài khoản khách = dữ liệu app: quy tắc bảo toàn | Chấp nhận | 2026-11-17 |
 | [0011](0011-tan-thu-ham-quyet-dinh-thuan.md) | Tân thủ: hàm quyết định thuần + kiểm tra offline bằng bản ghi | Chấp nhận | 2026-11-17 |
 | [0012](0012-lam-viec-theo-giai-doan.md) | Làm việc theo giai đoạn, chủ dự án duyệt từng phase | Chấp nhận | 2026-11-17 |
+| [0013](0013-modular-monolith-phan-lop-src-aowbot.md) | Modular monolith phân lớp trong `src/aowbot`, cùng tồn tại với `bot/` cũ | Đề xuất | 2026-11-21 |
+| [0014](0014-luat-phu-thuoc-kiem-tra-tu-dong.md) | Luật phụ thuộc giữa các lớp, kiểm tra bằng import-linter + test kiến trúc | Đề xuất | 2026-11-21 |
+| [0015](0015-cong-cu-chat-luong-va-ci.md) | Công cụ chất lượng (pytest, ruff, mypy, import-linter, coverage) và CI | Đề xuất | 2026-11-21 |
 
 Mẫu ADR mới: [template.md](template.md).
