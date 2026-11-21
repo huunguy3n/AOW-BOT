@@ -155,6 +155,29 @@ def create_app(runner, store, ring):
     def learn_page():
         return send_from_directory(HERE, "learn.html")
 
+    @app.get("/agent")
+    def agent_page():
+        return send_from_directory(HERE, "agent.html")
+
+    @app.get("/api/agent")
+    def agent_api():
+        """B-UI: quyet dinh gan nhat cua agent (bang decisions) + su kien dang hen (bang events). Chi doc."""
+        import json as _json
+        lim = min(int(request.args.get("limit", 30)), 200)
+        q = runner.mem.query
+        has = {r[0] for r in q("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('decisions','events')")}
+        decisions = [dict(zip(("at", "account", "action", "next_eval_at", "why", "dry_run", "outcome", "detail"), r))
+                     for r in (q("SELECT at, account, action, next_eval_at, why, dry_run, outcome, detail FROM decisions "
+                                 "ORDER BY id DESC LIMIT ?", (lim,)) if "decisions" in has else [])]
+        for d in decisions:
+            d["options"] = (_json.loads(d.pop("detail") or "{}")).get("options", [])
+        events = [dict(zip(("account", "type", "due_at", "status", "note"), r))
+                  for r in (q("SELECT account, type, due_at, status, note FROM events WHERE status IN ('pending','claimed') "
+                              "ORDER BY due_at LIMIT 50") if "events" in has else [])]
+        modes = {str(i): (store.cfg_for(runner.base_cfg, i).get("schedule") or {}).get("mode")
+                 for i in runner.base_cfg["instances"]}
+        return jsonify(now=time.time(), decisions=decisions, events=events, modes=modes)
+
     @app.get("/api/learn")
     def learn_api():
         from bot import learn
