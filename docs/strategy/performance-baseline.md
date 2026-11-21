@@ -88,7 +88,8 @@ SELECT COUNT(*), SUM(COALESCE(ended,started)-started)/3600.0 FROM visits WHERE m
 -- Q10 #1 "doi ranh": với mỗi lần ghé, observation gần nhất trước started (march_used = march_total?) + runs(step='gather').ret
 SELECT id, started, why FROM visits WHERE inst=1 AND why LIKE '%doi ranh%';
 ```
-Task F4-lite (roadmap) lưu các truy vấn này thành một script chỉ-đọc, để mỗi task A-* đều có số trước và sau.
+Các truy vấn trên được đóng thành script chỉ-đọc `tools/report_ro.py` (F4L, 2026-11-21), dùng để lấy số trước/sau cho mọi task A-*. Script có thêm chỉ số **lần ghé smart vô ích**: mọi bước trigger trong lý do ghé đều trả 0. Trên toàn bộ dữ liệu là **124 lần / 17,43 h** (MEASURED).
+Ví dụ so sánh trước/sau một bản sửa: `python tools/report_ro.py --split "2026-11-22 09:00"`.
 
 ## 4. Kế hoạch lấp các chỉ số UNKNOWN (A-MEAS-1, thiết kế tối thiểu)
 - **`bot/perf.py` mới** (~50 dòng, chỉ dùng thư viện chuẩn): `Perf.add(kind, dt)` và `drain()`, trả về `(kind, src, n, total, p50, p90, max)`. Mỗi `Device` giữ một instance. `src` là thread-local, mặc định `bot`.

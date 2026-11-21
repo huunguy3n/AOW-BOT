@@ -21,7 +21,7 @@ def pct(a, b):
 
 
 def report(a):
-    m = Memory()
+    m = Memory(readonly=True)
     since = time.time() - a.hours * 3600
     rows = m.query("SELECT step, kind, tpl, why, x, y, changed, outcome FROM exp WHERE at>?", (since,))
     known = [r for r in rows if r[6] is not None]
@@ -91,7 +91,7 @@ def evaluate(a):
     fx = sorted(glob.glob("tests/fixtures/screens/*/*.png"))
     feats = [learn.feat(cv2.imread(f)) for f in fx]
     labs = [os.path.basename(os.path.dirname(f)) for f in fx]
-    m = Memory()
+    m = Memory(readonly=True)
     L = learn.Learner(m, {})
     good = 0
     for i, f in enumerate(fx):

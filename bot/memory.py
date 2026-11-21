@@ -12,7 +12,7 @@ Tri nho chi la GOI Y; man hinh la su that -> module thay khac thi ghi de.
 Nguyen tac: loi DB KHONG BAO GIO duoc lam hong luot chay -> moi ham ghi deu nuot loi va chi canh bao 1 lan.
 Khong ghi thong tin xac thuc vao day.
 """
-import json, logging, os, sqlite3, threading, time
+import json, logging, os, pathlib, sqlite3, threading, time
 
 log = logging.getLogger("aow")
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -63,8 +63,11 @@ def _js(v):
 
 
 class Memory:
-    def __init__(self, path=DB):
+    def __init__(self, path=DB, readonly=False):
+        """readonly: mo `mode=ro`, KHONG chay schema / PRAGMA user_version (A-REL-2: truoc day cong cu bao cao
+        cung ghi vao DB that). Ham ghi o che do nay that bai -> canh bao 1 lan, nhu loi DB khac."""
         self.path = path
+        self.readonly = readonly
         self._local = threading.local()
         self._warned = False
         try:
@@ -74,6 +77,11 @@ class Memory:
 
     def _conn(self):
         c = getattr(self._local, "c", None)
+        if c is None and self.readonly:
+            uri = pathlib.Path(self.path).resolve().as_uri() + "?mode=ro"
+            c = sqlite3.connect(uri, uri=True, timeout=10, isolation_level=None)
+            c.execute("PRAGMA busy_timeout=10000")
+            self._local.c = c
         if c is None:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
             c = sqlite3.connect(self.path, timeout=10, isolation_level=None)  # autocommit
@@ -81,7 +89,7 @@ class Memory:
             c.execute("PRAGMA busy_timeout=10000")
             c.executescript(SCHEMA)
             try:
-                c.execute("ALTER TABLE exp ADD COLUMN react REAL")   # H1: thoi gian game phan ung (s) - v5
+                c.execute("ALTER TABLE exp ADD COLUMN react REAL")   # H1: thoi gian game phan ung (s); them sau, VERSION van la 4
             except sqlite3.OperationalError:
                 pass
             c.execute(f"PRAGMA user_version={VERSION}")

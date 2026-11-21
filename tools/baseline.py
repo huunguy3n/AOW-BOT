@@ -30,7 +30,7 @@ def main():
     if not os.path.exists(a.db):
         print("Chua co", a.db, "- chay bot it nhat 1 luot truoc")
         return
-    mem = Memory(a.db)
+    mem = Memory(a.db, readonly=True)
     t_from = time.time() - a.since * 3600 if a.since else 0
     insts = [int(x) for x in a.inst.split(",")] if a.inst else \
         [r[0] for r in mem.query("SELECT DISTINCT inst FROM visits WHERE started>=? ORDER BY inst", (t_from,))]
