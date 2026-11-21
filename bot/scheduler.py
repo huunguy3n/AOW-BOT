@@ -12,6 +12,8 @@ Thu tu buoc trong 1 lan ghe van theo ORDER (runner), lich chi chon buoc nao + lu
 import json, time
 from dataclasses import dataclass, field
 
+from aowbot.domain import marches
+
 TRIGGERS = ("gather", "mainquest", "quests", "research", "rebels")
 DEFAULTS = {"max_gap_min": 240, "min_gap_min": 10, "batch_window_min": 5, "idle_check_min": 15,
             "gather_retry_min": 60, "unknown_return_min": 60, "build_every_min": 120, "research_every_min": 120, "extra_every_min": 180, "tutorial_every_min": 30,
@@ -71,43 +73,27 @@ def world_ready(mem, idx, cfg=None, now=None, recheck_h=6):
 
 # ---------- plan() tung trigger ----------
 def march_slots(total, used, observed_at, timers, now, unknown_return_s):
-    """So doi ranh luc `now` va lan som nhat co doi ranh tiep (ham thuan, A-FIX-1).
-    timers: [(luc ve, do tin)] cua cac doi DOC DUOC dong ho (bang timers 'march:').
-    Truoc day: so doi ranh = total - so timer -> doi OCR khong doc duoc dong ho (76 % dong o #1) bi coi la RANH,
-    keo may len khi 5/5 dang di. Nay: so doi dang di lay tu 'Hanh quan x/y' (march_used); doi dang di ma khong
-    co dong ho -> uoc luong ve luc observed_at + unknown_return_s (khong coi la ranh, cung khong ban vo han).
-    Timer da qua han = doi da ve = ranh. -> (so ranh, (luc, ly do, tin cay) | None)"""
-    if used is None or observed_at is None:   # chua co so x/y: cach cu (moi timer = 1 doi dang di)
-        used, observed_at = len(timers), now
-    used = max(0, min(int(used), int(total)))
-    known = sorted(timers)[:used]
-    est = [observed_at + unknown_return_s] * (used - len(known))
-    returns = [(t, c >= 0.6, "doi ve") for t, c in known] + [(t, False, "uoc luong doi ve") for t in est]
-    free = total - used + sum(1 for t, _, _ in returns if t <= now)
-    future = sorted(r for r in returns if r[0] > now)
-    if not future:
-        return free, None
-    t, conf, what = future[0]
-    return free, (t, f"{what} {_hhmm(t)}", conf)
+    """Doi ranh + lan som nhat co doi ve (A-FIX-1). Luat nam o aowbot.domain.marches; ham nay chi doi sang dang
+    cua lich: (so ranh, (luc, ly do, tin cay) | None)."""
+    a = marches.availability(marches.MarchObservation(total, used, observed_at, timers), now, unknown_return_s)
+    r = a.next_return
+    if r is None:
+        return a.free, None
+    return a.free, (r.at, f"{'uoc luong doi ve' if r.estimated else 'doi ve'} {_hhmm(r.at)}", r.confident)
 
 
 def typical_return_s(mem, idx, default_s, look=60):
-    """Thoi gian tu luc quan sat toi luc doi ve (phan vi 25 %) cua cac doi DA doc duoc dong ho o may nay - dung cho
-    doi khong doc duoc dong ho. Phan vi thap (khong phai trung vi): ghe som 1 lan re hon de doi nam khong.
-    Phat lai 15 lan ghe 'doi ranh' cua #1 (2026-11-21): p25 chan 5/6 lan gui 0 doi, tre > 10 phut 2/9 lan co gui;
-    trung vi tre 4/9. Chua co du lieu -> default_s (schedule.unknown_return_min)."""
+    """Thoi gian tu luc quan sat toi luc doi ve cua cac doi DA doc duoc dong ho o may nay (phan vi 25 %,
+    aowbot.domain.marches.lower_quartile) - dung cho doi khong doc duoc dong ho."""
     gaps = []
-    for at, marches in mem.query("SELECT at, marches FROM observations WHERE inst=? AND marches IS NOT NULL "
-                                 "ORDER BY at DESC LIMIT ?", (idx, look)):
+    for at, rows in mem.query("SELECT at, marches FROM observations WHERE inst=? AND marches IS NOT NULL "
+                              "ORDER BY at DESC LIMIT ?", (idx, look)):
         try:
-            rows = json.loads(marches or "[]")
+            rows = json.loads(rows or "[]")
         except ValueError:
             continue
-        gaps += [m["return_at"] - at for m in rows if isinstance(m, dict) and m.get("return_at") and m["return_at"] > at]
-    if len(gaps) < 3:
-        return default_s
-    gaps.sort()
-    return gaps[len(gaps) // 4]
+        gaps += [m["return_at"] - at for m in rows if isinstance(m, dict) and m.get("return_at")]
+    return marches.lower_quartile(gaps, default_s)
 
 
 def plan_gather(mem, idx, sc, now, cfg=None):

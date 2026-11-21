@@ -1,6 +1,6 @@
 # F0 (docs/strategy/implementation-roadmap.md): chi them cong cu, khong doi hanh vi runtime.
-# Chua dong goi package nao: bot/ va web/ la ten top-level qua chung chung de cai vao site-packages
-# (de dung ten voi goi khac). Package `aowbot` (src/aowbot, ADR-0013) se duoc khai bao khi co ma dau tien (B2a).
+# Chi dong goi `aowbot` (src/aowbot, ADR-0013). bot/ va web/ KHONG cai vao site-packages: ten top-level qua
+# chung chung (de dung ten voi goi khac); chung chay tu thu muc repo nhu truoc.
 
 [build-system]
 requires = ["setuptools>=69"]
@@ -15,15 +15,15 @@ requires-python = ">=3.12"
 dependencies = ["opencv-python", "numpy", "pyyaml", "pytesseract", "flask"]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff", "mypy", "import-linter", "coverage"]
+dev = ["pytest", "ruff", "mypy", "types-PyYAML", "import-linter", "coverage"]
 
-[tool.setuptools]
-packages = []
+[tool.setuptools.packages.find]
+where = ["src"]
 
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = [".", "src"]
 addopts = "-ra"
 norecursedirs = ["tests/fixtures", "fixtures"]
 markers = [
@@ -51,6 +51,10 @@ select = [
 ]
 ignore = ["PLR2004"]  # so "ma thuat" trong test va toa do man hinh 540x960 la binh thuong
 
+[tool.ruff.lint.per-file-ignores]
+# test tham so hoa nhieu cot (bang chan tri) la binh thuong
+"tests/**" = ["PLR0913", "PLR0917"]
+
 [tool.ruff.lint.mccabe]
 max-complexity = 10
 
@@ -61,6 +65,8 @@ max-args = 5
 # Chi kiem ma moi: `mypy src/aowbot` (tu B2a). Ma cu khong co type hint.
 [tool.mypy]
 python_version = "3.12"
+files = ["src/aowbot"]
+mypy_path = "src"
 strict = true
 warn_unreachable = true
 
@@ -71,3 +77,45 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
+
+# ---------------------------------------------------------------- import-linter (F2, docs/architecture/dependency-rules.md)
+[tool.importlinter]
+root_packages = ["aowbot", "bot", "web"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "D1-D3,D5: phan lop aowbot"
+type = "layers"
+layers = ["aowbot.app", "aowbot.interfaces | aowbot.infrastructure", "aowbot.application", "aowbot.domain"]
+
+[[tool.importlinter.contracts]]
+name = "D1: domain thuan"
+type = "forbidden"
+source_modules = ["aowbot.domain"]
+forbidden_modules = ["bot", "web", "cv2", "pytesseract", "sqlite3", "subprocess", "flask", "yaml"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "D2: application khong dung ha tang"
+type = "forbidden"
+source_modules = ["aowbot.application"]
+forbidden_modules = ["bot", "web", "cv2", "pytesseract", "sqlite3", "subprocess", "flask", "yaml"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "D4: chi infrastructure.legacy duoc vao bot"
+type = "forbidden"
+source_modules = ["aowbot.domain", "aowbot.application", "aowbot.interfaces", "aowbot.app", "aowbot.infrastructure.sqlite", "aowbot.infrastructure.clock"]
+forbidden_modules = ["bot"]
+
+[[tool.importlinter.contracts]]
+name = "D7: ma cu chi duoc dung aowbot.domain"
+type = "forbidden"
+source_modules = ["bot", "web"]
+forbidden_modules = ["aowbot.application", "aowbot.infrastructure", "aowbot.interfaces", "aowbot.app"]
+
+[[tool.importlinter.contracts]]
+name = "D5: interfaces khong dung truc tiep ha tang"
+type = "forbidden"
+source_modules = ["aowbot.interfaces"]
+forbidden_modules = ["aowbot.infrastructure"]

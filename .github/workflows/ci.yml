@@ -1,0 +1,20 @@
+# F3 (ADR-0015): cong chat luong cho moi push / PR. Windows giong may chay bot. Anh fixture khong co trong git
+# -> test marker `fixtures` tu skip; test `device`/`ocr` khong chay tren CI.
+name: ci
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m ruff check .
+      - run: python -m ruff check bot web tools main.py --select E9,F63,F7,F82
+      - run: python -m mypy
+      - run: lint-imports
+      - run: python -m coverage run -m pytest -m "not device and not ocr"
+      - run: python -m coverage report --include="src/aowbot/domain/*" --fail-under=90
+      - run: python -m coverage report --include="src/aowbot/application/*" --fail-under=80
