@@ -9,6 +9,8 @@ Gioi han: bot chay lan luot tung may, may dang tat thi khong phan ung duoc.
 import re, time, logging
 import cv2
 from bot import ocr
+from aowbot.domain import policy
+from aowbot.domain.policy import SHIELD_TAP as TAP, shield_spend as spent_amount
 
 log = logging.getLogger("aow")
 ROWS = {1: "defense/row_1h", 12: "defense/row_12h", 72: "defense/row_3d"}
@@ -83,41 +85,15 @@ def _add_spent(ctx, n):
     ctx.store.update(ctx.dev.idx, gems_spent=d)
 
 
+def shield_choice(owned, gems, price, spent, cap, allow_buy):
+    """Luat o aowbot.domain.policy.shield_decision (POL: mot luat mot cho); giu ten cu cho ma goi hien co."""
+    return policy.shield_decision(policy.ShieldInputs(owned, gems, price, spent, cap, allow_buy))
+
+
 def parse_owned(text):
     """So vat pham khien dang co -> int, hoac None neu OCR khong ra so (KHONG doan la 0)."""
     t = (text or "").strip()
     return int(t) if t.isdigit() else None
-
-
-TAP = ("use", "buy")   # cac ket qua cua shield_choice dan toi bam nut
-
-
-def shield_choice(owned, gems, price, spent, cap, allow_buy):
-    """Quyet dinh o dong khien (ham thuan, ADR-0008). -> (ket qua, ly do).
-    Ket qua: 'use' / 'buy' (bam nut) hoac ly do khong bam: 'unread' / 'no_item' / 'no_gems' / 'cap'.
-    Cung 1 nut: con vat pham thi dung vat pham, het thi MUA bang kim cuong -> moi so khong doc duoc deu
-    dan toi KHONG bam (dong khi loi): khong chac con vat pham thi khong bam, khong biet so du thi khong mua."""
-    if owned is None:
-        return "unread", "khong doc duoc so vat pham khien"
-    if owned > 0:
-        return "use", f"con {owned} vat pham"
-    if not allow_buy:
-        return "no_item", "het vat pham, khong cho phep mua bang kim cuong"
-    if gems is None:
-        return "unread", "khong doc duoc so kim cuong"
-    if gems < price:
-        return "no_gems", f"khong du kim cuong ({gems} < {price})"
-    if spent + price > cap:
-        return "cap", f"vuot tran ngay ({spent} + {price} > {cap})"
-    return "buy", f"mua {price} kim cuong (da tieu {spent}/{cap})"
-
-
-def spent_amount(gems_before, gems_after, price):
-    """Kim cuong tinh vao tran sau khi mua. Khong doc duoc / so khong giam (OCR lam tron K/M) -> tinh bang gia:
-    dem thua chi lam bot mua it hon, dem thieu thi vuot tran."""
-    if gems_before is not None and gems_after is not None and gems_after < gems_before:
-        return max(gems_before - gems_after, price)
-    return price
 
 
 def shield(ctx, force=False):

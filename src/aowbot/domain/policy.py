@@ -30,3 +30,46 @@ class SafetyPolicy:
         if action.mutates_game and state_confidence < self.min_state_confidence:
             return PolicyVerdict(False, f"do tin trang thai {state_confidence:.2f} < {self.min_state_confidence}")
         return PolicyVerdict(True, "ok")
+
+
+# ---------- khien (POL: luat cua A-SAFE-1, bot/modules/defense.py goi lai) ----------
+SHIELD_TAP = ("use", "buy")   # cac ket qua cua shield_choice dan toi bam nut
+
+
+@dataclass(frozen=True, slots=True)
+class ShieldInputs:
+    owned: int | None        # so vat pham khien (None = OCR khong doc duoc)
+    gems: int | None         # kim cuong dang co (None = khong doc duoc)
+    price: int
+    spent_today: int
+    daily_cap: int
+    allow_buy: bool
+
+
+def shield_decision(i: ShieldInputs) -> tuple[str, str]:
+    """Quyet dinh o dong khien (ADR-0008). -> (ket qua, ly do).
+    Ket qua: 'use' / 'buy' (bam nut) hoac ly do khong bam: 'unread' / 'no_item' / 'no_gems' / 'cap'.
+    Cung 1 nut: con vat pham thi dung vat pham, het thi MUA bang kim cuong -> moi so khong doc duoc deu
+    dan toi KHONG bam (dong khi loi): khong chac con vat pham thi khong bam, khong biet so du thi khong mua.
+    Thu tu kiem tra co y nghia (kiem tra dau tien dung thi tra ve)."""
+    checks = (
+        (i.owned is None, "unread", "khong doc duoc so vat pham khien"),
+        (i.owned is not None and i.owned > 0, "use", f"con {i.owned} vat pham"),
+        (not i.allow_buy, "no_item", "het vat pham, khong cho phep mua bang kim cuong"),
+        (i.gems is None, "unread", "khong doc duoc so kim cuong"),
+        (i.gems is not None and i.gems < i.price, "no_gems", f"khong du kim cuong ({i.gems} < {i.price})"),
+        (i.spent_today + i.price > i.daily_cap, "cap",
+         f"vuot tran ngay ({i.spent_today} + {i.price} > {i.daily_cap})"),
+    )
+    for hit, code, why in checks:
+        if hit:
+            return code, why
+    return "buy", f"mua {i.price} kim cuong (da tieu {i.spent_today}/{i.daily_cap})"
+
+
+def shield_spend(gems_before: int | None, gems_after: int | None, price: int) -> int:
+    """Kim cuong tinh vao tran sau khi mua. Khong doc duoc / so khong giam (OCR lam tron K/M) -> tinh bang gia:
+    dem thua chi lam bot mua it hon, dem thieu thi vuot tran."""
+    if gems_before is not None and gems_after is not None and gems_after < gems_before:
+        return max(gems_before - gems_after, price)
+    return price

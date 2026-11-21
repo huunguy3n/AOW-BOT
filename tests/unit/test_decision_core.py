@@ -11,7 +11,8 @@ from aowbot.domain.events import DEDUP_BUCKET_S, Event, EventType, events_from_t
 from aowbot.domain.freshness import Fact
 from aowbot.domain.goals import AccountFacts, Goal, continuous_construction, march_utilization, phase_priority
 from aowbot.domain.marches import Availability, MarchObservation, MarchTimer, timers_from_rows
-from aowbot.domain.policy import SafetyPolicy
+from aowbot.domain.policy import SafetyPolicy, ShieldInputs, shield_decision
+from bot.modules import defense
 from tests.fakes import FakeClock, InMemoryStateSource
 
 NOW = 1_800_000_000.0
@@ -134,3 +135,9 @@ def test_decision_is_deterministic_and_serializable():
     a, b = decide(EV, state(3, 60), CFG.decide), decide(EV, state(3, 60), CFG.decide)
     assert a == b
     assert a.to_dict()["action"] == "dispatch_gather"
+
+
+def test_shield_rule_lives_in_domain_and_legacy_delegates():
+    assert shield_decision(ShieldInputs(None, 10_000, 500, 0, 2000, True))[0] == "unread"
+    assert defense.shield_choice(0, 10_000, 500, 0, 2000, True) == shield_decision(
+        ShieldInputs(0, 10_000, 500, 0, 2000, True))
