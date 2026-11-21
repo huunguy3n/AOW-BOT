@@ -5,7 +5,7 @@
                 THUA (khong danh lai trong arena.lost_days ngay). Khong bam "Lam moi" / mua luot (co the ton kim cuong).
 TK farm cap thap chua mo -> khong thay nut "Loi choi" / the -> bo qua.
 """
-import json, logging, re, time
+import logging, re, time
 import cv2, numpy as np
 from bot import ocr
 from bot.modules import campaign

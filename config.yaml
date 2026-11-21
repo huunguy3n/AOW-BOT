@@ -9,6 +9,8 @@ ldplayer:
   max_running: 2           # toi da so may LDPlayer chay cung luc (ke ca may khong do bot bat)
   wait_slot_min: 60        # cho toi da N phut de co cho trong, qua thi bo qua may do
 
+# adb_serials: {0: '127.0.0.1:5555'}   # (tuy chon) dia chi adb rieng cho may; mac dinh emulator-(5554 + 2 x idx)
+guide_follow: true         # sau moi buoc: game dang hien huong dan (ban tay / V) -> lam theo ngay
 instances: [0, 1, 2, 3, 4, 5, 6]   # ID trong LDMultiPlayer. #1 = TAI KHOAN CHINH (cf30, them 2026-11-21; #7, #8 da xoa 2026-11-17)
 screen: {width: 540, height: 960}   # game chay doc (portrait) - phai khop do phan giai LDPlayer
 match_threshold: 0.82
@@ -70,12 +72,14 @@ gather:
   ocr: auto            # auto | tesseract | digits | none (digits = anh mau templates/digits/)
   tesseract_cmd: 'C:\Program Files\Tesseract-OCR\tesseract.exe'
   fallback_march_slots: 1   # khong doc duoc x/y (chua co doi nao di) -> gui toi da chung nay doi roi doc lai
+observe:
+  read_hq: true            # doc cap nha chinh (cham avatar) khi gia tri da cu hon 6 gio
 
 research:
   min_hq: 8               # Vien nghien cuu chi xuat hien khi Xuong kien truc >= cap 8
   use_help: true
   use_free_speedup: true
-  max_starts: 2           # so lan bat dau nghien cuu moi luot (thuong 1 hang doi)
+  max_starts: 2           # CHUA DUNG: research.py chua doc khoa nay (2026-11-21, A-CFG-1)
 
 train:
   # vao nha linh qua bang "Doi ngu huan luyen" (nut Den) -> tu dong ca 1..3 nha linh dang ranh
@@ -86,6 +90,7 @@ train:
   card_x: [100, 205, 308, 410]   # toa do x the cap I..IV tren man 540x960
   card_y: 695
   max_queues: 4         # so nha linh toi da moi luot
+  use_max_button: false # bam nut 'toi da' (can anh mau train/btn_max)
   use_help: true
   use_free_speedup: true
 
@@ -119,6 +124,7 @@ schedule:
   daily_reset_utc: 0      # reset ngay cua server (0h UTC = 7h VN)
   backoff_base_min: 30    # buoc loi/ket lien tiep -> tam bo 30, 60, 120... phut
   backoff_cap_h: 6        # toi da tam bo N gio
+  extra_every_min: 180    # buoc chay kem (qua, cham do...) toi thieu cach nhau N phut (x2/x4 khi trang tay lien tiep)
 
 # Watchdog: phat hien ket -> luu anh logs/shots/*_stuck.png, force-stop game (KHONG xoa du lieu), mo lai, sang buoc ke
 watchdog:
@@ -148,8 +154,10 @@ notify:
   intel_only_gold: false   # chi lam ghim tinh bao VANG + TIM dau lau (nhiem vu cao cap); #1 bat (chu du an 2026-11-21)
   recruit: true
   hero: true
+  events: true            # o su kien cot phai (nhan qua an toan)
 reddots:
   max_rounds: 6        # lap toi khi het cham do; dung som neu 1 vong khong nhan them duoc gi
+  dead_h: 2            # cham do mo ra khong nhan duoc gi -> bo qua vi tri do N gio
 recruit:
   use_tickets: false   # chi chieu mo mien phi; true = dung ca phieu (KHONG BAO GIO kim cuong)
 construct:            # xay cong trinh MOI qua icon bua (bot/modules/construct.py)
@@ -158,10 +166,12 @@ mainquest:
   max_steps: 6
   fight_unpredicted: false # boss qua kho: khong danh khi man doi hinh khong ghi 'Thang toan dien'
   power_gain_pct: 5        # bo qua/thua -> lam nhiem vu tang suc manh, thu lai khi luc chien tang >= 5%
+  busy_recheck_h: 2        # cong trinh cua nhiem vu dang xay ma khong doc duoc gio xong -> kiem tra lai sau N gio
 tutorial:
   # tran tan thu thua lien max_retry lan (vd danh muc tieu "That bai nang ne") -> tam dung tan thu
   power_gain_pct: 5        # danh lai khi luc chien tang >= 5% (cac buoc train/tuong/qua tang suc manh)
   weak_retry_h: 6          # hoac sau N gio (khi khong doc duoc luc chien)
+  trace_dir: ''            # (tuy chon) luu anh + quyet dinh tung buoc tan thu vao thu muc nay de xem lai
 world:
   min_hq_level: 6         # nha chinh < 6: ban do the gioi chua mo -> bo thu thap/phan quan/doc hanh quan
   recheck_h: 6            # nut chuyen ban do khong an -> N gio sau moi thu lai
@@ -186,6 +196,9 @@ learn:                     # giai doan E+F (docs/bot/05-ke-hoach-hoc-may-mini.md
   dead_min: 8              # cho cham >= N lan ...
   dead_rate: 0.1           # ... ma ti le an < 10% -> 'cho chet', goto dung Back thay vi cham
   stats_days: 14           # thong ke ti le an theo N ngay gan nhat
+  adaptive_wait: true      # H1: cho sau cham theo thoi gian game phan ung da hoc (p80 + 0,35 s, khong vuot thoi gian cu)
+  knn_max: 6000            # so mau kNN man hinh toi da nap tu memory.db
+  dup_sim: 0.985           # mau moi giong mau cu cung nhan hon muc nay -> khong luu (giu kNN gon)
   watch_human: true        # chu du an cham/keo tay tren may bot dang chay -> chup anh truoc/sau -> logs/human/ (buoc 'co anh loi')
 battle:
   steer: true         # giu ngon tay tren doi quan: nhat buff, ne bang do/vong do/vet xe lao
@@ -224,3 +237,4 @@ defense:
   shield_buy_gems: true   # het vat pham khien thi mua bang kim cuong
   gem_cap_daily: 2000     # tran kim cuong moi ngay moi tai khoan
   evacuate_troops: false  # gui toan bo quan ra khoi tru so di thu thap
+  red_flash: true         # mep man hinh nhay do o thanh pho/ban do = dang bi tan cong (chua co anh mau canh bao)

@@ -6,7 +6,7 @@ Mo bang: cham icon hang cho nghien cuu (research/icon_queue) -> "So Cong Nghe" (
 KHONG BAO GIO bam nut tang toc / nghien cuu ngay bang kim cuong.
 """
 import re, time, logging
-import cv2, numpy as np
+import cv2
 from bot import ocr
 
 log = logging.getLogger("aow")
@@ -121,4 +121,5 @@ def run(ctx):
         return started
     finally:
         ctx.ensure_city()
-        ctx.help_and_free()
+        rc = ctx.cfg.get("research", {})
+        ctx.help_and_free(use_help=rc.get("use_help", True), use_free=rc.get("use_free_speedup", True))

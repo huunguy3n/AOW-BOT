@@ -205,25 +205,13 @@ def create_app(runner, store, ring):
     @app.post("/api/learn/candidate")
     def learn_candidate():
         """Duyet bien the anh mau ung vien: approve -> hoi quy + chep vao templates/; reject -> danh dau bo."""
-        import json as _json
         from bot import learn
         j = request.json or {}
-        d = os.path.join(IMG_DIRS["cand"], (j.get("tpl") or "").replace("/", "__"))
-        mp = os.path.join(d, "meta.json")
-        if not os.path.exists(mp) or j.get("tpl") not in learn.LEARNABLE:
-            return jsonify(ok=False), 400
-        meta = _json.load(open(mp, encoding="utf-8"))
-        m = meta.get(j.get("hash"))
-        if not m:
-            return jsonify(ok=False), 404
-        res = None
-        if j.get("action") == "approve":
-            res = learn.promote(j["tpl"], os.path.join(d, j["hash"] + ".png"))
-            m["promoted" if res else "rejected"] = time.time()
+        status, res = learn.review_candidate(j.get("tpl"), j.get("hash"), j.get("action") == "approve")
+        if status != "ok":
+            return jsonify(ok=False), 400 if status == "bad" else 404
+        if res:
             runner.vision.reload_variants()
-        else:
-            m["rejected"] = time.time()
-        _json.dump(meta, open(mp, "w", encoding="utf-8"), indent=1)
         return jsonify(ok=True, promoted=bool(res))
 
     @app.get("/api/logs")

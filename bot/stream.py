@@ -53,26 +53,3 @@ class FrameStream:
             self.proc.kill()
         except Exception:
             pass
-
-
-class Shell:
-    """Shell adb giu san: gui 'input ...' khong ton thoi gian mo ket noi moi."""
-
-    def __init__(self, adb, serial):
-        self.p = subprocess.Popen([adb, "-s", serial, "shell"], stdin=subprocess.PIPE,
-                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, bufsize=0)
-
-    def send(self, cmd):
-        self.p.stdin.write((cmd + "\n").encode())
-
-    def swipe(self, x1, y1, x2, y2, ms=120):
-        self.send(f"input swipe {int(x1)} {int(y1)} {int(x2)} {int(y2)} {int(ms)} &")
-
-    def tap(self, x, y):
-        self.send(f"input tap {int(x)} {int(y)} &")
-
-    def close(self):
-        try:
-            self.p.stdin.close(); self.p.kill()
-        except Exception:
-            pass

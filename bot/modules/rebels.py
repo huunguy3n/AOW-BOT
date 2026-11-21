@@ -10,7 +10,7 @@ do -> khong tham gia gi (tranh tham gia tap ket danh nguoi choi). Anh mau can ca
 Chay TRUOC buoc gui quan de doi ranh duoc dung cho tap ket truoc.
 """
 import logging, re, time
-import cv2, numpy as np
+import cv2
 from bot import ocr
 from bot.modules import alliance
 

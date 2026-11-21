@@ -17,7 +17,7 @@ def run(ctx):
         log.info("Khong thay icon Chien dich/Tinh bao (chua mo khoa?) - bo qua")
         return 0
     try:
-        n = notify.intel(ctx, nc.get("intel_max", 5))
+        n = notify.intel(ctx, nc.get("intel_max", 20))
     finally:
         notify.leave(ctx)
         ctx.ensure_city()

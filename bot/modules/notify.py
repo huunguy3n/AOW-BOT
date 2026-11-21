@@ -9,7 +9,7 @@ Tim cham do bang mau (bot/badges.py) -> gan voi icon gan nhat -> xu ly:
   hero (Tuong)                 : tang cap tuong co mui ten xanh bang EXP khi nut con cham do.
 Bo qua: chat, co lien minh (chi R4). Thu/chien dich/lien minh do cac buoc rieng xu ly.
 """
-import re, time, logging
+import time, logging
 import cv2
 import numpy as np
 from bot import ocr, screens
@@ -593,7 +593,7 @@ def run(ctx):
         try:
             if name == "intel":
                 ctx.tap(p[0], p[1], wait=2.0)
-                done[name] = intel(ctx, nc.get("intel_max", 5))
+                done[name] = intel(ctx, nc.get("intel_max", 20))
             else:
                 ctx.tap(p[0], p[1], wait=2.5)
                 if name in ("welfare", "bubble", "activity"):

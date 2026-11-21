@@ -1,11 +1,16 @@
 """A-SAFE-2/3/4: cham do ton trong tuy chon, dau truong khi khong doc duoc luc chien, chieu mo can bang chung."""
 import copy
+import inspect
+import pathlib
 
 import pytest
 
+from bot import learn
+from bot.ctx import Ctx
 from bot.modules.notify import recruit_choice
 from bot.modules.play import arena_eligible
 from bot.modules.reddots import allowed
+from bot.runner import _serial
 
 BASE = {
     "modules": {"rewards": True, "intel": True, "notify": True, "alliance": True, "campaign": True, "daily": True},
@@ -104,3 +109,22 @@ def test_one_pull_free_needs_dot_and_no_timer():
 def test_tickets_only_when_enabled():
     assert choice(free_wait=True) is None
     assert choice(free_wait=True, use_tickets=True) == "one_ticket"
+
+
+# ---------------------------------------------------------------- A-REL-3 / A-DUP-2 / A-CFG-1
+def test_help_and_free_takes_options_not_shared_cfg():
+    sig = inspect.signature(Ctx.help_and_free)
+    assert {"use_help", "use_free"} <= set(sig.parameters)
+    mods = ("train", "city", "alliance")
+    src = "".join(pathlib.Path(f"bot/modules/{m}.py").read_text(encoding="utf-8") for m in mods)
+    assert "_use_help" not in src and "_use_free" not in src
+
+
+def test_review_candidate_rejects_unknown_template():
+    assert learn.review_candidate("rewards/btn_claim", "abc", True) == ("bad", None)
+
+
+def test_serial_lookup_accepts_int_and_str_keys():
+    assert _serial({"adb_serials": {1: "a"}}, 1) == "a"
+    assert _serial({"adb_serials": {"1": "b"}}, 1) == "b"
+    assert _serial({}, 1) is None

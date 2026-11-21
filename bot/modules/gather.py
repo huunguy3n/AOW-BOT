@@ -265,7 +265,7 @@ def run(ctx, limit=None):
                 break
         else:
             unknown_reads += 1
-            if sent >= g.get("fallback_march_slots", 2):
+            if sent >= g.get("fallback_march_slots", 1):
                 log.warning("Khong doc duoc 'Hanh quan x/y'; da gui %d doi (fallback) - dung", sent)
                 break
         result = None

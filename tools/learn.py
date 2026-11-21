@@ -6,7 +6,7 @@
   python tools/learn.py cand                  # bien the ung vien dang cho (data/learn/cand)
 """
 import argparse, glob, json, os, random, sys, time
-import cv2, numpy as np
+import cv2
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE)

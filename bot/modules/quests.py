@@ -5,7 +5,7 @@ chieu mo, tuong...) -> quay ra, khong bam gi. Khong bam "Den" o tab Hang ngay (c
 cao cap co the ton kim cuong) - tien do hang ngay den tu cac buoc khac (gui quan, lien minh...).
 Nhan thuong nhiem vu da xong: buoc 'daily'.
 """
-import time, logging
+import logging
 from bot import build
 from bot.modules import tutorial
 

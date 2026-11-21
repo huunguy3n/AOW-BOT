@@ -2,7 +2,7 @@
 
 KHONG tu dong: nhan tin kenh lien minh (gui tin thay ban), mua do tiem lien minh, xay co.
 """
-import re, time, logging
+import re, logging
 from bot import ocr
 
 log = logging.getLogger("aow")
@@ -62,8 +62,7 @@ def run(ctx):
     if a.get("mine", True) and (main_tab(ctx) or (open_alliance(ctx) and main_tab(ctx))):
         n += ally_mine(ctx)
     ctx.ensure_city()
-    ctx.cfg["_use_help"], ctx.cfg["_use_free"] = True, False
-    ctx.help_and_free()
+    ctx.help_and_free(use_help=True, use_free=False)
     return n
 
 

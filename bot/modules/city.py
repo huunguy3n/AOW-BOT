@@ -19,7 +19,6 @@ def run(ctx):
             total += 1
         time.sleep(1)
         ctx.close_popups(2)
-    ctx.cfg["_use_help"] = ctx.cfg["_use_free"] = True
-    ctx.help_and_free()
+    ctx.help_and_free(use_help=True, use_free=True)
     log.info("Thu %d bieu tuong tai nguyen trong thanh pho", total)
     return total

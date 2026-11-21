@@ -41,6 +41,12 @@ class RingLog(logging.Handler):
         self.lines.append(self.format(record))
 
 
+def _serial(cfg, idx):
+    """adb_serials: {idx: 'host:port'} - khoa so (config.yaml) hoac chuoi (data/settings.json)."""
+    m = cfg.get("adb_serials") or {}
+    return m.get(idx) or m.get(str(idx))
+
+
 def instance_names(ld):
     out = {}
     for line in ld.run("list2").splitlines():
@@ -393,7 +399,7 @@ class Runner:
                 launched = self.ld.launch(idx)
             if not launched:
                 raise RuntimeError("Khong bat duoc instance")
-            dev = Device(cfg["ldplayer"]["adb"], idx, (cfg.get("adb_serials") or {}).get(idx))
+            dev = Device(cfg["ldplayer"]["adb"], idx, _serial(cfg, idx))
             dev.perf = pf
             with span("_adb_ready"):
                 ready = dev.wait_ready(cfg["ldplayer"].get("boot_timeout", 120))

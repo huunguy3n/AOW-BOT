@@ -395,17 +395,18 @@ class Ctx:
             self.tap_tpl("common/btn_to_world", wait=3, fresh=False)
         self.close_popups()
 
-    def help_and_free(self, rounds=4):
-        """Bam nut tro giup lien minh / tang toc mien phi neu dang hien."""
+    def help_and_free(self, rounds=4, use_help=True, use_free=True):
+        """Bam nut tro giup lien minh / tang toc mien phi neu dang hien. A-REL-3: tuy chon truyen vao (truoc day
+        moi module ghi ctx.cfg['_use_help'/'_use_free'] -> module chay sau thua huong gia tri cua module truoc)."""
         names = []
-        if self.cfg.get("_use_help", True):
+        if use_help:
             names.append("common/btn_help")
-        if self.cfg.get("_use_free", True):
+        if use_free:
             names.append("common/btn_free")
         names = [n for n in names if self.v.has(n) and n != "common/btn_free"]   # chua cat anh mau -> bo qua im lang
         from bot.badges import free_bubbles
         for _ in range(rounds):
-            if self.cfg.get("_use_free", True):
+            if use_free:
                 fb = free_bubbles(self.shot())    # bong bong "Free" (nhan theo mau + chu, 2026-11-20)
                 if fb:
                     log.info("Free: hoan thanh xay mien phi @%d,%d", fb[0][0], fb[0][1])

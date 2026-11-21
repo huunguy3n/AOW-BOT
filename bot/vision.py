@@ -15,7 +15,6 @@ class Vision:
         self.var = {}      # bien the tu hoc: templates/<ten>@*.png (giai doan F2, bot/learn.py)
         self.extra = {}    # bien the dang xet (hoi quy truoc khi nhan) - chi dung trong learn.regress_ok
         self.prior = {}    # G2: (ten, kich thuoc anh) -> vi tri tim thay gan nhat -> tim vung nho quanh do truoc
-        self.prior_hits = [0, 0]
 
     @property
     def miss_hits(self):
@@ -90,10 +89,8 @@ class Vision:
                 x0, y0 = max(0, pr[0] - w // 2 - 60), max(0, pr[1] - h // 2 - 60)
                 b = self.best(img, name, roi=(x0, y0, w + 120, h + 120))
                 if b and b[2] >= max(th or self.th, self.PRIOR_MIN):
-                    self.prior_hits[0] += 1
                     return b
         best = self.best(img, name, roi=roi)
-        self.prior_hits[1] += 1
         if best is None or best[2] < (th or self.th):
             return None
         if roi is None and best[2] >= self.PRIOR_MIN:

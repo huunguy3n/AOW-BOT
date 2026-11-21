@@ -7,13 +7,13 @@
   python main.py --check              # liet ke anh mau con thieu
   python main.py --web                # giao dien quan ly: http://localhost:8080
 """
-import argparse, logging, os, sys, time, traceback
+import argparse, logging, os, sys, time
 import cv2, yaml
 
 from bot.device import LDConsole, Device
 from bot.vision import Vision
 from bot.state import Store
-from bot.runner import Runner, RingLog, ORDER
+from bot.runner import Runner, RingLog
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 log = logging.getLogger("aow")

@@ -9,7 +9,7 @@ KHONG BAO GIO bam "Huan luyen ngay" (nut trai, ton kim cuong).
 Cap bi khoa: man hinh hien "Khi Xuong ... dat cap N se mo khoa" va KHONG co nut Huan luyen
 -> bot thu cap thap hon.
 """
-import time, logging
+import logging
 from bot import ocr
 
 log = logging.getLogger("aow")
@@ -90,7 +90,6 @@ def train_once(ctx, tc):
 
 def run(ctx):
     tc = ctx.cfg["train"]
-    ctx.cfg["_use_help"], ctx.cfg["_use_free"] = tc.get("use_help", True), tc.get("use_free_speedup", True)
     n = 0
     for _ in range(tc.get("max_queues", 4)):  # moi lan 1 nha linh; het nha ranh thi dung
         try:
@@ -101,5 +100,5 @@ def run(ctx):
             break
         n += 1
     ctx.ensure_city()
-    ctx.help_and_free()
+    ctx.help_and_free(use_help=tc.get("use_help", True), use_free=tc.get("use_free_speedup", True))
     return n

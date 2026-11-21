@@ -1,5 +1,5 @@
 """Dieu khien LDPlayer (ldconsole) va ADB."""
-import subprocess, time, re, logging, threading
+import subprocess, time, logging, threading
 import cv2, numpy as np
 
 log = logging.getLogger("aow")

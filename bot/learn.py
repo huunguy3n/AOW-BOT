@@ -261,22 +261,61 @@ class Learner:
             os.makedirs(d, exist_ok=True)
             h = dhash(crop)
             meta_p = os.path.join(d, "meta.json")
-            meta = json.load(open(meta_p, encoding="utf-8")) if os.path.exists(meta_p) else {}
-            m = meta.setdefault(h, {"ok": 0, "fail": 0, "first": time.time()})
-            m["ok" if ok else "fail"] += 1
-            p = os.path.join(d, h + ".png")
-            if not os.path.exists(p):
-                cv2.imwrite(p, crop)
-            res = None
-            if (m["ok"] >= self.cfg.get("promote_ok", 2) and m["fail"] == 0 and not m.get("promoted")
-                    and not m.get("rejected")):
-                res = promote(tpl, p)
-                m["promoted" if res else "rejected"] = time.time()
-            json.dump(meta, open(meta_p, "w", encoding="utf-8"), indent=1)
+            with _META_LOCK:     # A-DUP-2: web duyet ung vien cung luc -> khong mat ghi
+                meta = _load_meta(meta_p)
+                m = meta.setdefault(h, {"ok": 0, "fail": 0, "first": time.time()})
+                m["ok" if ok else "fail"] += 1
+                p = os.path.join(d, h + ".png")
+                if not os.path.exists(p):
+                    cv2.imwrite(p, crop)
+                res = None
+                if (m["ok"] >= self.cfg.get("promote_ok", 2) and m["fail"] == 0 and not m.get("promoted")
+                        and not m.get("rejected")):
+                    res = promote(tpl, p)
+                    m["promoted" if res else "rejected"] = time.time()
+                _save_meta(meta_p, meta)
             return res
         except Exception as e:
             log.warning("Hoc: luu ung vien %s loi: %s", tpl, e)
             return None
+
+
+_META_LOCK = threading.Lock()   # meta.json ung vien: luong bot (candidate) va web (review_candidate)
+
+
+def _load_meta(path):
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _save_meta(path, meta):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=1)
+    os.replace(tmp, path)
+
+
+def review_candidate(tpl, h, approve):
+    """Chu du an duyet ung vien tren web (truoc day web tu doc/ghi meta.json -> trung lap + dua ghi voi bot).
+    -> ('ok', da_nhan) | ('bad', None) | ('missing', None)"""
+    if tpl not in LEARNABLE:
+        return "bad", None
+    meta_p = os.path.join(CAND, tpl.replace("/", "__"), "meta.json")
+    with _META_LOCK:
+        meta = _load_meta(meta_p)
+        m = meta.get(h)
+        if not m:
+            return "missing", None
+        res = None
+        if approve:
+            res = promote(tpl, os.path.join(os.path.dirname(meta_p), h + ".png"))
+            m["promoted" if res else "rejected"] = time.time()
+        else:
+            m["rejected"] = time.time()
+        _save_meta(meta_p, meta)
+    return "ok", res
 
 
 def regress_ok(extra=None):
