@@ -1,0 +1,25 @@
+"""Tinh bao (buoc rieng, chay sau cham do, truoc gui quan) - chu du an yeu cau 2026-11-18.
+
+Chay MOI luot (khong can icon co cham do): nhan nhiem vu da xong, danh/nhat nhiem vu con lai khi du nang luong
+(het thi dung Thuoc The Luc neu bat notify.intel_use_potions; KHONG BAO GIO mua bang kim cuong).
+Logic dung chung notify.intel().
+"""
+import logging
+from bot.modules import notify
+
+log = logging.getLogger("aow")
+
+
+def run(ctx):
+    nc = ctx.cfg.get("notify", {})
+    ctx.ensure_city()
+    if not ctx.find("campaign/btn_open"):
+        log.info("Khong thay icon Chien dich/Tinh bao (chua mo khoa?) - bo qua")
+        return 0
+    try:
+        n = notify.intel(ctx, nc.get("intel_max", 5))
+    finally:
+        notify.leave(ctx)
+        ctx.ensure_city()
+    log.info("Tinh bao: %d nhiem vu", n)
+    return n

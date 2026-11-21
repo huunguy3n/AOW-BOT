@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+
+# Backup may / tai khoan game (rat nang + nhay cam) - KHONG commit
+backups/
+
+# Log + anh chup man hinh / ban ghi / trace
+logs/
+
+# Du lieu may hoc + trang thai chay (memory.db, exp, learn, state)
+data/
+
+# Anh mau tu hoc (bien the sinh ra khi chay)
+templates/**/*@auto*.png
+
+# Khung hinh test (anh chup)
+tests/fixtures/
+
+# Cau hinh local cua may / Claude
+.claude/settings.local.json
+config.local.yaml
+.env
+
+# Slot tai khoan (chua thong tin xac thuc) - KHONG commit
+poc/slots/

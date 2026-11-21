@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bot học được gì</title>
+<style>
+:root{
+  --bg:#0b1120; --bg2:#0f172a; --card:#151d2e; --card2:#1b2538; --hover:#212c42; --line:#283349; --line2:#36435c;
+  --text:#f1f5f9; --text2:#cbd5e1; --muted:#94a3b8; --faint:#64748b;
+  --accent:#22c55e; --accent-soft:rgba(34,197,94,.14); --blue:#60a5fa; --warn:#fbbf24; --bad:#f87171; --bad-soft:rgba(248,113,113,.13);
+  --r:12px; --r-sm:8px;
+  --sans:"Fira Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; --mono:"Fira Code",ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{color-scheme:dark}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 var(--sans)}
+a{color:var(--blue)}
+header{position:sticky;top:0;z-index:5;background:var(--bg2);border-bottom:1px solid var(--line);padding:12px 16px;display:flex;gap:12px;align-items:center}
+header h1{font-size:16px;margin:0}
+header .sp{flex:1}
+main{max-width:1180px;margin:0 auto;padding:16px}
+section{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;margin-bottom:14px}
+h2{font-size:14px;margin:0 0 4px}
+.sub{color:var(--muted);font-size:12.5px;margin:0 0 12px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{background:var(--card2);border-radius:var(--r-sm);padding:10px 12px}
+.kpi b{display:block;font:500 22px var(--mono)}
+.kpi span{color:var(--muted);font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+.thumb{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-sm);padding:4px;cursor:pointer;text-align:center}
+.thumb:hover{border-color:var(--blue)}
+.thumb img{width:100%;border-radius:6px;display:block}
+.thumb small{display:block;color:var(--faint);font-size:10.5px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+th{color:var(--faint);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+td.n{font-family:var(--mono);text-align:right}
+.bar{height:6px;background:var(--bg2);border-radius:3px;overflow:hidden;min-width:80px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.btn{background:var(--card2);border:1px solid var(--line2);border-radius:var(--r-sm);padding:6px 12px;color:var(--text)}
+.btn:hover{background:var(--hover)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#052e16;font-weight:600}
+.btn.bad{color:var(--bad)}
+.empty{color:var(--faint);font-size:13px}
+dialog{background:var(--card);color:var(--text);border:1px solid var(--line2);border-radius:var(--r);padding:16px;max-width:min(860px,96vw)}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.teach{display:flex;gap:16px;flex-wrap:wrap}
+.teach .pic{position:relative;width:300px;max-width:100%;cursor:crosshair}
+.teach .pic img{width:100%;border-radius:8px;display:block}
+.teach .pic .pt{position:absolute;width:26px;height:26px;margin:-13px 0 0 -13px;border:3px solid var(--bad);border-radius:50%;pointer-events:none;display:none}
+.teach .side{flex:1;min-width:220px}
+.labels{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.labels .btn.on{outline:2px solid var(--blue)}
+.mono{font-family:var(--mono)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:760px){.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><h1>Bot học được gì</h1><span class="sp"></span><a href="/">← Trang quản lý</a></header>
+<main>
+  <section>
+    <h2>Tổng quan</h2>
+    <p class="sub">Mỗi lần chạm, bot đo xem màn hình có đổi không (giai đoạn E). Số liệu 24 giờ gần nhất.</p>
+    <div class="kpis" id="kpis"></div>
+  </section>
+
+  <section>
+    <h2>Màn lạ cần dạy</h2>
+    <p class="sub">Bot gặp những màn này mà không nhận ra. Bấm vào một màn → chọn đúng loại màn; nếu cần, bấm lên ảnh vào chỗ phải chạm để thoát (nút X / quay lại). Mọi máy học ngay; ảnh lưu vào <span class="mono">tests/fixtures/taught/</span>.</p>
+    <div class="grid" id="unknown"></div>
+  </section>
+
+  <section>
+    <h2>Biến thể ảnh mẫu chờ duyệt</h2>
+    <p class="sub">Nút đóng/quay lại "gần khớp" mà bot chạm thử thành công. Duyệt → bot chạy hồi quy rồi dùng luôn.</p>
+    <div class="grid" id="cands"></div>
+  </section>
+
+  <div class="two">
+    <section>
+      <h2>Chạm trượt nhiều nhất (24h)</h2>
+      <p class="sub">Ai chạm (module hoặc ảnh mẫu) và tỉ lệ ăn.</p>
+      <table id="worst"></table>
+    </section>
+    <section>
+      <h2>Thời gian chờ đã học</h2>
+      <p class="sub">Game phản ứng sau bao lâu (p80). Bot chờ đúng chừng đó thay vì số cố định (giai đoạn H).</p>
+      <table id="waits"></table>
+    </section>
+  </div>
+
+  <div class="two">
+    <section>
+      <h2>Chỗ chết</h2>
+      <p class="sub">Chạm ≥ 8 lần mà gần như không ăn → bot đổi cách (phím Back).</p>
+      <table id="dead"></table>
+    </section>
+    <section>
+      <h2>Mẫu nhận diện màn hình (kNN)</h2>
+      <p class="sub">Số màn đã ghi nhớ theo loại.</p>
+      <table id="knn"></table>
+    </section>
+  </div>
+
+  <section>
+    <h2>Thao tác tay gần đây của bạn</h2>
+    <p class="sub">Chỗ bạn phải chạm tay khi bot đang chạy = chỗ bot còn thiếu. Vòng đỏ = chạm, mũi tên = kéo.</p>
+    <div class="grid" id="human"></div>
+  </section>
+</main>
+
+<dialog id="dlg">
+  <div class="teach">
+    <div class="pic" id="pic"><img id="dimg" alt="Màn lạ"><span class="pt" id="pt"></span></div>
+    <div class="side">
+      <h2>Đây là màn gì?</h2>
+      <p class="sub" id="dname"></p>
+      <div class="labels" id="lbls"></div>
+      <p class="sub">Chỗ cần chạm để thoát: <span class="mono" id="dxy">chưa chọn (bấm lên ảnh)</span></p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn pri" id="dsave">Lưu &amp; dạy bot</button>
+        <button class="btn bad" id="dskip">Xoá (không cần)</button>
+        <button class="btn" id="dclose">Đóng</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<script>
+const VN={city:"Thành phố",world:"Bản đồ thế giới",popup:"Popup (có nút X)",panel:"Bảng (nút quay lại)",panel_key:"Bảng (đóng bằng Back)",exit_dialog:"Hỏi thoát game",reward:"Bảng nhận thưởng",dialog:"Hội thoại",loading:"Đang tải",battle:"Trận đánh (không chạm)"};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let data=null, cur=null, pick=null, label=null;
+
+async function load(){
+  try{ data=await (await fetch('/api/learn')).json(); }catch(e){ return; }
+  const d=data.days[data.days.length-1]||{};
+  const known=d.known-d.human, ok=d.ok;
+  const knnN=Object.values(data.knn||{}).reduce((a,b)=>a+b,0);
+  $('#kpis').innerHTML=[
+    [d.taps?Math.round(100*ok/Math.max(1,d.known))+'%':'–','Chạm ăn (24h)'],
+    [d.taps||0,'Lần chạm có ghi'],
+    [d.human||0,'Thao tác tay của bạn'],
+    [knnN,'Màn đã ghi nhớ'],
+    [(data.variants||[]).length,'Biến thể ảnh mẫu đã học'],
+    [(data.waits||[]).length,'Thao tác đã học thời gian chờ'],
+  ].map(([v,t])=>`<div class="kpi"><b>${esc(v)}</b><span>${t}</span></div>`).join('');
+  $('#unknown').innerHTML=(data.unknown||[]).map(f=>`<div class="thumb" data-f="${esc(f)}"><img loading="lazy" src="/learnimg/unknown/${encodeURIComponent(f)}" alt=""><small>${esc(f.split('-').slice(1,4).join(' '))}</small></div>`).join('')||'<p class="empty">Không còn màn lạ nào.</p>';
+  $('#cands').innerHTML=(data.candidates||[]).map(c=>`<div class="thumb"><img src="/learnimg/cand/${encodeURIComponent(c.tpl.replace('/','__'))}/${c.hash}.png" alt=""><small>${esc(c.tpl)} · đúng ${c.ok}</small><div style="display:flex;gap:4px;margin-top:4px"><button class="btn pri" data-a="approve" data-t="${esc(c.tpl)}" data-h="${c.hash}">Duyệt</button><button class="btn bad" data-a="reject" data-t="${esc(c.tpl)}" data-h="${c.hash}">Bỏ</button></div></div>`).join('')||'<p class="empty">Chưa có ứng viên.</p>';
+  const row=(w,n,ok)=>`<tr><td class="mono">${esc(w)}</td><td class="n">${n}</td><td><div class="bar"><i style="width:${Math.round(100*ok/Math.max(1,n))}%"></i></div></td><td class="n">${Math.round(100*ok/Math.max(1,n))}%</td></tr>`;
+  $('#worst').innerHTML='<tr><th>Ai chạm</th><th>Lần</th><th></th><th>Ăn</th></tr>'+(data.worst||[]).map(r=>row(r.who,r.n,r.ok)).join('');
+  $('#waits').innerHTML='<tr><th>Thao tác</th><th>Mẫu</th><th>Chờ p80</th></tr>'+((data.waits||[]).map(w=>`<tr><td class="mono">${esc(w.key)}</td><td class="n">${w.n}</td><td class="n">${w.p80}s</td></tr>`).join('')||'<tr><td colspan="3" class="empty">Chưa đủ mẫu.</td></tr>');
+  $('#dead').innerHTML='<tr><th>Ai chạm</th><th>Vị trí</th><th>Ăn / lần</th></tr>'+((data.dead||[]).map(r=>`<tr><td class="mono">${esc(r.who)}</td><td class="n">${r.x},${r.y}</td><td class="n">${r.ok}/${r.n}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">Không có.</td></tr>');
+  $('#knn').innerHTML='<tr><th>Loại màn</th><th>Mẫu</th></tr>'+Object.entries(data.knn||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr><td>${esc(VN[k]||k)}</td><td class="n">${v}</td></tr>`).join('');
+  $('#human').innerHTML=(data.human||[]).map(f=>`<a class="thumb" href="/learnimg/human/${f.split('/').map(encodeURIComponent).join('/')}" target="_blank"><img loading="lazy" src="/learnimg/human/${f.split('/').map(encodeURIComponent).join('/')}" alt=""><small>${esc(f.split('/')[1].split('-').slice(0,3).join(' '))}</small></a>`).join('')||'<p class="empty">Chưa có.</p>';
+}
+
+$('#unknown').addEventListener('click',e=>{
+  const t=e.target.closest('.thumb'); if(!t) return;
+  cur=t.dataset.f; pick=null; label=null;
+  $('#dimg').src='/learnimg/unknown/'+encodeURIComponent(cur);
+  $('#dname').textContent=cur; $('#pt').style.display='none'; $('#dxy').textContent='chưa chọn (bấm lên ảnh)';
+  $('#lbls').innerHTML=(data.labels||[]).map(l=>`<button class="btn" data-l="${l}">${esc(VN[l]||l)}</button>`).join('');
+  $('#dlg').showModal();
+});
+$('#lbls').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b) return; label=b.dataset.l; [...$('#lbls').children].forEach(x=>x.classList.toggle('on',x===b));});
+$('#pic').addEventListener('click',e=>{
+  const r=$('#dimg').getBoundingClientRect();
+  const x=Math.round((e.clientX-r.left)/r.width*540), y=Math.round((e.clientY-r.top)/r.height*960);
+  pick={x,y}; const pt=$('#pt'); pt.style.left=(e.clientX-r.left)+'px'; pt.style.top=(e.clientY-r.top)+'px'; pt.style.display='block';
+  $('#dxy').textContent=x+', '+y;
+});
+async function send(body){ await fetch('/api/learn/teach',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); $('#dlg').close(); load(); }
+$('#dsave').onclick=()=>{ if(!label){ alert('Chọn loại màn trước'); return; } send({file:cur,label,...(pick||{})}); };
+$('#dskip').onclick=()=>send({file:cur,label:'skip'});
+$('#dclose').onclick=()=>$('#dlg').close();
+$('#cands').addEventListener('click',async e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  const r=await (await fetch('/api/learn/candidate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tpl:b.dataset.t,hash:b.dataset.h,action:b.dataset.a})})).json();
+  if(b.dataset.a==='approve' && !r.promoted) alert('Biến thể làm sai hồi quy nhận diện màn — không nhận.');
+  load();
+});
+load(); setInterval(load,30000);
+</script>
+</body>
+</html>

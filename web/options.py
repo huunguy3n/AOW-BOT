@@ -1,0 +1,91 @@
+"""Danh sach tuy chon hien tren web. ready=False: da co cho cai dat nhung tinh nang chua lam (sap co)."""
+
+MODULES = [  # cung thu tu chay (bot/runner.py ORDER)
+    ("tutorial", "Tân thủ"), ("notify", "Chấm đỏ"), ("reddots", "Quét hết chấm đỏ"), ("rewards", "Nhận quà"),
+    ("collect_city", "Nhặt tài nguyên"), ("daily", "Nhiệm vụ"), ("intel", "Tình báo"),
+    ("mainquest", "NV chính"), ("construct", "Xây công trình mới"), ("quests", "Xây theo NV"), ("train", "Huấn luyện"), ("research", "Nghiên cứu"),
+    ("alliance", "Liên minh"), ("campaign", "Chiến dịch"), ("play", "Lối chơi (mỏ, đấu trường)"),
+    ("rebels", "Phản quân tập kích"), ("gather", "Gửi quân"),
+]
+
+GROUPS = [
+    ("Gửi quân", [
+        dict(key="gather.priority", label="Ưu tiên loại mỏ", type="order",
+             choices=[["alloy", "Hợp kim"], ["metal", "Kim loại"], ["oil", "Dầu"], ["food", "Thực phẩm"]], ready=True),
+        dict(key="gather.max_level", label="Cấp mỏ cao nhất", type="int", min=1, max=8, ready=True),
+        dict(key="gather.only_full", label="Chỉ tìm mỏ đầy", type="bool", ready=True),
+        dict(key="gather.load_ge_mine", label="Chỉ đi mỏ mà tải trọng đội ≥ trữ lượng mỏ", type="bool", ready=True),
+        dict(key="gather.min_hq_level", label="Bắt đầu thu thập từ nhà chính cấp", type="int", min=1, max=30, ready=True),
+    ]),
+    ("Huấn luyện & xây dựng", [
+        dict(key="train.tier", label="Cấp lính muốn huấn luyện", type="int", min=1, max=4, ready=True),
+        dict(key="train.only_for_gather", label="Chỉ luyện đủ T3 để đi thu thập", type="bool", ready=True),
+        dict(key="train.troops_per_march", label="Số T3 cần cho mỗi đội thu thập", type="int", min=100, max=100000, ready=True),
+        dict(key="build.hq_max_level", label="Giới hạn cấp nhà chính (đạt rồi thì chỉ luyện T3)", type="int", min=1, max=40, ready=True),
+        dict(key="build.follow_quests", label="Xây nhà theo nhiệm vụ", type="bool", ready=True),
+    ]),
+    ("Nhiệm vụ", [
+        dict(key="quests.daily", label="Hằng ngày (nhận thưởng + rương)", type="bool", ready=True),
+        dict(key="quests.main", label="Chính (Đến → xây nhà)", type="bool", ready=True),
+        dict(key="quests.alliance", label="Liên minh (đóng góp vàng, trợ giúp)", type="bool", ready=True),
+        dict(key="quests.story", label="Cốt truyện / chương (Đến → xây nhà)", type="bool", ready=True),
+        dict(key="quests.follow", label="Chương: làm cả việc không phải xây (tướng, dọn phế tích…)", type="bool", ready=True),
+    ]),
+    ("Nhiệm vụ chính & trận đánh", [
+        dict(key="mainquest.max_steps", label="Số bước nhiệm vụ chính mỗi lượt", type="int", min=0, max=30, ready=True),
+        dict(key="mainquest.fight_unpredicted", label="Đánh cả khi không dự đoán thắng", type="bool", ready=True),
+        dict(key="mainquest.power_gain_pct", label="Gặp boss khó: thử lại khi lực chiến tăng (%)", type="int", min=1, max=100, ready=True),
+        dict(key="battle.steer", label="Lái đội quân trong trận (nhặt buff, né nerf/tấn công)", type="bool", ready=True),
+    ]),
+    ("Chiến dịch", [
+        dict(key="campaign.max_fights", label="Số màn tối đa mỗi lượt", type="int", min=0, max=50, ready=True),
+        dict(key="campaign.only_predicted_win", label="Chỉ đánh khi dự đoán \"Thắng toàn diện\"", type="bool", ready=True),
+    ]),
+    ("Chấm đỏ thông báo", [
+        dict(key="notify.welfare", label="TT phúc lợi (Nhận miễn phí)", type="bool", ready=True),
+        dict(key="rewards.use_vip_items", label="Dùng vật phẩm Thời gian VIP để nhận Rương ngày VIP (không mua thẻ tháng)", type="bool", ready=True),
+        dict(key="notify.bubble", label="Bong bóng Nhận / Thưởng online", type="bool", ready=True),
+        dict(key="notify.activity", label="Hoạt động trò chơi", type="bool", ready=True),
+        dict(key="notify.intel", label="Tình báo (đánh nhiệm vụ)", type="bool", ready=True),
+        dict(key="notify.intel_max", label="Số nhiệm vụ tình báo / lượt", type="int", min=0, max=30, ready=True),
+        dict(key="notify.intel_max_potions", label="Số thuốc thể lực tối đa / lượt", type="int", min=0, max=100, ready=True),
+        dict(key="notify.intel_use_potions", label="Hết năng lượng tình báo thì dùng thuốc (không mua)", type="bool", ready=True),
+        dict(key="notify.intel_only_gold", label="Tình báo: chỉ làm ghim vàng / tím đầu lâu", type="bool", ready=True),
+        dict(key="notify.recruit", label="Chiêu mộ miễn phí + 10 lần khi có chấm đỏ", type="bool", ready=True),
+        dict(key="recruit.use_tickets", label="Dùng phiếu chiêu mộ", type="bool", ready=True),
+        dict(key="notify.hero", label="Tăng cấp tướng (EXP)", type="bool", ready=True),
+    ]),
+    ("Phản quân", [
+        dict(key="rebels.join_mech_rally", label="Tham gia tập kết Phản quân Cơ giáp (cần ảnh mẫu khi có tập kết)", type="bool", ready=True),
+        dict(key="rebels.min_stamina", label="Thể lực tối thiểu giữ lại", type="int", min=0, max=1000, ready=True),
+        dict(key="rebels.min_hq_level", label="Đánh Phản quân tập kích từ nhà chính cấp", type="int", min=1, max=40, ready=True),
+        dict(key="rebels.daily_target", label="Số lượt mỗi ngày (đủ thì thôi, tính lại từ 0h UTC)", type="int", min=0, max=50, ready=True),
+        dict(key="rebels.every_min", label="Chưa đủ lượt: mở máy lại tối đa mỗi (phút)", type="int", min=10, max=600, ready=True),
+    ]),
+    ("Phòng thủ khi bị tấn công", [
+        dict(key="defense.shield_on_attack", label="Bật khiên khi bị tấn công (cần ảnh cảnh báo)", type="bool", ready=True),
+        dict(key="defense.shield_hours", label="Loại khiên (giờ)", type="select",
+             choices=[[1, "1 giờ (💎500)"], [12, "12 giờ (💎4.800)"], [72, "3 ngày (💎25.200)"]], ready=True),
+        dict(key="defense.shield_buy_gems", label="Hết khiên thì mua bằng kim cương", type="bool", ready=True),
+        dict(key="defense.gem_cap_daily", label="Kim cương tối đa / ngày / tài khoản", type="int", min=0, max=100000, ready=True),
+        dict(key="defense.evacuate_troops", label="Gửi toàn bộ quân ra khỏi trụ sở đi thu thập", type="bool", ready=True),
+    ]),
+    ("Vòng chạy", [
+        dict(key="cycle.pause_between_cycles_min", label="Nghỉ giữa 2 vòng (phút)", type="int", min=0, max=600, ready=True),
+        dict(key="watchdog.enabled", label="Tự khởi động lại game khi bot kẹt", type="bool", ready=True),
+        dict(key="watchdog.still_min", label="Kẹt khi màn hình đứng yên quá (phút)", type="int", min=1, max=60, ready=True),
+        dict(key="watchdog.step_max_min", label="Kẹt khi 1 bước chạy quá (phút)", type="int", min=5, max=180, ready=True),
+    ]),
+    ("Lập lịch theo trí nhớ", [
+        dict(key="schedule.mode", label="Chế độ chạy", type="select",
+             choices=[["fixed", "Cố định: chạy hết máy, hết bước"], ["smart", "Thông minh: chỉ vào khi cần xây / thu thập / nghiên cứu"]], ready=True),
+        dict(key="schedule.parallel", label="Số máy xử lý cùng lúc (tối đa 2)", type="int", min=1, max=2, ready=True),
+        dict(key="speed.wait_scale", label="Hệ số chờ sau mỗi lần chạm (1 = chậm như cũ)", type="float", min=0.5, max=1.5, step=0.05, ready=True),
+        dict(key="schedule.max_gap_min", label="Tối đa không ghé một máy (phút)", type="int", min=30, max=720, ready=True),
+        dict(key="schedule.gather_retry_min", label="Còn đội rảnh mà không gửi được: thử lại sau (phút)", type="int", min=10, max=240, ready=True),
+        dict(key="schedule.build_every_min", label="Kiểm tra xây khi chưa biết giờ xong (phút)", type="int", min=15, max=480, ready=True),
+        dict(key="schedule.research_every_min", label="Kiểm tra nghiên cứu khi chưa biết giờ xong (phút)", type="int", min=15, max=480, ready=True),
+        dict(key="schedule.backoff_base_min", label="Bước lỗi liên tiếp: tạm bỏ từ (phút)", type="int", min=5, max=240, ready=True),
+        dict(key="schedule.backoff_cap_h", label="Tạm bỏ tối đa (giờ)", type="int", min=1, max=48, ready=True),
+    ]),
+]

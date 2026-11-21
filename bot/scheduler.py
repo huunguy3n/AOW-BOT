@@ -1,0 +1,278 @@
+"""Bo lap lich (giai doan A2-A3): quyet dinh KHI NAO ghe tai khoan nao va chay BUOC nao.
+
+Ham thuan: chi doc tri nho (bot/memory.py), khong mo game -> test offline (tools/sim_schedule.py).
+Chu du an chot 2026-11-19:
+  - Chi 3 viec duoc keo may len (trigger): XAY NHA (mainquest/quests), THU THAP (gather), NGHIEN CUU (research).
+    Ngoai le: tai khoan dang bat 'tutorial' ma chua xong tan thu -> luon can choi tiep.
+  - Moi buoc khac (cham do, qua, nhiem vu ngay, lien minh, tinh bao, huan luyen...) chi chay kem khi may da bat.
+  - Tran an toan: qua schedule.max_gap_min (240) khong ghe -> van vao 1 lan, chay moi buoc bat.
+  - Reset ngay 0h UTC (khong keo may, chi la ly do ghi kem).
+Thu tu buoc trong 1 lan ghe van theo ORDER (runner), lich chi chon buoc nao + luc nao.
+"""
+import time
+from dataclasses import dataclass, field
+
+TRIGGERS = ("gather", "mainquest", "quests", "research", "rebels")
+DEFAULTS = {"max_gap_min": 240, "min_gap_min": 10, "batch_window_min": 5, "idle_check_min": 15,
+            "gather_retry_min": 60, "build_every_min": 120, "research_every_min": 120, "extra_every_min": 180, "tutorial_every_min": 30,
+            "research_hq_min": 8, "daily_reset_utc": 0}
+
+
+@dataclass
+class Plan:
+    ready: bool            # co viec ngay bay gio
+    at: float = None       # lan som nhat co viec (None = khong biet / khong keo may)
+    why: str = ""
+    confident: bool = True  # False = uoc luong theo chu ky (khi ghe thi cu chay de kiem tra)
+
+
+@dataclass
+class Visit:
+    idx: int
+    at: float
+    steps: list = field(default_factory=list)
+    why: str = ""
+    full: bool = False     # ghe vi tran an toan -> chay moi buoc bat
+
+
+def sched_cfg(cfg):
+    return {**DEFAULTS, **(cfg.get("schedule") or {})}
+
+
+def _last(mem, idx, step):
+    r = mem.query("SELECT started, result, ret FROM runs WHERE inst=? AND step=? ORDER BY started DESC LIMIT 1",
+                  (idx, step))
+    return r[0] if r else (None, None, None)
+
+
+def _hhmm(t):
+    return time.strftime("%H:%M", time.localtime(t))
+
+
+# ---------- ban do the gioi ----------
+WORLD_STEPS = ("gather", "rebels")   # buoc can ban do the gioi
+
+
+def world_ready(mem, idx, cfg=None, now=None, recheck_h=6):
+    """Ban do the gioi da mo chua (chu du an 2026-11-20: "o < cf6 chua the mo the gioi ngoai").
+    - biet cap nha chinh < world.min_hq_level (6) -> chua mo
+    - lan thu gan nhat (trong recheck_h gio) nut chuyen ban do khong co tac dung -> chua mo
+    - con lai (da mo / chua biet) -> cho thu."""
+    now = now or time.time()
+    w = (cfg or {}).get("world", {})
+    hq = mem.fact(idx, "hq_level")
+    if hq is not None and hq < w.get("min_hq_level", 6):
+        return False
+    r = mem.query("SELECT value, seen_at FROM facts WHERE inst=? AND key='world_open'", (idx,))
+    if r and r[0][0] == "false" and now - (r[0][1] or 0) < w.get("recheck_h", recheck_h) * 3600:
+        return False
+    return True
+
+
+# ---------- plan() tung trigger ----------
+def plan_gather(mem, idx, sc, now, cfg=None):
+    g = (cfg or {}).get("gather", {})
+    if not world_ready(mem, idx, cfg, now):
+        return Plan(False, None, "ban do the gioi chua mo")
+    hq = mem.fact(idx, "hq_level")
+    if g.get("load_ge_mine", True) and hq is not None and hq < g.get("min_hq_level", 9):
+        return Plan(False, None, f"nha chinh {hq} < {g.get('min_hq_level', 9)}: chua thu thap")
+    total = mem.fact(idx, "march_total")
+    timers = mem.timers(idx, "march:")
+    if total is None:  # chua doc duoc (vd ban do the gioi chua mo) -> thu lai theo chu ky, khong ghe moi min_gap
+        t, _, _ = _last(mem, idx, "gather")
+        at = (t or 0) + sc["gather_retry_min"] * 60
+        return Plan(at <= now, at, "chua biet so doi hanh quan", confident=False)
+    busy = len(timers)
+    cands = []
+    if busy < total:  # co doi ranh luc quan sat cuoi: vua gui ma van ranh (khong co mo vua tai trong / het linh) -> cho
+        t, _, _ = _last(mem, idx, "gather")
+        cands.append(((t or 0) + sc["gather_retry_min"] * 60, f"{total - busy} doi ranh", True))
+    if timers:  # doi dang di som nhat ve thanh
+        cands.append((timers[0][1], f"doi ve {_hhmm(timers[0][1])}", timers[0][2] >= 0.6))
+    arr = mem.timers(idx, "arrive:")
+    if arr:  # chu du an 2026-11-21: tat ca doi toi mo -> dang nhap doc gio thu thap xong (chi hien khi da toi mo)
+        last_arr = arr[-1][1] + 60
+        cands.append((last_arr, f"doi toi mo {_hhmm(arr[-1][1])}: doc gio thu thap", True))
+    at, why, conf = min(cands)
+    return Plan(at <= now, at, why, confident=conf)
+
+
+def plan_build(mem, idx, sc, now, step, cfg=None):
+    # so tho dang xay (observe doc icon bua "x/y") < so tho dung duoc (farm 1, TK chinh #1: 2) -> co tho ranh: xay ngay
+    busy = mem.fact(idx, "builders_busy")
+    maxb = ((cfg or {}).get("build") or {}).get("max_builders", 1)
+    if busy is not None and busy < maxb:
+        t, _, _ = _last(mem, idx, step)
+        at = max((t or 0) + sc["min_gap_min"] * 60, now - 1)
+        return Plan(at <= now, at, f"tho xay ranh ({busy}/{maxb})")
+    tm = mem.timers(idx, "build")
+    if tm:
+        return Plan(tm[0][1] <= now, tm[0][1], f"xay xong {_hhmm(tm[0][1])}")
+    t, _, _ = _last(mem, idx, step)
+    at = (t or 0) + sc["build_every_min"] * 60
+    return Plan(at <= now, at, "kiem tra xay (chu ky)", confident=False)
+
+
+def plan_research(mem, idx, sc, now):
+    hq = mem.fact(idx, "hq_level")
+    if hq is not None and hq < sc["research_hq_min"]:
+        return Plan(False, None, f"nha chinh {hq} < {sc['research_hq_min']}: chua mo nghien cuu")
+    tm = mem.timers(idx, "research")
+    if tm:
+        return Plan(tm[0][1] <= now, tm[0][1], f"nghien cuu xong {_hhmm(tm[0][1])}")
+    t, _, _ = _last(mem, idx, "research")
+    at = (t or 0) + sc["research_every_min"] * 60
+    return Plan(at <= now, at, "kiem tra nghien cuu (chu ky)", confident=False)
+
+
+# ---------- phan quan tap kich ----------
+def rebels_done_today(mem, idx, now=None, reset_utc=0):
+    """So luot Phan quan da danh tu luc reset ngay (tong gia tri buoc 'rebels' tra ve)."""
+    now = now or time.time()
+    n = 0
+    for (ret,) in mem.query("SELECT ret FROM runs WHERE inst=? AND step='rebels' AND started>=?",
+                            (idx, last_reset(now, reset_utc))):
+        try:
+            n += int(float(ret or 0))
+        except (TypeError, ValueError):
+            pass
+    # chu du an 2026-11-21: "Gui Qua Thuong: 7/21" (bang Qua tang lien minh) = da tan cong 21-7 = 14 luot
+    # (danh tay hoac bot) -> so doc tu game, lay lon hon so bot tu dem
+    g = mem.query("SELECT value, seen_at FROM facts WHERE inst=? AND key='rebels_attacks_game'", (idx,))
+    if g and g[0][0] and (g[0][1] or 0) >= last_reset(now, reset_utc):
+        try:
+            n = max(n, int(float(g[0][0])))
+        except (TypeError, ValueError):
+            pass
+    return n
+
+
+def rebels_ready(mem, idx, cfg=None, now=None):
+    """Chu du an 2026-11-21: nha chinh >= rebels.min_hq_level (15) moi danh; 5 luot/ngay du thi thoi.
+    -> (True|False, ly do). Chua biet cap nha chinh -> cho thu (module tu kiem tra man hinh)."""
+    rc = (cfg or {}).get("rebels", {})
+    hq = mem.fact(idx, "hq_level")
+    if hq is not None and hq < rc.get("min_hq_level", 15):
+        return False, f"nha chinh {hq} < {rc.get('min_hq_level', 15)}"
+    done = rebels_done_today(mem, idx, now, sched_cfg(cfg or {})["daily_reset_utc"])
+    if done >= rc.get("daily_target", 5):
+        return False, f"da du {done}/{rc.get('daily_target', 5)} luot hom nay"
+    return True, f"{done}/{rc.get('daily_target', 5)} luot hom nay"
+
+
+def plan_rebels(mem, idx, sc, now, cfg=None):
+    ok, why = rebels_ready(mem, idx, cfg, now)
+    if not ok:
+        if "luot hom nay" in why:      # du luot -> lan toi sau reset ngay
+            return Plan(False, last_reset(now, sc["daily_reset_utc"]) + 86400, why)
+        return Plan(False, None, why)
+    if not world_ready(mem, idx, cfg, now):
+        return Plan(False, None, "ban do the gioi chua mo")
+    t, _, _ = _last(mem, idx, "rebels")
+    at = (t or 0) + (cfg or {}).get("rebels", {}).get("every_min", 60) * 60
+    return Plan(at <= now, at, f"phan quan {why}")
+
+
+def plan_step(mem, idx, step, sc, now, enabled, cfg=None):
+    if step == "rebels":
+        return plan_rebels(mem, idx, sc, now, cfg)
+    if step == "gather":
+        if enabled.get("tutorial") and not mem.fact(idx, "tutorial_done"):
+            # dang tan thu: ban do the gioi chua mo, nha chinh < min_hq_level -> khong keo may moi gio (#4 2026-11-19)
+            return Plan(False, None, "dang tan thu: chua thu thap")
+        return plan_gather(mem, idx, sc, now, cfg)
+    if step in ("mainquest", "quests"):
+        return plan_build(mem, idx, sc, now, step, cfg)
+    if step == "research":
+        return plan_research(mem, idx, sc, now)
+    if step == "tutorial" and enabled.get("tutorial") and not mem.fact(idx, "tutorial_done"):
+        if mem.fact(idx, "tutorial_need_power") or (mem.fact(idx, "tutorial_wait_until") or 0) > now:
+            return None  # thua lien, dang cho tang luc chien -> khong keo may, chi chay kem (extra_every_min)
+        # chu ky rieng: neu khong 4 may dang bat tan thu se duoc ghe moi min_gap phut (ke ca may dang ket, #4 2026-11-19)
+        t, _, _ = _last(mem, idx, "tutorial")
+        at = (t or 0) + sc["tutorial_every_min"] * 60
+        return Plan(at <= now, at, "tan thu chua xong")
+    return None  # khong phai trigger
+
+
+DAILY = ("daily", "rewards", "notify", "play")   # play: 3 luot dau truong mien phi + cuop boc theo ngay
+ALWAYS = ("reddots",)  # quet cham do cuoi luot: re, chay moi lan ghe (chu du an 2026-11-20)  # co qua theo ngay -> chay lan dau sau reset du chua toi chu ky
+
+
+def last_reset(now, hour_utc):
+    day = 86400
+    t = (now // day) * day + hour_utc * 3600
+    return t if t <= now else t - day
+
+
+def extra_due(mem, idx, step, sc, now):
+    """Buoc chay kem: chi chay neu lan chay cuoi da qua extra_every_min, hoac (buoc theo ngay) chua chay tu luc reset."""
+    t, _, _ = _last(mem, idx, step)
+    if t is None:
+        return True
+    if step in DAILY and t < last_reset(now, sc["daily_reset_utc"]):
+        return True
+    return now - t >= sc["extra_every_min"] * 60 * value_factor(mem, idx, step)
+
+
+def value_factor(mem, idx, step, look=4, cap=4):
+    """H3: buoc chay kem lien tiep TRANG TAY (ket qua ok nhung tra ve 0) o may nay -> gian chu ky x2, x4 (toi da cap).
+    Buoc vua co viec -> chu ky binh thuong. Gia tri tra ve khong phai so (dict...) coi nhu co viec."""
+    zeros = 0
+    for res, ret in mem.query("SELECT result, ret FROM runs WHERE inst=? AND step=? ORDER BY started DESC LIMIT ?",
+                              (idx, step, look)):
+        try:
+            v = float(ret) if ret not in (None, "", "null") else 0.0
+        except (TypeError, ValueError):
+            break
+        if res != "ok" or v != 0:
+            break
+        zeros += 1
+    return min(cap, 2 ** (zeros // 2)) if zeros >= 2 else 1
+
+
+def last_visit_end(mem, idx):
+    r = mem.query("SELECT MAX(COALESCE(ended, started)) FROM visits WHERE inst=?", (idx,))
+    return r[0][0] if r and r[0][0] else None
+
+
+def decide_one(mem, idx, order, enabled, cfg, now):
+    """-> Visit (at co the > now = chua toi luc)."""
+    sc = sched_cfg(cfg)
+    names = [n for n in order if enabled.get(n)]
+    backoff = {n for n in names if mem.backoff_until(idx, n) > now}
+    last = last_visit_end(mem, idx)
+    plans = {n: plan_step(mem, idx, n, sc, now, enabled, cfg) for n in names}
+    trig = {n: p for n, p in plans.items() if p is not None and n not in backoff}
+    cap = (last or 0) + sc["max_gap_min"] * 60
+    soon = now + sc["batch_window_min"] * 60
+    nexts = [p.at for p in trig.values() if p.at is not None]
+    at = min(nexts + [cap])
+    why = [f"{n}: {p.why}" for n, p in trig.items() if p.at is not None and p.at <= max(at, soon)]
+    full = cap <= max(at, now) and not why
+    if last is not None:
+        at = max(at, last + sc["min_gap_min"] * 60)
+    if full:
+        why = [f"tran an toan {sc['max_gap_min']} phut khong ghe"]
+        steps = [n for n in names if n not in backoff]
+    else:
+        ready_at = max(at, now) + sc["batch_window_min"] * 60
+        steps = []
+        for n in names:
+            if n in backoff:
+                continue
+            p = plans[n]
+            if p is None:
+                if n in ALWAYS or extra_due(mem, idx, n, sc, now):
+                    steps.append(n)  # buoc chay kem (theo chu ky rieng / sau reset ngay)
+            elif p.ready or (p.at is not None and p.at <= ready_at) or not p.confident:
+                steps.append(n)  # trigger toi han / uoc luong theo chu ky (ghe thi kiem tra luon)
+    return Visit(idx, at, steps, "; ".join(why) or "khong ro", full)
+
+
+def decide(mem, insts, order, enabled_for, cfg_for, now=None):
+    """insts: list idx dang bat auto. enabled_for(idx)/cfg_for(idx) -> dict. Tra ve Visit sap theo at."""
+    now = now or time.time()
+    out = [decide_one(mem, i, order, enabled_for(i), cfg_for(i), now) for i in insts]
+    return sorted(out, key=lambda v: v.at)

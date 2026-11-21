@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AOW Bot</title>
+<style>
+:root{
+  --bg:#0f1216; --panel:#171b21; --panel2:#1d222a; --line:#2a313b; --text:#e6e9ee; --muted:#8a94a3;
+  --accent:#3fb6a8; --warn:#e0a83a; --bad:#e2574c; --good:#5cc27a; --blue:#5b9cf0;
+  --r:10px; --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:0;z-index:5;display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+  padding:12px 16px;background:rgba(15,18,22,.92);backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
+h1{font-size:16px;margin:0 8px 0 0;letter-spacing:.3px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:var(--panel2);
+  border:1px solid var(--line);font-size:12px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.dot.on{background:var(--good)} .dot.wait{background:var(--warn)} .dot.err{background:var(--bad)} .dot.run{background:var(--blue)}
+button{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+  padding:6px 12px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#06221f;font-weight:600}
+button.danger{border-color:var(--bad);color:var(--bad)}
+main{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;padding:16px;max-width:1500px;margin:0 auto}
+@media (max-width:1000px){main{grid-template-columns:1fr}}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:10px}
+.card.off{opacity:.55}
+.row{display:flex;align-items:center;gap:8px}
+.between{justify-content:space-between}
+.name{font-weight:600}
+.idx{font-family:var(--mono);color:var(--muted);font-size:12px}
+.muted{color:var(--muted);font-size:12px}
+.res{display:grid;grid-template-columns:repeat(6,1fr);gap:4px}
+.res div{background:var(--panel2);border-radius:6px;padding:4px 6px;text-align:center}
+.res b{display:block;font-family:var(--mono);font-size:13px}
+.res span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.marches{display:flex;flex-direction:column;gap:4px}
+.march{display:grid;grid-template-columns:86px 1fr;gap:6px;background:var(--panel2);border-radius:6px;padding:6px 8px;font-size:12px}
+.march .st{font-weight:600}
+.st.marching{color:var(--blue)} .st.gathering{color:var(--good)} .st.returning{color:var(--warn)}
+.march .t{font-family:var(--mono)}
+.tl{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--panel);margin:4px 0 2px;position:relative}
+.tl>i{display:block;height:100%}
+.tl .go{background:var(--blue)} .tl .ga{background:var(--good)} .tl .rt{background:var(--warn)}
+.tl .unk{opacity:.35;background-image:repeating-linear-gradient(45deg,transparent 0 4px,rgba(0,0,0,.35) 4px 8px)}
+.tl .now{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--text)}
+.tlt{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);font-family:var(--mono)}
+.march.full{grid-template-columns:1fr}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted)}
+.chip.on{background:rgba(63,182,168,.15);border-color:var(--accent);color:var(--accent)}
+.err{color:var(--bad);font-size:12px;word-break:break-word}
+/* switch */
+.sw{position:relative;width:38px;height:22px;flex:none}
+.sw input{opacity:0;width:0;height:0}
+.sw span{position:absolute;inset:0;border-radius:999px;background:var(--line);transition:.15s;cursor:pointer}
+.sw span:before{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;border-radius:50%;background:#fff;transition:.15s}
+.sw input:checked+span{background:var(--accent)}
+.sw input:checked+span:before{transform:translateX(16px)}
+.sw input:disabled+span{cursor:not-allowed;opacity:.5}
+aside{display:flex;flex-direction:column;gap:12px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px}
+.panel h2{font-size:13px;margin:0 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+.opt{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--line)}
+.opt:first-of-type{border-top:0}
+.opt > label:first-child{flex:1}
+.opt.soon > label:first-child{color:var(--muted)}
+.opt.wide{flex-wrap:wrap}
+.opt.wide > label:first-child{flex-basis:100%}
+.opt.wide .order{justify-content:flex-start}
+.soon-tag{font-size:10px;color:var(--warn);border:1px solid var(--warn);border-radius:4px;padding:0 4px;margin-left:6px}
+.opt input[type=number],.opt select{width:80px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:3px 6px}
+.order{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.order button{padding:2px 8px;font-size:12px}
+.order button.off{opacity:.4}
+.stats{margin-top:16px}
+.stats .scroll{overflow-x:auto}
+.stats table{border-collapse:collapse;width:100%;font-size:12px}
+.stats th,.stats td{padding:5px 8px;border-top:1px solid var(--line);text-align:left;white-space:nowrap}
+.stats th{color:var(--muted);font-weight:500}
+.stats td.c a,.stats td.c span.v{color:inherit;text-decoration:none}
+.pct{font-family:var(--mono);display:inline-block;min-width:34px}
+.pct.good{color:var(--good)} .pct.mid{color:var(--warn)} .pct.bad{color:var(--bad)}
+.hist{display:inline-flex;gap:1px;vertical-align:middle;margin-left:4px}
+.hist i{width:4px;height:10px;border-radius:1px;background:var(--line)}
+.hist i.O{background:var(--good)} .hist i.M{background:var(--muted)} .hist i.W{background:var(--warn)} .hist i.E{background:var(--bad)} .hist i.S{background:#b36bd6}
+.legend{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px}
+.log{font-family:var(--mono);font-size:11px;max-height:340px;overflow:auto;white-space:pre-wrap;color:#b8c0cc}
+.log .w{color:var(--warn)} .log .e{color:var(--bad)}
+</style>
+</head>
+<body>
+<header>
+  <h1>AOW Bot</h1>
+  <span class="pill"><span class="dot" id="rdot"></span><span id="rtext">…</span></span>
+  <span class="muted" id="rinfo"></span>
+  <span style="flex:1"></span>
+  <button class="primary" id="btnStart" title="Chạy vòng tự động lần lượt qua các máy đang bật công tắc">▶ Bắt đầu vòng auto</button>
+  <button class="danger" id="btnStop" title="Dừng sau bước đang chạy">■ Dừng</button>
+</header>
+<main>
+  <section>
+    <div class="grid" id="grid"></div>
+    <div class="panel stats">
+      <div class="row between" style="margin-bottom:8px">
+        <h2 style="margin:0">Thống kê theo bước <span class="muted" style="text-transform:none;letter-spacing:0">(20 lần gần nhất)</span></h2>
+        <span class="legend muted"><span><i style="background:var(--good)"></i>ổn</span><span><i style="background:var(--muted)"></i>thiếu ảnh mẫu</span><span><i style="background:var(--warn)"></i>có ảnh lỗi</span>
+          <span><i style="background:var(--bad)"></i>lỗi</span><span><i style="background:#b36bd6"></i>kẹt → khởi động lại</span>
+          <button id="btnResetStats" style="padding:2px 8px;font-size:12px">Đặt lại</button></span>
+      </div>
+      <div class="scroll" id="stats"></div>
+    </div>
+  </section>
+  <aside>
+    <div class="panel"><h2>Tuỳ chọn chung</h2><div id="opts"></div></div>
+    <div class="panel"><h2>Nhật ký</h2><div class="log" id="log"></div></div>
+  </aside>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const post = (u, b) => fetch(u, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(b||{})});
+let S = null, skew = 0;
+const now = () => Date.now()/1000 + skew;
+const fmtN = v => v==null ? '–' : v>=1e6 ? (v/1e6).toFixed(1)+'M' : v>=1e3 ? (v/1e3).toFixed(1)+'K' : String(v);
+const dur = s => { if(s==null) return '–'; s=Math.max(0,Math.round(s)); const h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60;
+  return (h? h+':' : '') + String(m).padStart(h?2:1,'0') + ':' + String(x).padStart(2,'0'); };
+const left = s => s<=0 ? 'đã qua · chờ cập nhật' : dur(s);
+const clock = t => t ? new Date(t*1000).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'}) : '–';
+const ago = t => { if(!t) return 'chưa có'; const s=now()-t; return s<90? 'vừa xong' : s<5400? Math.round(s/60)+' phút trước' : Math.round(s/3600)+' giờ trước'; };
+const esc = s => String(s??'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const STATUS = {idle:['Chờ','on'], running:['Đang chạy','run'], starting:['Đang bật máy','run'], error:['Lỗi','err'], stopped:['Đã dừng','wait']};
+const MST = {marching:'Đang đi', gathering:'Thu thập', returning:'Đang về', unknown:'?'};
+
+const RES = {metal:'Kim loại', food:'Thực phẩm', alloy:'Hợp kim', oil:'Dầu'};
+function marchHTML(m){
+  const t = now(), cd = at => `<span class="t" data-at="${at}">${left(at-t)}</span>`;
+  let line;
+  if (m.state==='marching') line = m.arrive_at? `tới mỏ sau ${cd(m.arrive_at)}` : 'đang tới mỏ';
+  else if (m.state==='gathering') line = `xong sau ${cd(m.gather_done)}` +
+      (m.return_at? ` · về ~<span class="t">${clock(m.return_at)}</span>` : '');
+  else if (m.state==='returning') line = `về sau ${cd(m.return_at)} (${clock(m.return_at)})`;
+  else line = m.remaining!=null ? `còn ${dur(m.remaining)}` : 'không đọc được';
+  const mine = m.type? `${RES[m.type]||m.type} Lv.${m.level??'?'}${m.amount? ' · mỏ '+fmtN(m.amount):''}${m.load? ' · chở '+fmtN(m.load):''}` : '';
+  // timeline: xuat phat -> toi mo -> thu thap xong -> ve thanh (doan chua biet = soc mo)
+  const dep = m.depart_at, arr = m.arrive_at ?? (dep && m.travel? dep+m.travel : null);
+  const gd = m.gather_done, ret = m.return_at ?? (gd && m.travel? gd+m.travel : null);
+  const go = (dep && arr)? arr-dep : m.travel, ga = (arr && gd)? gd-arr : null, rt = (gd && ret)? ret-gd : m.travel;
+  const known = [go, ga, rt].filter(x => x>0), avg = known.length? known.reduce((a,b)=>a+b,0)/known.length : 1;
+  const w = [go>0?go:avg, ga>0?ga:avg*2, rt>0?rt:avg], tot = w[0]+w[1]+w[2];
+  let pos = null;  // vi tri hien tai tren thanh (chi khi biet moc)
+  if (m.state==='marching' && dep && arr) pos = Math.min(1,(t-dep)/(arr-dep))*w[0];
+  else if (m.state==='gathering' && gd) pos = w[0] + (ga>0? Math.min(1,1-(gd-t)/ga) : 0.5)*w[1];
+  else if (m.state==='returning' && ret) pos = w[0]+w[1] + Math.min(1,1-(ret-t)/w[2])*w[2];
+  const seg = (cls, x, ok) => `<i class="${cls}${ok?'':' unk'}" style="width:${(100*x/tot).toFixed(1)}%"></i>`;
+  const bar = `<div class="tl">${seg('go',w[0],go>0)}${seg('ga',w[1],ga>0)}${seg('rt',w[2],rt>0)}${pos!=null? `<span class="now" style="left:${(100*pos/tot).toFixed(1)}%"></span>`:''}</div>`;
+  const tt = `<div class="tlt"><span>đi ${clock(dep)}</span><span>tới ${clock(arr)}</span><span>xong ${gd? clock(gd):'?'}</span><span>về ${ret? clock(ret):'?'}</span></div>`;
+  return `<div class="march full"><div class="row between"><span class="st ${m.state}">${MST[m.state]||m.state}${m.provisional?' · vừa gửi':''}</span><span>${line}</span></div>
+    ${mine? `<div class="muted">${mine}</div>`:''}${bar}${tt}</div>`;
+}
+
+// Cac buoc bat buoc gop thanh 1 nut "Auto"; cac buoc con lai de rieng
+const AUTO = ['notify','rewards','daily','mainquest','quests','alliance','campaign','research','train'];
+const openDetail = new Set();
+function chipsHTML(i){
+  const lab = Object.fromEntries(S.modules);
+  const on = AUTO.filter(k => i.modules[k]).length, all = on === AUTO.length;
+  const chip = (k) => `<button class="chip ${i.modules[k]?'on':''}" data-act="mod" data-mod="${k}" data-on="${i.modules[k]?1:0}">${lab[k]}</button>`;
+  let h = `<button class="chip ${on? 'on':''}" data-act="group" data-on="${all?1:0}" title="${AUTO.map(k=>lab[k]).join(', ')}"
+            style="font-weight:600">Auto ${all? '✓' : on+'/'+AUTO.length}</button>`;
+  h += S.modules.filter(([k]) => !AUTO.includes(k)).map(([k]) => chip(k)).join('');
+  h += `<button class="chip" data-act="detail">${openDetail.has(i.idx)? 'ẩn chi tiết ▴':'chi tiết ▾'}</button>`;
+  if (openDetail.has(i.idx)) h += `<div class="chips" style="width:100%;padding-left:8px;border-left:2px solid var(--accent)">${AUTO.map(chip).join('')}</div>`;
+  return h;
+}
+
+function cardHTML(i){
+  const [stText, stCls] = STATUS[i.status] || [i.status||'Chờ',''];
+  const r = i.resources || {};
+  const ms = (i.marches||[]);
+  const total = i.march_total;
+  const step = i.step ? ` · ${esc(i.step)}` : '';
+  return `<div class="card ${i.enabled?'':'off'}" data-idx="${i.idx}">
+    <div class="row between">
+      <div class="row"><span class="idx">#${i.idx}</span><span class="name">${esc(i.name||('Instance '+i.idx))}</span></div>
+      <label class="sw" title="Có đưa máy này vào vòng auto không"><input type="checkbox" data-act="enable" ${i.enabled?'checked':''}><span></span></label>
+    </div>
+    <div class="row between">
+      <span class="pill"><span class="dot ${stCls}"></span>${stText}${step}</span>
+      <span class="row"><button data-act="shield" title="Bật máy và bật khiên ngay (theo tuỳ chọn Phòng thủ)">🛡 Khiên</button><button data-act="run">Chạy ngay</button></span>
+    </div>
+    <div class="res">
+      <div><b>${fmtN(r.metal)}</b><span>Kim loại</span></div>
+      <div><b>${fmtN(r.food)}</b><span>Thực phẩm</span></div>
+      <div><b>${fmtN(r.stamina)}</b><span>Thể lực</span></div>
+      <div><b>${fmtN(r.gold)}</b><span>Vàng</span></div>
+      <div><b>${fmtN(r.gems)}</b><span>K.cương</span></div>
+      <div><b>${fmtN(r.power)}</b><span>Lực chiến</span></div>
+    </div>
+    <div class="row between muted"><span>Hành quân ${i.march_used??0}/${total??'?'}</span><span>cập nhật ${ago(i.resources_at)}</span></div>
+    <div class="marches">${ms.length? ms.map(marchHTML).join('') : '<span class="muted">Không có đội nào ngoài thành</span>'}</div>
+    <div class="chips">${chipsHTML(i)}</div>
+    <div class="muted">Lần chạy cuối: ${ago(i.last_run)}</div>
+    ${i.mainquest_need_power? `<div class="muted">⏸ NV chính chờ lực chiến ≥ ${fmtN(i.mainquest_need_power)} (${esc(i.mainquest_block_reason||'')})</div>`:''}
+    ${i.hq_level? `<div class="muted">Nhà chính Lv.${i.hq_level}${i.gems_spent? ' · 💎 đã tiêu hôm nay: '+(Object.values(i.gems_spent)[0]||0):''}</div>`:''}
+    ${i.last_defense? `<div class="muted">🛡 Phòng thủ lúc ${clock(i.last_defense.t)}: ${esc(i.last_defense.shield)}</div>`:''}
+    ${i.smart && i.next_visit? `<div class="muted">🗓 Ghé tiếp: ${clock(i.next_visit)} — ${esc(i.next_why||'')}</div>`:''}
+    ${(i.backoff||[]).map(b=>`<div class="muted">⏸ Tạm bỏ <b>${esc(b.step)}</b> tới ${clock(b.until)} (lỗi ${b.fails} lần liên tiếp) <a href="#" onclick="unbackoff(${i.idx},'${esc(b.step)}');return false">Bỏ tạm dừng</a></div>`).join('')}
+    ${i.last_error? `<div class="err">⚠ ${esc(i.last_error)}</div>`:''}
+  </div>`;
+}
+
+function optHTML(o){
+  const soon = o.ready ? '' : '<span class="soon-tag">sắp có</span>';
+  let input;
+  if (o.type==='bool') input = `<label class="sw"><input type="checkbox" data-key="${o.key}" data-type="bool" ${o.value?'checked':''}><span></span></label>`;
+  else if (o.type==='select') input = `<select data-key="${o.key}" data-type="select">${o.choices.map(([v,l])=>`<option value="${v}" ${String(v)===String(o.value)?'selected':''}>${l}</option>`).join('')}</select>`;
+  else if (o.type==='order') {
+    const val = o.value||[];
+    const all = [...val, ...o.choices.map(c=>c[0]).filter(c=>!val.includes(c))];
+    const lab = Object.fromEntries(o.choices);
+    input = `<div class="order" data-key="${o.key}">${all.map((c,n)=>`<button data-c="${c}" class="${val.includes(c)?'':'off'}" title="Bấm: bật/tắt · Shift+bấm: đưa lên đầu">${val.includes(c)? (val.indexOf(c)+1)+'. ':''}${lab[c]}</button>`).join('')}</div>`;
+  }
+  else input = `<input type="number" data-key="${o.key}" data-type="${o.type}" value="${o.value??''}" min="${o.min??''}" max="${o.max??''}" step="${o.step||1}">`;
+  return `<div class="opt ${o.ready?'':'soon'} ${o.type==='order'?'wide':''}"><label>${o.label}${soon}</label>${input}</div>`;
+}
+
+function statCell(s){
+  if (!s) return '<td class="muted">–</td>';
+  const h = s.hist||'', ok = [...h].filter(c=>c==='O').length, pct = h.length? Math.round(ok*100/h.length) : 0;
+  const cls = pct>=95? 'good' : pct>=70? 'mid' : 'bad';
+  const NL = String.fromCharCode(10);
+  const tip = `${s.runs} lần · ổn ${s.ok||0} · thiếu mẫu ${s.miss||0} · ảnh lỗi ${s.warn||0} · lỗi ${s.err||0} · kẹt ${s.stuck||0}` + NL
+    + `lần cuối ${ago(s.last_at)} (${s.last_dur}s)`
+    + (s.bad_at? NL + `lỗi gần nhất ${ago(s.bad_at)}: ${s.bad_note||''}` + (s.bad_shot? NL + '(bấm để xem ảnh)' : '') : '');
+  const body = `<span class="pct ${cls}">${pct}%</span><span class="hist">${[...h].map(c=>`<i class="${c}"></i>`).join('')}</span>`;
+  const shot = s.bad_shot ? s.bad_shot.replace(/\\/g, '/').split('/').pop() : null;
+  return `<td class="c" title="${esc(tip)}">${shot? `<a href="/shots/${encodeURIComponent(shot)}" target="_blank">${body}</a>` : `<span class="v">${body}</span>`}</td>`;
+}
+function statsHTML(){
+  const rows = [...S.modules, ['observe','Quan sát']];
+  const insts = S.instances.filter(i => i.stats && Object.keys(i.stats).length);
+  if (!insts.length) return '<span class="muted">Chưa có số liệu — chạy 1 lượt để bắt đầu thống kê.</span>';
+  const used = rows.filter(([k]) => insts.some(i => i.stats[k]));
+  return `<table><tr><th>Bước</th>${insts.map(i=>`<th>#${i.idx} ${esc(i.name||'')}${i.watchdog_restarts? ` <span title="số lần watchdog khởi động lại game">↻${i.watchdog_restarts}</span>`:''}</th>`).join('')}</tr>`
+    + used.map(([k,l]) => `<tr><td>${l}</td>${insts.map(i=>statCell(i.stats[k])).join('')}</tr>`).join('') + '</table>';
+}
+
+let optsDrawn = false;
+function render(){
+  const R = S.runner, alive = R.alive;
+  const st = !alive ? ['Đã dừng',''] : R.state==='waiting' ? ['Đang nghỉ','wait']
+           : R.state==='single' ? ['Chạy 1 máy','run'] : ['Đang chạy','run'];
+  $('#rdot').className = 'dot ' + st[1]; $('#rtext').textContent = st[0];
+  const nOn = S.instances.filter(i=>i.enabled).length;
+  $('#rinfo').textContent = alive && R.state==='waiting' && R.next_cycle ? (R.cycle_min!=null ? `vòng tới lúc ${clock(R.next_cycle)} · vòng trước ${R.cycle_min} phút` : `lần ghé tới lúc ${clock(R.next_cycle)}`)
+    : !alive ? `Vòng auto chưa chạy · ${nOn}/${S.instances.length} máy đang bật sẽ chạy lần lượt khi bấm ▶` : `${nOn} máy trong vòng auto`;
+  $('#grid').innerHTML = S.instances.map(cardHTML).join('');
+  $('#stats').innerHTML = statsHTML();
+  if (!optsDrawn || !document.activeElement || !$('#opts').contains(document.activeElement)) {
+    $('#opts').innerHTML = S.options.map(g => `<div style="margin-bottom:10px"><div class="muted" style="margin:4px 0">${g.group}</div>${g.items.map(optHTML).join('')}</div>`).join('');
+    optsDrawn = true;
+  }
+}
+
+async function unbackoff(idx, step){ await post(`/api/instance/${idx}/unbackoff`, {step}); load(); }
+async function load(){
+  try {
+    const r = await fetch('/api/state'); S = await r.json(); skew = S.now - Date.now()/1000; render();
+    const l = await (await fetch('/api/logs?n=150')).json();
+    const box = $('#log'), atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
+    box.innerHTML = l.lines.map(x => `<div class="${/ERROR/.test(x)?'e':/WARNING/.test(x)?'w':''}">${esc(x)}</div>`).join('');
+    if (atBottom) box.scrollTop = box.scrollHeight;
+  } catch(e) { $('#rtext').textContent = 'Mất kết nối bot'; $('#rdot').className='dot err'; }
+}
+
+$('#grid').addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const idx = b.closest('.card').dataset.idx;
+  if (b.dataset.act==='run') await post(`/api/instance/${idx}/run`);
+  if (b.dataset.act==='shield' && confirm('Bật khiên cho máy #'+idx+'? Có thể tiêu kim cương nếu hết vật phẩm (trong trần/ngày).')) await post(`/api/instance/${idx}/shield`);
+  if (b.dataset.act==='mod') await post(`/api/instance/${idx}/module`, {name:b.dataset.mod, on: b.dataset.on!=='1'});
+  if (b.dataset.act==='group') { const on = b.dataset.on!=='1'; for (const k of AUTO) await post(`/api/instance/${idx}/module`, {name:k, on}); }
+  if (b.dataset.act==='detail') { const n=+idx; openDetail.has(n)? openDetail.delete(n) : openDetail.add(n); render(); return; }
+  if (b.dataset.act==='enable') await post(`/api/instance/${idx}/enable`, {enabled: b.checked});
+  load();
+});
+$('#opts').addEventListener('change', async e => {
+  const el = e.target; if (!el.dataset.key) return;
+  let v = el.dataset.type==='bool' ? el.checked : el.dataset.type==='select' ? (isNaN(el.value)? el.value : Number(el.value)) : Number(el.value);
+  await post('/api/option', {key: el.dataset.key, value: v}); optsDrawn=false; load();
+});
+$('#opts').addEventListener('click', async e => {
+  const b = e.target.closest('.order button'); if (!b) return;
+  const box = b.parentElement, key = box.dataset.key;
+  const o = S.options.flatMap(g=>g.items).find(x=>x.key===key);
+  let val = [...(o.value||[])], c = b.dataset.c;
+  if (e.shiftKey) val = [c, ...val.filter(x=>x!==c)];
+  else val = val.includes(c) ? val.filter(x=>x!==c) : [...val, c];
+  if (!val.length) return;
+  await post('/api/option', {key, value: val}); optsDrawn=false; load();
+});
+$('#btnResetStats').onclick = async () => { if (confirm('Xoá toàn bộ thống kê theo bước?')) { await post('/api/stats/reset'); load(); } };
+$('#btnStart').onclick = async () => { await post('/api/runner', {action:'start'}); load(); };
+$('#btnStop').onclick = async () => { await post('/api/runner', {action:'stop'}); load(); };
+load(); setInterval(load, 3000);
+// dem nguoc moi giay: chi doi chu trong o thoi gian, khong ve lai the (tranh nuot cu bam)
+setInterval(() => document.querySelectorAll('[data-at]').forEach(el => el.textContent = left(el.dataset.at - now())), 1000);
+</script>
+</body>
+</html>
