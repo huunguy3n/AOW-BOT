@@ -51,8 +51,10 @@ def instance_names(ld):
 
 
 class Runner:
-    def __init__(self, base_cfg, store, vision):
+    def __init__(self, base_cfg, store, vision, agent=None):
         self.base_cfg, self.store, self.vision = base_cfg, store, vision
+        # SCH-X: aowbot.app.agent.AgentHooks (main.py tao) - may co schedule.mode = 'agent' do agent quyet dinh
+        self.agent = agent
         self.ld = LDConsole(base_cfg["ldplayer"])
         self._stop = threading.Event()
         self._wake = threading.Event()
@@ -169,7 +171,7 @@ class Runner:
     def _loop(self):
         log.info("Runner bat dau (%d may song song)", self._parallel())
         self._log_settings()
-        if self.store.cfg_for(self.base_cfg).get("schedule", {}).get("mode", "fixed") == "smart":
+        if self.store.cfg_for(self.base_cfg).get("schedule", {}).get("mode", "fixed") in ("smart", "agent"):
             return self._loop_smart()
         try:
             while not self._stop.is_set():
@@ -212,6 +214,23 @@ class Runner:
                                 lambda i: dict(self.store.cfg_for(self.base_cfg, i)["modules"]),
                                 lambda i: self.store.cfg_for(self.base_cfg, i), now)
 
+    def _spawn_agent(self):
+        """May o che do agent co su kien den han -> 1 lan ghe agent. -> True neu da bat may."""
+        for idx in self.base_cfg["instances"]:
+            if idx in self._busy or not self.store.inst(idx).get("enabled", True):
+                continue
+            try:
+                ev = self.agent.due_event(idx)
+            except Exception as e:
+                log.warning("Agent: khong doc duoc su kien may %d: %s", idx, e)
+                continue
+            if ev is not None:
+                log.info("Agent: ghe may %d (%s)", idx, ev.key)
+                self.store.runner(state="running")
+                self._spawn(idx, modules=set(), why=f"agent {ev.type.value}", mode="agent", agent_event=ev)
+                return True
+        return False
+
     def _loop_smart(self):
         log.info("Lap lich theo tri nho (schedule.mode=smart)")
         try:
@@ -224,6 +243,8 @@ class Runner:
                         self._spawn(idx, why="chay ngay")
                     continue
                 now = time.time()
+                if free and self.agent and self._spawn_agent():
+                    continue
                 visits = [v for v in self.plan_visits(now) if v.idx not in self._busy]
                 for v in visits:
                     self.store.update(v.idx, next_visit=v.at, next_why=v.why)
@@ -236,6 +257,9 @@ class Runner:
                     continue
                 cfg = self.store.cfg_for(self.base_cfg)
                 nxt = min((v.at for v in visits), default=now + 900)
+                if self.agent:   # may agent: thuc day dung luc su kien ke tiep (khong cho het idle_check_min)
+                    nxt = min([nxt] + [t for t in (self.agent.next_at(i) for i in self.base_cfg["instances"]
+                                                   if i not in self._busy) if t])
                 wait = max(30, min(nxt - now, scheduler.sched_cfg(cfg)["idle_check_min"] * 60))
                 if self._busy:
                     wait = min(wait, 15)  # may xong se danh thuc (_wake) - van xem lai lich thuong xuyen
@@ -350,7 +374,7 @@ class Runner:
         except Exception as e:
             log.warning("Lam theo huong dan loi: %s", e)
 
-    def run_account(self, idx, modules=None, why=None, mode="fixed"):
+    def run_account(self, idx, modules=None, why=None, mode="fixed", agent_event=None):
         cfg = self.store.cfg_for(self.base_cfg, idx)
         enabled = dict(cfg["modules"])
         if modules is not None:
@@ -398,6 +422,13 @@ class Runner:
                 st.update(idx, step="phong thu")
                 defense.run(ctx, force=True)
                 enabled = {}  # bam tay "Bat khien": chi phong thu + quan sat
+            if agent_event is not None and self.agent:
+                st.update(idx, step="agent")
+                with span("agent"):
+                    st.update(idx, agent_last=self.agent.session(ctx, idx, agent_event), agent_at=time.time())
+                if pf:
+                    self.mem.log_perf(visit, idx, "agent", pf.drain())
+                enabled = {}  # lan ghe agent: chi agent + quan sat cuoi
             restarts = 0
             blind = 0  # so buoc lien tiep khong chup duoc man hinh (may treo du adb van 'device')
             lost = 0   # so buoc lien tiep goto() khong ve duoc thanh pho/ban do (vd canh tan thu toi den, #4 2026-11-19)

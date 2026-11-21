@@ -242,7 +242,8 @@ def too_big_known(ctx, rtype, lv, min_lv):
     return bool(cap and load and load < cap)
 
 
-def run(ctx):
+def run(ctx, limit=None):
+    """limit: gui toi da N doi roi dung (agent gui tung doi, xac minh tung lan - B4); None = toi khi day."""
     g = ctx.cfg["gather"]
     max_lv, min_lv = g["max_level"], g["min_level"]
     # Chu du an 2026-11-19: tai trong doi phai >= mo; truoc nha chinh cap 9 (du 3 nha linh) doi khong cho het
@@ -292,6 +293,8 @@ def run(ctx):
             if result in (OK, FULL, NO_TROOPS, NO_SEARCH):
                 break
         if result == OK:
+            if limit is not None and sent >= limit:
+                break
             time.sleep(1.0)
             continue
         if result == FULL:

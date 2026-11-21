@@ -165,6 +165,15 @@ tutorial:
 world:
   min_hq_level: 6         # nha chinh < 6: ban do the gioi chua mo -> bo thu thap/phan quan/doc hanh quan
   recheck_h: 6            # nut chuyen ban do khong an -> N gio sau moi thu lai
+# Agent theo muc tieu (src/aowbot, docs/strategy/MASTER-IMPLEMENTATION-PLAN.md). TAT mac dinh.
+# Bat cho 1 may: data/settings.json -> "instances": {"1": {"schedule": {"mode": "agent"}}} (vong chung phai la smart).
+# May o che do agent: hanh quan do agent quyet dinh (doi ve -> chon mo -> gui 1 doi -> xac minh x/y -> hen su kien ke);
+# cac viec khac van theo lich smart cu. Xem quyet dinh: python -m aowbot plan <idx> / shadow <idx>.
+agent:
+  ttl_min: {default: 30, hq_level: 360, march_used: 20, march_total: 1440, world_open: 360}  # qua TTL = du lieu cu
+  weights: {goal: 1.0, time: 0.5, risk: 0.5}   # utility = (muc tieu - thoi gian - rui ro) x do tin
+  idle_recheck_min: 60       # khong biet bao gio co viec -> danh gia lai sau N phut
+  min_state_confidence: 0.5  # du lieu lam co so duoi muc nay -> khong hanh dong tac dong (quan sat truoc)
 perf:                      # A-MEAS-1: dem so lan + thoi gian lenh adb / chup anh / OCR / nhan dien man theo buoc -> bang perf (memory.db)
   enabled: true            # false = tat (khong anh huong thao tac)
 speed:

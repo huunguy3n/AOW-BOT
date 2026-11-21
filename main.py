@@ -105,7 +105,8 @@ def main():
         return
 
     store = Store()
-    runner = Runner(cfg, store, vision)
+    from aowbot.app.agent import build_agent_hooks  # lazy: chi khi chay runner (khong can cho --check/--capture)
+    runner = Runner(cfg, store, vision, agent=build_agent_hooks(lambda i: store.cfg_for(cfg, i), BASE))
     if a.web:
         from web.server import serve
         serve(runner, store, RING, a.port)

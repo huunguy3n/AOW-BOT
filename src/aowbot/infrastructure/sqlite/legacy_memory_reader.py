@@ -9,7 +9,7 @@ from typing import Any
 
 from aowbot.application.ports import ObservationRecord, VisitRecord
 from aowbot.domain.freshness import Fact
-from aowbot.domain.marches import MarchObservation
+from aowbot.domain.marches import MarchObservation, MarchTimer
 
 # do tin cua du kien chep tu bot cu (khong ghi kem do tin): OCR da qua kiem tra hop ly cua module
 LEGACY_CONFIDENCE = 0.8
@@ -91,4 +91,14 @@ class LegacyMemoryReader:
                 except (TypeError, ValueError):
                     sent = 0
             out.append(VisitRecord(float(started), why or "", sent))
+        return out
+
+    # ---------- MarchTimerSource (coordinator) ----------
+    def march_timers(self, account: int) -> list[MarchTimer]:
+        out = []
+        for key, due, src, conf in self._rows("SELECT key, due_at, src, conf FROM timers WHERE inst=? AND "
+                                              "(key LIKE 'march:%' OR key LIKE 'arrive:%')", (account,)):
+            kind, _, idx = str(key).partition(":")
+            out.append(MarchTimer(int(idx) if idx.isdigit() else 0, kind, float(due), str(src or ""),
+                                  float(conf if conf is not None else 0.0)))
         return out

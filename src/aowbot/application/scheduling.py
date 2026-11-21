@@ -32,8 +32,11 @@ class TimerRegistry:
     def due(self, limit: int = 20) -> list[Event]:
         return self._store.due(self._clock.now(), limit)
 
+    def pending(self, account: int) -> list[Event]:
+        return sorted(self._store.pending_for(account), key=lambda e: e.due_at)
+
     def next_for(self, account: int) -> Event | None:
-        pend = sorted(self._store.pending_for(account), key=lambda e: e.due_at)
+        pend = self.pending(account)
         return pend[0] if pend else None
 
     def claim(self, event: Event) -> None:

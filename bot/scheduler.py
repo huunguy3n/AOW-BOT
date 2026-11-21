@@ -309,6 +309,8 @@ def decide_one(mem, idx, order, enabled, cfg, now):
     """-> Visit (at co the > now = chua toi luc)."""
     sc = sched_cfg(cfg)
     names = [n for n in order if enabled.get(n)]
+    if (cfg.get("schedule") or {}).get("mode") == "agent":
+        names = [n for n in names if n != "gather"]   # SCH-X: hanh quan cua may nay do agent lo
     backoff = {n for n in names if mem.backoff_until(idx, n) > now}
     last = last_visit_end(mem, idx)
     plans = {n: plan_step(mem, idx, n, sc, now, enabled, cfg) for n in names}
