@@ -80,7 +80,12 @@ bot/learn.py         Học máy mini (giai đoạn E+F): nhật ký kinh nghiệ
 bot/steer.py         Lái quân theo màu; touch.py = Finger (sendevent); stream.py = FrameStream (screencap liên tục)
 bot/state.py         Store: data/state.json (quan sát) + data/settings.json (tùy chọn web), ghi atomic
 bot/modules/*.py     Mỗi bước = module có run(ctx)
-web/                 Flask, chỉ nghe 127.0.0.1
+web/                 Flask, chỉ nghe 127.0.0.1 (trang /agent: quyết định của agent, chỉ đọc)
+src/aowbot/          Kiến trúc mới (ADR-0013): domain (luật thuần) → application (world view, planner, utility,
+                     executor, điều phối sự kiện) → infrastructure (SQLite, khóa, adapter `legacy` vào bot/*) /
+                     interfaces (CLI) → app (composition). Luật phụ thuộc kiểm bằng `lint-imports` (pyproject.toml).
+                     bot/* chỉ được import aowbot.domain. Agent TẮT mặc định: bật theo máy bằng
+                     data/settings.json "instances": {"<idx>": {"schedule": {"mode": "agent"}}} (vòng chung = smart).
 templates/<nhóm>/    Ảnh mẫu PNG cắt từ màn 540×960 (xem templates/README.md)
 tools/               snap.py (chụp/cắt ảnh mẫu), record.py (ghi thao tác người chơi), replay_tutorial.py, run_tutorial.py
 poc/                 Script bash Account Manager (Git Bash, MSYS_NO_PATHCONV=1)
@@ -112,6 +117,8 @@ python tools/check_tutorial.py         # hồi quy decide() trên các khung t�
 python tools/learn.py report           # (hoặc web http://localhost:8080/hoc) bot học được gì: tỉ lệ chạm ăn/trượt, chỗ chết, mẫu kNN, biến thể ảnh mẫu
 python tools/learn.py train / eval     # nạp mẫu kNN từ ảnh cũ / đo độ chính xác
 python main.py --web                   # web quản lý (launch config: .claude/launch.json "aow-web")
+python tools/report_ro.py [--split "YYYY-mm-dd HH:MM"]   # số đo chỉ-đọc trước/sau (lần ghé vô ích, perf ADB/ảnh/OCR)
+python -m aowbot world|plan|shadow <idx>                 # agent dry-run: trạng thái + độ tươi / quyết định + lý do / phát lại
 ```
 Công cụ dev (từ F0, 2026-11-21): `pip install -e .[dev]` → `python -m pytest`, `python -m ruff check .` (luật nghiêm cho mã mới), `python -m ruff check bot web tools main.py --select E9,F63,F7,F82` (mã cũ). Cấu hình trong `pyproject.toml`. Test tự động mới bắt đầu có; ảnh fixture không có trong git (hồi quy ảnh chỉ chạy local). Kiểm chứng chính vẫn là chạy thật trên instance + đọc `logs/` và ảnh `logs/shots/`. Kế hoạch tổng: [docs/strategy/MASTER-IMPLEMENTATION-PLAN.md](docs/strategy/MASTER-IMPLEMENTATION-PLAN.md).
 

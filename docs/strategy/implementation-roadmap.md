@@ -11,6 +11,20 @@ Ngày: 2026-11-21 · Trạng thái: **chờ duyệt** · Thuộc [MASTER-IMPLEME
 - Mỗi task là 1 nhánh và 1–n commit nhỏ, có test, có số đo trước/sau (F4-lite hoặc A-MEAS-1).
 - Task nào cần chạy máy ảo thì **chủ dự án bật máy** (tối đa 2 instance, CLAUDE.md quy tắc 4).
 
+## 0. Trạng thái (cập nhật 2026-11-21, nhánh `roadmap-impl`)
+
+| Nhóm | Đã xong (có test, có commit) | Còn lại và vì sao |
+|---|---|---|
+| Nền F | F0, F1, F2, F3, F4L | F4 (benchmark trong `aowbot`) chờ có số liệu `perf` thật; CI chỉ chạy khi chủ dự án push |
+| An toàn | A-SAFE-1..4 | A-SAFE-5: điều tra thêm trên fixture |
+| Độ tin cậy / đo | A-REL-1..4, A-MEAS-1, A-INV-1, A-CFG-1, A-DUP-2, A-DEAD-1 | Cần **1 lượt chạy thật** (chủ dự án bật máy) để bảng `perf` và `logs/inv/` có dữ liệu |
+| Lập lịch | A-FIX-1a/1b, A-FIX-2, A-FIX-3 | Đo trước/sau bằng `tools/report_ro.py --split` sau 24 h chạy thật |
+| Tối ưu A-OPT-2..7 | – | **Chưa làm có chủ đích**: luật "không tối ưu khi chưa đo"; chờ dữ liệu `perf` |
+| A-OPT-1, `rebels.join` | – | Chờ chủ dự án quyết định |
+| Agent | B2a, B2b, B1, B3, B4, POL, B5/6, B6s, B7, B9a, SCH-X, B-UI | **MVP chưa bật**: chủ dự án đặt `schedule.mode: agent` cho #1 rồi chạy 1 lượt + 1 lần chạy lại; B9b (giữ máy bật) chờ ngưỡng `keep_alive_min`; B3+, B8 sau MVP |
+
+Kiểm tra trên nhánh: 283 test pass; `mypy --strict src/aowbot` sạch; 6/6 hợp đồng import-linter; ruff sạch; hồi quy ảnh 13/13, 34/34.
+
 ## 1. Công thức ưu tiên
 `Ưu tiên ≈ Tác động nghiệp vụ × Giảm rủi ro × Giá trị phụ thuộc / Chi phí`. Đây là heuristic, không phải phép tính chính xác.
 
