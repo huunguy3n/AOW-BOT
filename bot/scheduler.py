@@ -9,12 +9,12 @@ Chu du an chot 2026-11-19:
   - Reset ngay 0h UTC (khong keo may, chi la ly do ghi kem).
 Thu tu buoc trong 1 lan ghe van theo ORDER (runner), lich chi chon buoc nao + luc nao.
 """
-import time
+import json, time
 from dataclasses import dataclass, field
 
 TRIGGERS = ("gather", "mainquest", "quests", "research", "rebels")
 DEFAULTS = {"max_gap_min": 240, "min_gap_min": 10, "batch_window_min": 5, "idle_check_min": 15,
-            "gather_retry_min": 60, "build_every_min": 120, "research_every_min": 120, "extra_every_min": 180, "tutorial_every_min": 30,
+            "gather_retry_min": 60, "unknown_return_min": 60, "build_every_min": 120, "research_every_min": 120, "extra_every_min": 180, "tutorial_every_min": 30,
             "research_hq_min": 8, "daily_reset_utc": 0}
 
 
@@ -70,6 +70,46 @@ def world_ready(mem, idx, cfg=None, now=None, recheck_h=6):
 
 
 # ---------- plan() tung trigger ----------
+def march_slots(total, used, observed_at, timers, now, unknown_return_s):
+    """So doi ranh luc `now` va lan som nhat co doi ranh tiep (ham thuan, A-FIX-1).
+    timers: [(luc ve, do tin)] cua cac doi DOC DUOC dong ho (bang timers 'march:').
+    Truoc day: so doi ranh = total - so timer -> doi OCR khong doc duoc dong ho (76 % dong o #1) bi coi la RANH,
+    keo may len khi 5/5 dang di. Nay: so doi dang di lay tu 'Hanh quan x/y' (march_used); doi dang di ma khong
+    co dong ho -> uoc luong ve luc observed_at + unknown_return_s (khong coi la ranh, cung khong ban vo han).
+    Timer da qua han = doi da ve = ranh. -> (so ranh, (luc, ly do, tin cay) | None)"""
+    if used is None or observed_at is None:   # chua co so x/y: cach cu (moi timer = 1 doi dang di)
+        used, observed_at = len(timers), now
+    used = max(0, min(int(used), int(total)))
+    known = sorted(timers)[:used]
+    est = [observed_at + unknown_return_s] * (used - len(known))
+    returns = [(t, c >= 0.6, "doi ve") for t, c in known] + [(t, False, "uoc luong doi ve") for t in est]
+    free = total - used + sum(1 for t, _, _ in returns if t <= now)
+    future = sorted(r for r in returns if r[0] > now)
+    if not future:
+        return free, None
+    t, conf, what = future[0]
+    return free, (t, f"{what} {_hhmm(t)}", conf)
+
+
+def typical_return_s(mem, idx, default_s, look=60):
+    """Thoi gian tu luc quan sat toi luc doi ve (phan vi 25 %) cua cac doi DA doc duoc dong ho o may nay - dung cho
+    doi khong doc duoc dong ho. Phan vi thap (khong phai trung vi): ghe som 1 lan re hon de doi nam khong.
+    Phat lai 15 lan ghe 'doi ranh' cua #1 (2026-11-21): p25 chan 5/6 lan gui 0 doi, tre > 10 phut 2/9 lan co gui;
+    trung vi tre 4/9. Chua co du lieu -> default_s (schedule.unknown_return_min)."""
+    gaps = []
+    for at, marches in mem.query("SELECT at, marches FROM observations WHERE inst=? AND marches IS NOT NULL "
+                                 "ORDER BY at DESC LIMIT ?", (idx, look)):
+        try:
+            rows = json.loads(marches or "[]")
+        except ValueError:
+            continue
+        gaps += [m["return_at"] - at for m in rows if isinstance(m, dict) and m.get("return_at") and m["return_at"] > at]
+    if len(gaps) < 3:
+        return default_s
+    gaps.sort()
+    return gaps[len(gaps) // 4]
+
+
 def plan_gather(mem, idx, sc, now, cfg=None):
     g = (cfg or {}).get("gather", {})
     if not world_ready(mem, idx, cfg, now):
@@ -83,13 +123,15 @@ def plan_gather(mem, idx, sc, now, cfg=None):
         t, _, _ = _last(mem, idx, "gather")
         at = (t or 0) + sc["gather_retry_min"] * 60
         return Plan(at <= now, at, "chua biet so doi hanh quan", confident=False)
-    busy = len(timers)
+    free, nxt = march_slots(total, mem.fact(idx, "march_used"), mem.fact(idx, "observed_at"),
+                            [(d, c) for _, d, c, _ in timers], now,
+                            typical_return_s(mem, idx, sc["unknown_return_min"] * 60))
     cands = []
-    if busy < total:  # co doi ranh luc quan sat cuoi: vua gui ma van ranh (khong co mo vua tai trong / het linh) -> cho
+    if free > 0:  # co doi ranh: vua gui ma van ranh (khong co mo vua tai trong / het linh) -> cho gather_retry_min
         t, _, _ = _last(mem, idx, "gather")
-        cands.append(((t or 0) + sc["gather_retry_min"] * 60, f"{total - busy} doi ranh", True))
-    if timers:  # doi dang di som nhat ve thanh
-        cands.append((timers[0][1], f"doi ve {_hhmm(timers[0][1])}", timers[0][2] >= 0.6))
+        cands.append(((t or 0) + sc["gather_retry_min"] * 60, f"{free} doi ranh", True))
+    if nxt:  # doi dang di som nhat ve thanh (dong ho that, hoac uoc luong cho doi khong doc duoc dong ho)
+        cands.append(nxt)
     arr = mem.timers(idx, "arrive:")
     if arr:  # chu du an 2026-11-21: tat ca doi toi mo -> dang nhap doc gio thu thap xong (chi hien khi da toi mo)
         last_arr = arr[-1][1] + 60
@@ -98,14 +140,54 @@ def plan_gather(mem, idx, sc, now, cfg=None):
     return Plan(at <= now, at, why, confident=conf)
 
 
+BUILD_STEPS = ("mainquest", "quests")
+
+
+def build_streak(rows, since=0):
+    """So LAN GHE lien tiep gan nhat (moi nhat truoc) ma moi buoc xay (mainquest/quests) deu khong bat dau duoc
+    cong trinh nao (ret 0 / trong / loi - bat ke ket qua ok hay khong, A-FIX-3). Lan chay truoc `since`
+    (trang thai doi: vd cap nha chinh moi) khong tinh. rows: [(visit, started, ret)] sap moi -> cu."""
+    streak, cur = 0, None
+    for visit, started, ret in rows:
+        if started < since:
+            break
+        try:
+            v = float(ret) if ret not in (None, "", "null") else 0.0
+        except (TypeError, ValueError):
+            break                       # gia tri khong phai so = co viec
+        if v > 0:
+            break
+        if visit != cur:
+            streak, cur = streak + 1, visit
+    return streak
+
+
+def build_gap_s(streak, sc):
+    """Khoang cach giua 2 lan ghe 'tho ranh': min_gap, x2 moi 2 lan ghe trang tay, toi da build_every_min."""
+    base = sc["min_gap_min"] * 60
+    return min(base * 2 ** (streak // 2), max(base, sc["build_every_min"] * 60))
+
+
 def plan_build(mem, idx, sc, now, step, cfg=None):
     # so tho dang xay (observe doc icon bua "x/y") < so tho dung duoc (farm 1, TK chinh #1: 2) -> co tho ranh: xay ngay
     busy = mem.fact(idx, "builders_busy")
     maxb = ((cfg or {}).get("build") or {}).get("max_builders", 1)
     if busy is not None and busy < maxb:
         t, _, _ = _last(mem, idx, step)
-        at = max((t or 0) + sc["min_gap_min"] * 60, now - 1)
-        return Plan(at <= now, at, f"tho xay ranh ({busy}/{maxb})")
+        gap = sc["min_gap_min"] * 60
+        if sc.get("build_backoff", True):
+            # 2026-11-21: 111 lan ghe / 13,3 h vi 'tho ranh' ma khong xay duoc -> lan thu truoc trang tay thi gian
+            # chu ky; doi cap nha chinh (A-FIX-2: seen_at chi doi khi gia tri doi) -> dem lai tu dau
+            ph = ",".join("?" * len(BUILD_STEPS))
+            rows = mem.query(f"SELECT visit, started, ret FROM runs WHERE inst=? AND step IN ({ph}) "
+                             "ORDER BY started DESC LIMIT 40", (idx, *BUILD_STEPS))
+            hq = mem.query("SELECT seen_at FROM facts WHERE inst=? AND key='hq_level'", (idx,))
+            streak = build_streak(rows, (hq[0][0] or 0) if hq else 0)
+            gap = build_gap_s(streak, sc)
+        at = max((t or 0) + gap, now - 1)
+        why = f"tho xay ranh ({busy}/{maxb})" + (f", {gap // 60:.0f} phut/lan sau {streak} lan khong xay duoc"
+                                                 if gap > sc["min_gap_min"] * 60 else "")
+        return Plan(at <= now, at, why)
     tm = mem.timers(idx, "build")
     if tm:
         return Plan(tm[0][1] <= now, tm[0][1], f"xay xong {_hhmm(tm[0][1])}")

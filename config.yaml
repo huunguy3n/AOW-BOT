@@ -110,7 +110,9 @@ schedule:
   batch_window_min: 5     # viec den han trong N phut toi -> lam luon trong lan ghe nay
   idle_check_min: 15      # khi khong may nao den han: tinh lai lich moi N phut
   gather_retry_min: 60    # gui xong ma van con doi ranh (khong co mo vua tai trong / het linh) -> thu lai sau N phut
+  unknown_return_min: 60  # doi dang di ma OCR khong doc duoc dong ho: uoc luong ve sau N phut (khi chua du lich su; co lich su thi lay phan vi 25 %)
   build_every_min: 120    # chua doc duoc gio xay xong -> kiem tra xay moi N phut
+  build_backoff: true     # tho ranh ma cac lan ghe truoc khong xay duoc gi -> gian chu ky min_gap x2 moi 2 lan, toi da build_every_min (A-FIX-3)
   research_every_min: 120 # chua doc duoc gio nghien cuu xong -> kiem tra moi N phut
   tutorial_every_min: 30  # TK dang bat tan thu: ghe toi da moi N phut
   research_hq_min: 8      # nghien cuu chi mo khi nha chinh >= 8
