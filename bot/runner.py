@@ -3,7 +3,7 @@
 Chay LAN LUOT tung instance dang bat auto: bat may -> mo game -> cac buoc -> observe -> tat may.
 Dung an toan: chi dung giua 2 buoc (khong cat ngang thao tac), may van duoc tat trong finally.
 """
-import collections, logging, threading, time, traceback
+import collections, json, logging, threading, time, traceback
 
 from bot.device import LDConsole, Device
 from bot.ctx import Ctx, Stuck
@@ -311,12 +311,24 @@ class Runner:
     FACT_KEYS = ("hq_level", "tutorial_done", "mainquest_need_power", "mainquest_block_reason", "name",
                  "tutorial_need_power", "tutorial_wait_until")
 
+    @staticmethod
+    def facts_to_copy(state, known, keys):
+        """Du kien trong state.json can chep sang memory.db: CHI khi chua co hoac gia tri khac (A-FIX-2).
+        Chep lai gia tri cu se dat seen_at = bay gio -> du lieu cu bi coi la moi (vd read_hq khong bao gio doc
+        lai cap nha chinh vi 'vua thay' < 6 gio)."""
+        out = {}
+        for k in keys:
+            if k not in state:
+                continue
+            v = json.loads(json.dumps(state[k], default=str))   # so sanh dang da luu (JSON)
+            if k not in known or known[k] != v:
+                out[k] = state[k]
+        return out
+
     def _remember_facts(self, idx):
         try:
-            st = self.store.inst(idx)
-            for k in self.FACT_KEYS:
-                if k in st:
-                    self.mem.set_fact(idx, k, st[k])
+            for k, v in self.facts_to_copy(self.store.inst(idx), self.mem.facts(idx), self.FACT_KEYS).items():
+                self.mem.set_fact(idx, k, v)
         except Exception as e:
             log.warning("Khong chep duoc du kien sang tri nho: %s", e)
 
