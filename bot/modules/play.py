@@ -313,6 +313,17 @@ def fight(ctx):
     return "unknown"
 
 
+def arena_eligible(pw, red, own, ratio, only_red=False):
+    """Doi thu co duoc danh khong (ham thuan). Luat chu du an 2026-11-21: luc chien MAU DO uu tien, khong can so;
+    con lai chi khi luc chien <= luc chien minh x ratio. A-SAFE-3: khong doc duoc luc chien minh (own None/0)
+    -> chi doi thu mau do (truoc day moi doi thu deu hop le va max() chon doi thu MANH nhat)."""
+    if pw is None or (only_red and not red):
+        return False
+    if red:
+        return True
+    return bool(own) and pw <= own * ratio
+
+
 def arena(ctx):
     ac = ctx.cfg.get("arena", {})
     if not ac.get("enabled", True) or not ctx.tap_tpl("play/card_arena", wait=2.5, th=0.85):
@@ -345,17 +356,13 @@ def arena(ctx):
                 skip.add(by // 30)
                 continue
             red = power_red(img, by)
-            if ac.get("only_red_power", False) and not red:
-                continue
-            if pw is None or (own and pw > own * ratio and not red):
+            if not arena_eligible(pw, red, own, ratio, ac.get("only_red_power", False)):
                 continue
             cands.append((red, pw, bx, by))
         if not cands:
-            log.info("Dau truong: khong co doi thu yeu hon luc chien minh %s (hoac deu da thua)", own)
+            log.info("Dau truong: khong co doi thu hop le (luc chien minh %s; mau do / yeu hon / chua thua)", own)
             break
         red, pw, bx, by = max(cands)
-        pick = (bx, by, pw)
-        bx, by, pw = pick
         skip.add(by // 30)
         ctx.tap(bx, by + 10, wait=1.0)
         r = fight(ctx)

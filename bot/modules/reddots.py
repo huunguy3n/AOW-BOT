@@ -72,17 +72,35 @@ def _kind(ctx, img, d):
     return "generic"
 
 
+def allowed(kind, cfg):
+    """Cham do loai nay co duoc xu ly theo tuy chon cua chu du an khong (A-SAFE-2: truoc day reddots goi thang
+    intel/VIP/daily/chieu mo/tuong ke ca khi da tat). Cung cong voi notify.run va buoc rieng. -> (bool, ly do)"""
+    mods, nc = cfg.get("modules", {}), cfg.get("notify", {})
+    if kind == "vip":
+        ok = mods.get("rewards", True) and "vip" in (cfg.get("rewards", {}).get("routes") or [])
+        return ok, "rewards / tuyen vip"
+    if kind == "intel":
+        # tinh bao co 2 cong: buoc rieng 'intel' hoac notify.intel (notify.run tu xu ly khi buoc rieng tat)
+        return mods.get("intel", True) or (mods.get("notify", True) and nc.get("intel", True)), "intel / notify.intel"
+    if kind in ("recruit", "hero"):
+        return mods.get("notify", True) and nc.get(kind, True), f"notify.{kind}"
+    if kind in ("alliance", "ally_gift"):
+        return mods.get("alliance", True), "modules.alliance"
+    if kind in ("campaign", "daily"):
+        return mods.get(kind, True), f"modules.{kind}"
+    return True, ""
+
+
 def _handle(ctx, kind, x, y):
     """Xu ly 1 cham do bang dung module cua icon do. -> so viec lam duoc."""
-    mods = ctx.cfg.get("modules", {})
     try:
         if kind == "vip":
             return rewards.run_route(ctx, "rewards/vip/")
         if kind == "intel":
             return intel.run(ctx)
-        if kind == "campaign" and mods.get("campaign", True):
+        if kind == "campaign":
             return campaign.run(ctx) or 0
-        if kind == "alliance" and mods.get("alliance", True):
+        if kind == "alliance":
             return alliance.run(ctx) or 0
         if kind == "daily":
             return daily.run(ctx)
@@ -147,6 +165,12 @@ def run(ctx):
                 dead.add(_key((x, y)))
                 ignored.add(_key((x, y)))
                 log.info("Cham do @%d,%d: icon tap hop phan quan/quai - bo qua", x, y)
+                continue
+            ok, gate = allowed(kind, ctx.cfg)
+            if not ok:
+                dead.add(_key((x, y)))
+                ignored.add(_key((x, y)))      # co y bo qua -> khong tinh la 'con sot'
+                log.info("Cham do %s @%d,%d: dang tat trong tuy chon (%s) - bo qua", kind, x, y, gate)
                 continue
             n = _handle(ctx, kind, x, y)
             n = n if isinstance(n, int) else 0

@@ -331,6 +331,25 @@ def intel_mission(ctx):
 
 
 # ---------- chieu mo ----------
+def recruit_choice(free_ok, ten_dot, one_free, free_wait, use_tickets):
+    """Chon nut chieu mo (ham thuan). -> 'free' | 'ten' | 'one_free' | 'one_ticket' | None.
+    A-SAFE-4: nut '1 lan' chi coi la mien phi khi co BANG CHUNG (cham do o goc nut, nhu nut 'Mien phi');
+    truoc day chi can KHONG thay dong ho 'free_wait' la bam -> mau khop truot thi co the tieu phieu."""
+    if free_ok:
+        return "free"
+    if ten_dot:
+        return "ten"            # chu du an 2026-11-18: cham do o '10 lan' = du phieu -> duoc dung phieu
+    if one_free and not free_wait:
+        return "one_free"
+    if use_tickets:
+        return "one_ticket"
+    return None
+
+
+RECRUIT_LABEL = {"free": "1 lan (mien phi)", "ten": "10 lan (phieu)", "one_free": "1 lan (mien phi, cham do)",
+                 "one_ticket": "1 lan (phieu)"}
+
+
 def recruit(ctx):
     use_tickets = ctx.cfg.get("recruit", {}).get("use_tickets", False)
     n = 0
@@ -347,19 +366,19 @@ def recruit(ctx):
             time.sleep(1.0)
         # nut "Mien phi" (luot mien phi trong ngay, nut trai) -> uu tien (do #5 2026-11-18: truoc day bi bo sot);
         # nut co cham do goc tren-phai (~+80,-23) cung tinh la mien phi du mau nut lech
-        if free and (ctx.is_colored(img, free[0], free[1]) or _dot_near(img, free, dx=80, dy=-23)):
-            what, btn = "1 lan (mien phi)", (free[0], free[1] - 9)
-        # "Chieu mo 10 lan" co cham do = du >= 10 phieu -> bam (dung phieu, khong phai kim cuong)
-        elif ten and any(ten[0] < d[0] < ten[0] + 110 and ten[1] - 25 < d[1] < ten[1] + 15 for d in red_dots(img)):
-            what, btn = "10 lan (phieu)", ten
-        elif not ctx.v.find(img, "recruit/free_wait"):
-            what, btn = "1 lan (mien phi)", ctx.v.find(img, "recruit/btn_one")
-        elif use_tickets:
-            what, btn = "1 lan (phieu)", ctx.v.find(img, "recruit/btn_one")
-        else:
-            continue
+        one = ctx.v.find(img, "recruit/btn_one")
+        pick = recruit_choice(
+            free_ok=bool(free and (ctx.is_colored(img, free[0], free[1]) or _dot_near(img, free, dx=80, dy=-23))),
+            # "Chieu mo 10 lan" co cham do = du >= 10 phieu -> bam (dung phieu, khong phai kim cuong)
+            ten_dot=bool(ten and any(ten[0] < d[0] < ten[0] + 110 and ten[1] - 25 < d[1] < ten[1] + 15
+                                     for d in red_dots(img))),
+            one_free=bool(one and _dot_near(img, one, dx=80, dy=-23)),
+            free_wait=bool(ctx.v.find(img, "recruit/free_wait")),
+            use_tickets=use_tickets)
+        btn = {"free": free and (free[0], free[1] - 9), "ten": ten}.get(pick, one) if pick else None
         if not btn:
             continue
+        what = RECRUIT_LABEL[pick]
         ctx.tap(btn[0], btn[1] + 9, wait=4.0)
         n += 1
         log.info("Chieu mo %s: %s", tab.split("_")[-1], what)
