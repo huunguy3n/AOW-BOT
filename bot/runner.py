@@ -151,12 +151,29 @@ class Runner:
         for th in list(self._busy.values()):
             th.join()
 
+    def effective_settings(self):
+        """Gia tri DANG DUNG (config.yaml + settings.json trong bo nho tien trinh nay). A-REL-4: data/settings.json
+        tren dia co the khac gia tri tien trinh web dang giu (2026-11-21: file ghi parallel 1, log ghi 2)."""
+        cfg = self.store.cfg_for(self.base_cfg)
+        sc = cfg.get("schedule") or {}
+        return {"mode": sc.get("mode", "fixed"), "parallel": self._parallel(),
+                "max_running": cfg["ldplayer"].get("max_running", 2),
+                "wait_scale": (cfg.get("speed") or {}).get("wait_scale", 1.0)}
+
+    def _log_settings(self):
+        cur = self.effective_settings()
+        if cur != getattr(self, "_last_settings", None):
+            log.info("Cau hinh hieu luc: %s", " ".join(f"{k}={v}" for k, v in cur.items()))
+            self._last_settings = cur
+
     def _loop(self):
         log.info("Runner bat dau (%d may song song)", self._parallel())
+        self._log_settings()
         if self.store.cfg_for(self.base_cfg).get("schedule", {}).get("mode", "fixed") == "smart":
             return self._loop_smart()
         try:
             while not self._stop.is_set():
+                self._log_settings()
                 t0 = time.time()
                 ids = [i for i in self.base_cfg["instances"] if self.store.inst(i).get("enabled", True)]
                 todo = list(ids)
@@ -199,6 +216,7 @@ class Runner:
         log.info("Lap lich theo tri nho (schedule.mode=smart)")
         try:
             while not self._stop.is_set():
+                self._log_settings()
                 free = len(self._busy) < self._parallel()
                 if self.queue and free:  # "Chay ngay": chay du moi buoc, bo qua lich
                     idx = self.queue.popleft()

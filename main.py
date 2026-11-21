@@ -20,14 +20,42 @@ log = logging.getLogger("aow")
 RING = RingLog()
 
 
+class DailyFileHandler(logging.FileHandler):
+    """Ghi logs/bot-YYYYMMDD.log theo NGAY CUA DONG LOG (A-REL-1): truoc day ten file chon 1 lan luc khoi dong
+    nen chay qua dem van ghi vao file ngay dau. Giu nguyen mau ten file de cong cu/thoi quen cu khong doi."""
+
+    def __init__(self, folder):
+        self.folder = folder
+        self.day = time.strftime("%Y%m%d")
+        super().__init__(self._path(), encoding="utf-8", delay=True)
+
+    def _path(self):
+        return os.path.join(self.folder, f"bot-{self.day}.log")
+
+    def emit(self, record):
+        day = time.strftime("%Y%m%d", time.localtime(record.created))
+        if day != self.day:
+            self.acquire()
+            try:
+                self.close()
+                self.day = day
+                self.baseFilename = os.path.abspath(self._path())
+            finally:
+                self.release()
+        super().emit(record)
+
+
 def setup_log():
     os.makedirs(os.path.join(BASE, "logs"), exist_ok=True)
-    fmt = logging.Formatter("%(asctime)s %(levelname)s [%(threadName)s] %(message)s", "%H:%M:%S")
     log.setLevel(logging.INFO)
-    for h in (logging.StreamHandler(sys.stdout),
-              logging.FileHandler(os.path.join(BASE, "logs", time.strftime("bot-%Y%m%d.log")), encoding="utf-8")):
-        h.setFormatter(fmt)
-        log.addHandler(h)
+    console = logging.StreamHandler(sys.stdout)
+    console.setFormatter(logging.Formatter("%(asctime)s %(levelname)s [%(threadName)s] %(message)s", "%H:%M:%S"))
+    # file co NGAY trong moi dong: do dac tu log (vd thoi gian khoi dong) can moc thoi gian tuyet doi
+    daily = DailyFileHandler(os.path.join(BASE, "logs"))
+    daily.setFormatter(logging.Formatter("%(asctime)s %(levelname)s [%(threadName)s] %(message)s",
+                                         "%Y-%m-%d %H:%M:%S"))
+    log.addHandler(console)
+    log.addHandler(daily)
     log.addHandler(RING)
 
 
@@ -42,9 +70,13 @@ def main():
     ap.add_argument("--web", action="store_true", help="mo giao dien quan ly http://localhost:8080")
     ap.add_argument("--port", type=int, default=8080)
     a = ap.parse_args()
-    with open(a.config, encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
-    setup_log()
+    setup_log()          # truoc khi doc YAML: loi cu phap config cung duoc ghi vao log
+    try:
+        with open(a.config, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+    except (OSError, yaml.YAMLError):
+        log.exception("Khong doc duoc cau hinh %s", a.config)
+        raise
     vision = Vision(os.path.join(BASE, "templates"), cfg.get("match_threshold", 0.82))
 
     if a.check:
