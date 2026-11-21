@@ -99,6 +99,8 @@ def run(ctx):
                     no_battle = True             # cac dong sau van lam (tuong, phe tich...) nhung KHONG vao tran
                     _block_battle(ctx)
             log.info("Nhiem vu %s dong %d -> %s", (tab or "chuong").split("/")[-1], k + 1, res)
+            if res == "none":   # A-INV-1: 'Den' khong dan toi man nang cap (391 lan 11-19..21) -> luu anh dieu tra
+                build.inv_capture(ctx, f"quests_{(tab or 'chuong').split('/')[-1]}_row{k + 1}")
             if res in ("started", "follow_build_started"):
                 started += 1
             ctx.back_out()

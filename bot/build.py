@@ -3,7 +3,7 @@
 Man Tang cap (540x960): tieu de + "Cap hien tai N"; dieu kien chua dat co nut "Nhay" -> sang cong trinh do;
 nut PHAI "Tang cap" (co dong ho). KHONG BAO GIO bam "Tang cap ngay" (nut trai, ton kim cuong).
 """
-import time, logging
+import os, time, logging
 from bot import ocr
 
 log = logging.getLogger("aow")
@@ -48,6 +48,24 @@ def menu_busy(img, px, py):
     return None
 
 
+def inv_capture(ctx, tag):
+    """A-INV-1: luu anh man hien tai de dieu tra vi sao nhiem vu khong dan toi man nang cap.
+    Toi da 1 anh / ngay / tag / may (logs/inv/<tag>/), KHONG qua save_debug -> khong doi ket qua buoc."""
+    import cv2
+    d = os.path.join("logs", "inv", tag)
+    path = os.path.join(d, time.strftime("%Y%m%d") + f"-i{ctx.dev.idx}.png")
+    if os.path.exists(path):
+        return None
+    try:
+        os.makedirs(d, exist_ok=True)
+        cv2.imwrite(path, ctx.dev.screencap(tries=1))
+        log.info("Dieu tra: luu %s", path)
+        return path
+    except (OSError, RuntimeError) as e:
+        log.debug("inv_capture %s: %s", tag, e)
+        return None
+
+
 def upgrade_here(ctx, depth=0, max_depth=4):
     """Dang o menu cong trinh (icon Tang cap) hoac man Tang cap. Tra ve: 'started' | 'hq_cap' |
     'blocked' (thieu dieu kien/tai nguyen/het tho) | 'none' (khong phai man nang cap)."""
@@ -70,6 +88,8 @@ def upgrade_here(ctx, depth=0, max_depth=4):
     ctx.skip_dialogs()   # vd "Can thoa man dieu kien tien de moi" che man Tang cap (do #5, 2026-11-18)
     img = ctx.shot()
     if not (ctx.v.find(img, "build/btn_upgrade") or ctx.v.find(img, "build/btn_jump")):
+        if depth:      # da 'Nhay' sang cong trinh dieu kien ma khong toi man nang cap (A-INV-1)
+            inv_capture(ctx, f"jump_none_d{depth}")
         return "none"
     lv = screen_level(img)
     is_hq = bool(ctx.v.find(img, "build/title_hq"))
