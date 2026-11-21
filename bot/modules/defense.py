@@ -57,24 +57,75 @@ def under_attack(ctx, img=None):
     return False
 
 
+def _day(now=None):
+    """Ngay tinh tran kim cuong = ngay cua server game (reset 0h UTC), khong theo gio may."""
+    return time.strftime("%Y-%m-%d", time.gmtime(now))
+
+
+def spent_today(gems_spent, now=None):
+    """Kim cuong da tieu trong ngay. Lay max voi khoa ngay theo gio may: du lieu ghi truoc 2026-11-21 dung ngay
+    dia phuong -> luc chuyen doi khong duoc dem thieu (dem thua thi chi la khong mua, an toan)."""
+    d = gems_spent or {}
+    return max(d.get(_day(now), 0), d.get(time.strftime("%Y-%m-%d", time.localtime(now)), 0))
+
+
 def _spent_today(ctx):
     st = ctx.store.inst(ctx.dev.idx) if getattr(ctx, "store", None) else {}
-    return (st.get("gems_spent") or {}).get(time.strftime("%Y-%m-%d"), 0)
+    return spent_today(st.get("gems_spent"))
 
 
 def _add_spent(ctx, n):
     if not getattr(ctx, "store", None):
         return
     st = ctx.store.inst(ctx.dev.idx)
-    d = dict(st.get("gems_spent") or {})
-    day = time.strftime("%Y-%m-%d")
-    d = {day: d.get(day, 0) + n}  # chi giu hom nay
+    day = _day()
+    d = {day: spent_today(st.get("gems_spent")) + n}  # chi giu hom nay
     ctx.store.update(ctx.dev.idx, gems_spent=d)
+
+
+def parse_owned(text):
+    """So vat pham khien dang co -> int, hoac None neu OCR khong ra so (KHONG doan la 0)."""
+    t = (text or "").strip()
+    return int(t) if t.isdigit() else None
+
+
+TAP = ("use", "buy")   # cac ket qua cua shield_choice dan toi bam nut
+
+
+def shield_choice(owned, gems, price, spent, cap, allow_buy):
+    """Quyet dinh o dong khien (ham thuan, ADR-0008). -> (ket qua, ly do).
+    Ket qua: 'use' / 'buy' (bam nut) hoac ly do khong bam: 'unread' / 'no_item' / 'no_gems' / 'cap'.
+    Cung 1 nut: con vat pham thi dung vat pham, het thi MUA bang kim cuong -> moi so khong doc duoc deu
+    dan toi KHONG bam (dong khi loi): khong chac con vat pham thi khong bam, khong biet so du thi khong mua."""
+    if owned is None:
+        return "unread", "khong doc duoc so vat pham khien"
+    if owned > 0:
+        return "use", f"con {owned} vat pham"
+    if not allow_buy:
+        return "no_item", "het vat pham, khong cho phep mua bang kim cuong"
+    if gems is None:
+        return "unread", "khong doc duoc so kim cuong"
+    if gems < price:
+        return "no_gems", f"khong du kim cuong ({gems} < {price})"
+    if spent + price > cap:
+        return "cap", f"vuot tran ngay ({spent} + {price} > {cap})"
+    return "buy", f"mua {price} kim cuong (da tieu {spent}/{cap})"
+
+
+def spent_amount(gems_before, gems_after, price):
+    """Kim cuong tinh vao tran sau khi mua. Khong doc duoc / so khong giam (OCR lam tron K/M) -> tinh bang gia:
+    dem thua chi lam bot mua it hon, dem thieu thi vuot tran."""
+    if gems_before is not None and gems_after is not None and gems_after < gems_before:
+        return max(gems_before - gems_after, price)
+    return price
 
 
 def shield(ctx, force=False):
     d = ctx.cfg.get("defense", {})
     hours = int(d.get("shield_hours", 1))
+    if hours not in ROWS:
+        log.error("defense.shield_hours = %s khong hop le (chi %s) - khong bat khien", hours, sorted(ROWS))
+        return "error"
     ctx.ensure_city()
     gems_before = ocr.topbar(ctx.shot()).get("gems")
     if not ctx.tap_tpl("defense/btn_shield_icon", wait=1.5) or not ctx.wait_for("defense/title", timeout=3):
@@ -91,29 +142,28 @@ def shield(ctx, force=False):
         log.warning("Khong thay dong khien %dh", hours)
         ctx.back_out()
         return "error"
-    owned = ocr.text(img, (64, row[1] + 53, 22, 16), "0123456789", psm=8)
-    owned = int(owned) if owned.isdigit() else 0
+    owned = parse_owned(ocr.text(img, (64, row[1] + 53, 22, 16), "0123456789", psm=8))
     btn = (469, row[1] + 27)
-    if owned <= 0:
-        price, cap = PRICE[hours], d.get("gem_cap_daily", 0)
-        spent = _spent_today(ctx)
-        if not d.get("shield_buy_gems"):
-            log.warning("Het vat pham khien %dh va khong cho phep mua bang kim cuong", hours)
-            ctx.back_out()
-            return "no_item"
-        if spent + price > cap or (gems_before is not None and gems_before < price):
-            log.warning("Khong mua khien: gia %d, da tieu hom nay %d, tran %d, dang co %s kim cuong",
-                        price, spent, cap, gems_before)
-            ctx.back_out()
-            return "cap"
+    price = PRICE[hours]
+    act, why = shield_choice(owned, gems_before, price, _spent_today(ctx), d.get("gem_cap_daily", 0),
+                             bool(d.get("shield_buy_gems")))
+    if act not in TAP:
+        log.warning("Khong bat khien %dh: %s", hours, why)
+        ctx.back_out()
+        return act
+    log.info("Bat khien %dh: %s", hours, why)
     ctx.tap(*btn, wait=1.5)
     ctx.tap_tpl("common/btn_confirm", wait=1.5)  # hop thoai xac nhan (neu co)
     ctx.back_out()
     gems_after = ocr.topbar(ctx.shot()).get("gems")
-    if owned <= 0 and gems_before is not None and gems_after is not None and gems_after < gems_before:
+    if act == "buy":
+        _add_spent(ctx, spent_amount(gems_before, gems_after, price))
+    elif gems_before is not None and gems_after is not None and gems_after < gems_before:
+        # 'use' nhung kim cuong giam: OCR doc nham so vat pham (vd 0 -> 1) va nut da MUA -> van tinh vao tran
+        log.warning("Dung vat pham khien nhung kim cuong giam %d -> %d: tinh vao tran ngay", gems_before, gems_after)
         _add_spent(ctx, gems_before - gems_after)
     log.info("Da bat khien %dh (%s; kim cuong %s -> %s)", hours,
-             "vat pham" if owned > 0 else "mua", gems_before, gems_after)
+             "vat pham" if act == "use" else "mua", gems_before, gems_after)
     return "shielded"
 
 
