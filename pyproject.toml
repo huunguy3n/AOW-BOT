@@ -70,6 +70,11 @@ mypy_path = "src"
 strict = true
 warn_unreachable = true
 
+[[tool.mypy.overrides]]
+# ma cu khong co type hint: chi kiem cho adapter dung no (infrastructure.legacy), coi nhu Any
+module = ["bot", "bot.*", "web", "web.*"]
+follow_imports = "skip"
+
 # ---------------------------------------------------------------- coverage
 [tool.coverage.run]
 branch = true
@@ -107,6 +112,7 @@ name = "D4: chi infrastructure.legacy duoc vao bot"
 type = "forbidden"
 source_modules = ["aowbot.domain", "aowbot.application", "aowbot.interfaces", "aowbot.app", "aowbot.infrastructure.sqlite", "aowbot.infrastructure.clock"]
 forbidden_modules = ["bot"]
+allow_indirect_imports = true   # app dung adapter legacy (gian tiep toi bot) la hop le; cam import TRUC TIEP
 
 [[tool.importlinter.contracts]]
 name = "D7: ma cu chi duoc dung aowbot.domain"

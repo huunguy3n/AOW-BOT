@@ -8,6 +8,7 @@ Thoi gian tuyet doi (epoch) de web tu dem nguoc:
 import re, time, logging
 import cv2, numpy as np
 from bot import ocr
+from aowbot.domain import marches
 
 log = logging.getLogger("aow")
 
@@ -18,17 +19,8 @@ def remember(mem, idx, info, now):
     Doi dang toi mo -> chua biet bao gio ve: khong dat timer (lich dung tran max_gap)."""
     mem.clear_timers(idx, "march:")
     mem.clear_timers(idx, "arrive:")
-    for i, m in enumerate(info.get("marches") or []):
-        if m["state"] == "marching" and m.get("arrive_at"):
-            # chu du an 2026-11-21: gio thu thap chi hien khi doi DA TOI mo -> hen dang nhap luc doi cuoi toi mo
-            mem.set_timer(idx, f"arrive:{i}", m["arrive_at"], "ocr", 0.9)
-            if m.get("travel"):   # di = ve -> uoc luong som nhat doi ranh lai (chua biet gio thu thap)
-                mem.set_timer(idx, f"march:{i}", m["arrive_at"] + m["travel"], "est", 0.3)
-            continue
-        if m.get("return_at"):
-            mem.set_timer(idx, f"march:{i}", m["return_at"], "ocr", 0.9 if m["state"] == "returning" else 0.6)
-        elif m.get("gather_done"):
-            mem.set_timer(idx, f"march:{i}", m["gather_done"], "ocr", 0.4)
+    for t in marches.timers_from_rows(info.get("marches") or []):   # luat o aowbot.domain.marches
+        mem.set_timer(idx, f"{t.kind}:{t.index}", t.due_at, t.source, t.confidence)
     for k in ("march_total", "march_used", "resources", "last_travel"):
         if info.get(k) is not None:
             mem.set_fact(idx, k, info[k])

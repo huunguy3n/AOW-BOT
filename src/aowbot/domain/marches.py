@@ -1,8 +1,9 @@
 """Luat ve doi hanh quan (quan doan). Mot luat, mot cho: bot/scheduler.py goi lai (A-FIX-1b)."""
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 CONFIDENT = 0.6   # do tin toi thieu cua dong ho doc duoc de coi luc ve la chac chan
 
@@ -56,3 +57,31 @@ def lower_quartile(gaps: Sequence[float], default: float, min_samples: int = 3) 
     Phat lai #1 2026-11-21: p25 chan 5/6 lan ghe gui 0 doi; trung vi lam tre 4/9 lan co gui."""
     xs = sorted(g for g in gaps if g > 0)
     return xs[len(xs) // 4] if len(xs) >= min_samples else default
+
+
+@dataclass(frozen=True, slots=True)
+class MarchTimer:
+    index: int
+    kind: str          # 'march' = luc doi ranh lai, 'arrive' = luc toi mo (doc gio thu thap)
+    due_at: float
+    source: str        # 'ocr' | 'est'
+    confidence: float
+
+
+def timers_from_rows(rows: Sequence[Mapping[str, Any]]) -> list[MarchTimer]:
+    """Dong 'Hanh quan' doc duoc (observe) -> timer. Luat chung cho bot/modules/observe.py va agent.
+    Dang toi mo: hen luc toi mo (gio thu thap chi hien khi da toi) + uoc luong ve = toi + thoi gian di (di = ve).
+    Dang ve: luc ve (tin 0,9). Dang thu thap da biet luc ve: 0,6. Chi biet luc thu thap xong: 0,4 (som hon thuc te)."""
+    out: list[MarchTimer] = []
+    for i, m in enumerate(rows):
+        state = m.get("state")
+        if state == "marching" and m.get("arrive_at"):
+            out.append(MarchTimer(i, "arrive", float(m["arrive_at"]), "ocr", 0.9))
+            if m.get("travel"):
+                out.append(MarchTimer(i, "march", float(m["arrive_at"]) + float(m["travel"]), "est", 0.3))
+            continue
+        if m.get("return_at"):
+            out.append(MarchTimer(i, "march", float(m["return_at"]), "ocr", 0.9 if state == "returning" else 0.6))
+        elif m.get("gather_done"):
+            out.append(MarchTimer(i, "march", float(m["gather_done"]), "ocr", 0.4))
+    return out

@@ -7,6 +7,7 @@ import sqlite3
 from collections.abc import Sequence
 from typing import Any
 
+from aowbot.application.ports import ObservationRecord, VisitRecord
 from aowbot.domain.freshness import Fact
 from aowbot.domain.marches import MarchObservation
 
@@ -64,3 +65,30 @@ class LegacyMemoryReader:
                 continue
             gaps += [m["return_at"] - at for m in rows if isinstance(m, dict) and m.get("return_at")]
         return gaps
+
+    # ---------- HistorySource (B6s) ----------
+    def observations(self, account: int, since: float, until: float) -> list[ObservationRecord]:
+        out = []
+        for at, used, total, raw in self._rows(
+                "SELECT at, march_used, march_total, marches FROM observations WHERE inst=? AND at>=? AND at<? "
+                "ORDER BY at", (account, since, until)):
+            try:
+                rows = json.loads(raw or "[]")
+            except ValueError:
+                rows = []
+            out.append(ObservationRecord(float(at), used, total, [r for r in rows if isinstance(r, dict)]))
+        return out
+
+    def visits(self, account: int, since: float, until: float) -> list[VisitRecord]:
+        out = []
+        for vid, started, why in self._rows("SELECT id, started, why FROM visits WHERE inst=? AND started>=? "
+                                            "AND started<? ORDER BY started", (account, since, until)):
+            r = self._rows("SELECT ret FROM runs WHERE visit=? AND step='gather'", (vid,))
+            sent = None
+            if r:
+                try:
+                    sent = int(float(r[0][0])) if r[0][0] not in (None, "", "null") else 0
+                except (TypeError, ValueError):
+                    sent = 0
+            out.append(VisitRecord(float(started), why or "", sent))
+        return out
