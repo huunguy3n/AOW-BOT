@@ -3,13 +3,13 @@
 Chay LAN LUOT tung instance dang bat auto: bat may -> mo game -> cac buoc -> observe -> tat may.
 Dung an toan: chi dung giua 2 buoc (khong cat ngang thao tac), may van duoc tat trong finally.
 """
-import collections, json, logging, threading, time, traceback
+import collections, contextlib, json, logging, threading, time, traceback
 
 from bot.device import LDConsole, Device
 from bot.ctx import Ctx, Stuck
 from bot import ocr
 from bot.memory import Memory
-from bot import scheduler
+from bot import perf, scheduler
 from bot.modules import tutorial, mainquest, construct, city, rewards, alliance, quests, campaign, notify, research, train, rebels, gather, daily, observe, defense, intel, reddots, play
 
 log = logging.getLogger("aow")
@@ -360,11 +360,20 @@ class Runner:
         log.info("===== Instance %d =====", idx)
         visit = self.mem.visit_start(idx, why=why or ("modules" if modules else "cycle"), mode=mode)
         vres = "error"
+        # A-MEAS-1: bo dem hieu nang cua lan ghe (cfg perf.enabled, mac dinh bat) -> bang perf theo buoc
+        pf = perf.Perf() if (cfg.get("perf") or {}).get("enabled", True) else None
+        perf.bind(pf)
+        span = pf.span if pf else (lambda _k: contextlib.nullcontext())
         try:
-            if not self.ld.launch(idx):
+            with span("_launch"):
+                launched = self.ld.launch(idx)
+            if not launched:
                 raise RuntimeError("Khong bat duoc instance")
             dev = Device(cfg["ldplayer"]["adb"], idx, (cfg.get("adb_serials") or {}).get(idx))
-            if not dev.wait_ready(cfg["ldplayer"].get("boot_timeout", 120)):
+            dev.perf = pf
+            with span("_adb_ready"):
+                ready = dev.wait_ready(cfg["ldplayer"].get("boot_timeout", 120))
+            if not ready:
                 raise RuntimeError("ADB khong ket noi duoc")
             ctx = Ctx(dev, self.vision, cfg)
             ctx.store = st
@@ -375,9 +384,14 @@ class Runner:
                 ctx.human = HumanWatch(ctx, cfg["ldplayer"]["adb"]).start()   # chup anh khi chu du an thao tac tay
             st.update(idx, status="running", step="mo game")
             pkg = cfg["ldplayer"].get("game_package") or dev.find_package("warpath")
-            self.ld.runapp(idx, pkg)
-            self._wait_game(ctx, cfg, pkg)
-            ctx.close_popups(rounds=10, settle=3)
+            with span("_runapp"):
+                self.ld.runapp(idx, pkg)
+            with span("_wait_game"):
+                self._wait_game(ctx, cfg, pkg)
+            with span("_popups"):
+                ctx.close_popups(rounds=10, settle=3)
+            if pf:
+                self.mem.log_perf(visit, idx, "_start", pf.drain())
             forced = idx in getattr(self, "_forced", set())
             if forced:
                 self._forced.discard(idx)
@@ -419,7 +433,9 @@ class Runner:
                 n0, t0, m0 = len(ctx.debug_shots), time.time(), self.vision.miss_hits
                 res, shot, note, ret = "ok", None, None, None
                 try:
-                    if defense.under_attack(ctx):  # kiem tra canh bao truoc moi buoc
+                    with span("defense_check"):
+                        attacked = defense.under_attack(ctx)
+                    if attacked:  # kiem tra canh bao truoc moi buoc
                         st.update(idx, step="phong thu")
                         defense.run(ctx)
                         st.update(idx, step=name)
@@ -437,6 +453,8 @@ class Runner:
                     st.step_result(idx, name, res, time.time() - t0, shot, note)
                     self.mem.log_run(visit, idx, name, t0, time.time() - t0, res, note)
                     self._backoff(cfg, idx, name, res, note)
+                    if pf:
+                        self.mem.log_perf(visit, idx, name, pf.drain())
                     if restarts > cfg.get("watchdog", {}).get("max_restarts", 2):
                         raise RuntimeError(f"Watchdog: khoi dong lai {restarts - 1} lan van ket - bo tai khoan nay")
                     self._restart_game(ctx, idx, pkg, cfg)
@@ -460,11 +478,14 @@ class Runner:
                 if ctx.nav:
                     self.mem.log_nav(visit, idx, name, ctx.nav)
                 if name not in ("tutorial", "mainquest", "quests", "observe") and cfg.get("guide_follow", True):
-                    self._follow_guide(ctx)
+                    with span("follow_guide"):
+                        self._follow_guide(ctx)
                 try:
                     ctx.exp_flush()   # giai doan E: kinh nghiem cham cua buoc -> memory.db + thong ke hoc
                 except Exception as e:
                     log.debug("exp_flush: %s", e)
+                if pf:
+                    self.mem.log_perf(visit, idx, name, pf.drain())
                 self._backoff(cfg, idx, name, res, note)
                 if ctx.nav and name not in ("tutorial", "observe"):
                     lost = 0 if any(a == "done" for _, a, _ in ctx.nav) else lost + 1
@@ -494,9 +515,13 @@ class Runner:
             except Exception:
                 pass
             try:
-                self.ld.quit(idx)
+                with span("_quit"):
+                    self.ld.quit(idx)
             except Exception:
                 pass
+            if pf:
+                self.mem.log_perf(visit, idx, "_end", pf.drain())
+            perf.bind(None)
             self._remember_facts(idx)
             self.mem.visit_end(visit, vres)
             time.sleep(5)

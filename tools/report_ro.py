@@ -87,10 +87,31 @@ def metrics(q, t0=None, t1=None, insts=None):
         if step != "observe" and _num(ret) == 0:     # runner khong ghi ret cua observe
             s["zero"] += 1
             s["zero_min"] += (dur or 0) / 60
+    out["perf"] = perf_metrics(q, cond.replace("started", "at"), args)
     out["vm_h"], out["useless_h"] = round(out["vm_h"], 2), round(out["useless_h"], 2)
     for s in out["steps"].values():
         s["min"], s["zero_min"] = round(s["min"], 1), round(s["zero_min"], 1)
     return out
+
+
+def perf_metrics(q, cond, args):
+    """Bang perf (A-MEAS-1): theo loai thao tac va theo buoc. Chua co bang (DB cu) -> {}."""
+    if not q("SELECT 1 FROM sqlite_master WHERE type='table' AND name='perf'"):
+        return {}
+    kinds = {f"{k}/{s}": {"n": n, "total_s": round(t or 0, 1), "max_s": round(mx or 0, 2)}
+             for k, s, n, t, mx in q(f"SELECT kind, src, SUM(n), SUM(total), MAX(max) FROM perf WHERE {cond} "
+                                     "GROUP BY kind, src ORDER BY SUM(total) DESC", args)}
+    steps = {}
+    for step, kind, n, t in q(f"SELECT step, kind, SUM(n), SUM(total) FROM perf WHERE {cond} GROUP BY step, kind", args):
+        s = steps.setdefault(step, {"adb": 0, "screencap": 0, "ocr": 0, "identify": 0, "adb_s": 0.0})
+        if kind.startswith("adb_"):
+            s["adb"] += n
+            s["adb_s"] = round(s["adb_s"] + (t or 0), 1)
+        if kind in ("screencap", "ocr", "identify"):
+            s[kind] += n
+        if kind == "ocr_march":
+            s["ocr"] += n
+    return {"kinds": kinds, "steps": steps}
 
 
 def show(title, m):
@@ -103,6 +124,13 @@ def show(title, m):
     print(f"   {'buoc':<13}{'lan':>5}{'phut':>8}{'tra 0':>7}{'phut tra 0':>12}")
     for step, s in sorted(m["steps"].items(), key=lambda kv: -kv[1]["min"]):
         print(f"   {step:<13}{s['n']:>5}{s['min']:>8}{s['zero']:>7}{s['zero_min']:>12}")
+    if m.get("perf"):
+        print("   hieu nang (bang perf):")
+        for k, v in list(m["perf"]["kinds"].items())[:15]:
+            print(f"     {k:<28}{v['n']:>7} lan {v['total_s']:>9} s  max {v['max_s']} s")
+        print(f"   {'buoc':<13}{'adb':>6}{'adb s':>8}{'anh':>6}{'ocr':>6}{'nhan dien':>10}")
+        for step, s in sorted(m["perf"]["steps"].items(), key=lambda kv: -kv[1]["adb_s"]):
+            print(f"   {step:<13}{s['adb']:>6}{s['adb_s']:>8}{s['screencap']:>6}{s['ocr']:>6}{s['identify']:>10}")
 
 
 def main():

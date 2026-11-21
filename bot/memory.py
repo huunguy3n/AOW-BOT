@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS exp (
   x INTEGER, y INTEGER, score REAL, scr TEXT, changed INTEGER, diff REAL, local REAL, outcome TEXT, lat REAL, crop TEXT);
 CREATE TABLE IF NOT EXISTS screen_samples (
   id INTEGER PRIMARY KEY, inst INTEGER, at REAL, label TEXT, detail TEXT, x INTEGER, y INTEGER, ok INTEGER, feat BLOB);
+CREATE TABLE IF NOT EXISTS perf (
+  id INTEGER PRIMARY KEY, visit INTEGER, inst INTEGER, step TEXT, at REAL, kind TEXT, src TEXT,
+  n INTEGER, total REAL, p50 REAL, p90 REAL, max REAL);
 CREATE INDEX IF NOT EXISTS exp_tpl ON exp(tpl, x, y);
 CREATE INDEX IF NOT EXISTS runs_inst_t ON runs(inst, started);
 CREATE INDEX IF NOT EXISTS visits_inst_t ON visits(inst, started);
@@ -144,6 +147,18 @@ class Memory:
             c, now = self._conn(), time.time()
             c.executemany("INSERT INTO nav(visit, inst, step, at, screen, action, changed) VALUES (?,?,?,?,?,?,?)",
                           [(visit, inst, step, now, s, a, None if ch is None else int(ch)) for s, a, ch in rows])
+        except Exception as e:
+            self._warn(e)
+
+    def log_perf(self, visit, inst, step, rows):
+        """A-MEAS-1: tong hop bo dem hieu nang cua 1 buoc (bot/perf.py Perf.drain())."""
+        if not rows:
+            return
+        try:
+            now = time.time()
+            self._conn().executemany(
+                "INSERT INTO perf(visit, inst, step, at, kind, src, n, total, p50, p90, max) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                [(visit, inst, step, now, *r) for r in rows])
         except Exception as e:
             self._warn(e)
 

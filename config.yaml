@@ -165,6 +165,8 @@ tutorial:
 world:
   min_hq_level: 6         # nha chinh < 6: ban do the gioi chua mo -> bo thu thap/phan quan/doc hanh quan
   recheck_h: 6            # nut chuyen ban do khong an -> N gio sau moi thu lai
+perf:                      # A-MEAS-1: dem so lan + thoi gian lenh adb / chup anh / OCR / nhan dien man theo buoc -> bang perf (memory.db)
+  enabled: true            # false = tat (khong anh huong thao tac)
 speed:
   wait_scale: 0.75         # nhan thoi gian cho sau moi lan cham (1.0 = nhu cu; giam neu may nhanh, tang neu hay lo man)
 learn:                     # giai doan E+F (docs/bot/05-ke-hoach-hoc-may-mini.md, bot/learn.py)

@@ -2,6 +2,8 @@
 import os, re, time, random, logging
 import cv2, numpy as np
 
+from bot import perf
+
 log = logging.getLogger("aow")
 
 
@@ -570,6 +572,10 @@ class Ctx:
         return None
 
     def _ocr_tesseract(self, roi, cmd):
+        with perf.measure("ocr_march"):
+            return self._ocr_tesseract_raw(roi, cmd)
+
+    def _ocr_tesseract_raw(self, roi, cmd):
         try:
             import pytesseract
             if cmd and os.path.exists(cmd):

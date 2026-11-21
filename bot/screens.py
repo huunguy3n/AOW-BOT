@@ -17,6 +17,8 @@ Chi dung anh mau DA CO trong templates/ (thieu -> coi nhu khong thay, dung quy u
 import os, threading, time
 import cv2, numpy as np
 
+from bot import perf
+
 POPUPS = ["common/btn_confirm_hero", "common/btn_net_retry", "common/btn_rebuild", "common/btn_x", "common/btn_close",
           "common/btn_x_small", "common/btn_x_red", "common/tap_to_continue", "common/tap_to_close"]
 BACKS = ["campaign/btn_done", "campaign/btn_done_lose", "common/btn_back", "common/btn_back2"]  # "Dong" truoc "<"
@@ -53,6 +55,11 @@ def is_loading(img):
 
 def identify(img, v):
     """-> (ten_man, chi_tiet) chi_tiet = (anh mau, (x, y, score)) neu co."""
+    with perf.measure("identify"):
+        return _identify(img, v)
+
+
+def _identify(img, v):
     p = _find(v, img, "common/btn_cancel_exit")
     if p:
         return "exit_dialog", ("common/btn_cancel_exit", p)

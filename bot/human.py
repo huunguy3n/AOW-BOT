@@ -17,6 +17,8 @@ lai quan (steer, sendevent vao event2) -> bo qua khi steer dang lai tren may nay
 import datetime, json, logging, os, re, subprocess, threading, time
 import cv2
 
+from bot import perf
+
 log = logging.getLogger("aow")
 TOUCH_DEV = "/dev/input/event2"
 SX, SY = 540 / 960, 960 / 540          # raw touch -> toa do man hinh (bot/touch.py)
@@ -50,7 +52,8 @@ class HumanWatch:
     # ----- tien ich -----
     def _shot(self):
         try:
-            return self.dev.screencap(tries=2)
+            with perf.as_src("human"):      # A-MEAS-1: tach chi phi anh chup cua HumanWatch
+                return self.dev.screencap(tries=2)
         except Exception:
             return getattr(self.ctx, "_img", None)
 
@@ -103,6 +106,8 @@ class HumanWatch:
                 # 'input tap/swipe' cua chinh bot cung hien o day (LDPlayer) -> bo neu trung luc + cho bot vua cham.
                 # Lenh adb tra ve SAU khi su kien da phat -> doi 0,3 s cho bot ghi xong roi moi so.
                 if self._bot_touch(down["ts"], x1, y1):
+                    if self.dev.perf is not None:   # moi lan = 1 anh "truoc" da chup thua (A-OPT-5)
+                        self.dev.perf.add("bot_touch_seen", 0.0, "human")
                     down = None
                     continue
                 dur = round(time.time() - down["ts"], 2)

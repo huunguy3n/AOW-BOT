@@ -6,6 +6,8 @@ hanh quan duoc phan loai theo tu khoa gan dung.
 import os, re, logging
 import cv2
 
+from bot import perf
+
 log = logging.getLogger("aow")
 _ok = None
 
@@ -54,7 +56,8 @@ def text(img, roi, whitelist=None, scale=3, psm=7, bright=None):
             b = 255 - b
     cfg = f"--psm {psm}" + (f" -c tessedit_char_whitelist={whitelist}" if whitelist else "")
     try:
-        return pytesseract.image_to_string(b, config=cfg).strip()
+        with perf.measure("ocr"):            # 1 tien trinh tesseract / lan goi
+            return pytesseract.image_to_string(b, config=cfg).strip()
     except Exception as e:
         log.debug("ocr loi: %s", e)
         return ""

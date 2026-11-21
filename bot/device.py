@@ -83,9 +83,28 @@ class Device:
         self.idx = idx
         self.serial = serial or f"emulator-{5554 + 2 * idx}"
 
+    perf = None   # bot.perf.Perf cua lan ghe (runner gan) - A-MEAS-1
+
+    @staticmethod
+    def _kind(args):
+        """Loai lenh adb de dem hieu nang: tap / swipe / key / screencap_raw / screencap_png / pidof / ..."""
+        a = [str(x) for x in args]
+        if a[:2] == ["shell", "input"] and len(a) > 2:
+            return {"keyevent": "key"}.get(a[2], a[2])
+        if a and a[0] == "exec-out":
+            return "screencap_png" if "-p" in a else "screencap_raw"
+        if a and a[0] == "shell" and len(a) > 1:
+            return a[1]
+        return a[0] if a else "?"
+
     def _cmd(self, *args, timeout=30, binary=False):
-        r = subprocess.run([self.adb, "-s", self.serial, *map(str, args)],
-                           capture_output=True, timeout=timeout)
+        t0 = time.perf_counter()
+        try:
+            r = subprocess.run([self.adb, "-s", self.serial, *map(str, args)],
+                               capture_output=True, timeout=timeout)
+        finally:
+            if self.perf is not None:
+                self.perf.add("adb_" + self._kind(args), time.perf_counter() - t0)
         return r.stdout if binary else r.stdout.decode("utf-8", "ignore")
 
     def wait_ready(self, timeout=120):
@@ -117,15 +136,23 @@ class Device:
         """Chup man hinh; adb doi khi tra ve rong (may vua khoi dong / dang ban) -> thu lai.
         Het luot ma van hong: dia chi adb co the da doi (emulator-55xx <-> 127.0.0.1:55xx, #6/#3 2026-11-21
         'error: device not found' ngay sau khi mo game) -> wait_ready do lai dia chi roi chup them 1 lan."""
+        t0 = time.perf_counter()
+        ok = False
         try:
-            return self._screencap(tries)
-        except RuntimeError:
-            if not _reconnect or tries < 3:
-                raise
-            log.warning("ADB #%d: khong chup duoc qua %s -> do lai dia chi", self.idx, self.serial)
-            if not self.wait_ready(30):
-                raise
-            return self._screencap(tries)
+            try:
+                img = self._screencap(tries)
+            except RuntimeError:
+                if not _reconnect or tries < 3:
+                    raise
+                log.warning("ADB #%d: khong chup duoc qua %s -> do lai dia chi", self.idx, self.serial)
+                if not self.wait_ready(30):
+                    raise
+                img = self._screencap(tries)
+            ok = True
+            return img
+        finally:
+            if self.perf is not None:   # tong thoi gian 1 lan chup, ke ca thu lai (do 'duoi dai' khi may treo)
+                self.perf.add("screencap" if ok else "screencap_fail", time.perf_counter() - t0)
 
     def _screencap(self, tries):
         for k in range(tries):
