@@ -8,7 +8,7 @@ Gioi han: bot chay lan luot tung may, may dang tat thi khong phan ung duoc.
 """
 import re, time, logging
 import cv2
-from bot import ocr
+from bot import ocr, tplneed
 from aowbot.domain import policy
 from aowbot.domain.policy import SHIELD_TAP as TAP, shield_spend as spent_amount
 
@@ -47,7 +47,8 @@ def red_flash(ctx, img=None):
 
 def under_attack(ctx, img=None):
     img = img if img is not None else ctx.shot()
-    if ctx.v.has("defense/alert_attack") and ctx.v.find(img, "defense/alert_attack"):
+    # P5-4: chua co anh mau canh bao -> chi dua vao mep do nhay (red_flash); log 'thieu anh mau' toi da 1 lan/gio
+    if tplneed.has(ctx.v, "defense/alert_attack", "canh bao bi tan cong") and ctx.v.find(img, "defense/alert_attack"):
         return True
     if ctx.cfg.get("defense", {}).get("red_flash", True):
         l, r = edge_red(img)
@@ -96,6 +97,13 @@ def parse_owned(text):
     return int(t) if t.isdigit() else None
 
 
+def missing_tpls(v, hours):
+    """Anh mau can de bat khien `hours` gio ma chua co (moi ten log 'thieu anh mau' qua tplneed, 1 lan/gio)."""
+    need = (("defense/btn_shield_icon", "icon khien thanh pho"), ("defense/title", "tieu de Bao Ho Chien Tranh"),
+            (ROWS[hours], f"dong khien {hours}h trong bang Bao Ho Chien Tranh"))
+    return [n for n, why in need if not tplneed.has(v, n, why)]
+
+
 def shield(ctx, force=False, hours=None, allow_buy=None, extend=False):
     """hours/allow_buy: ghi de cau hinh (ngay chien tranh: 8h/12h, chi dung vat pham). extend=True: bat them khi
     van con khien (gia han truoc khi het) thay vi coi la 'active'."""
@@ -105,6 +113,10 @@ def shield(ctx, force=False, hours=None, allow_buy=None, extend=False):
     if hours not in ROWS:
         log.error("defense.shield_hours = %s khong hop le (chi %s) - khong bat khien", hours, sorted(ROWS))
         return "error"
+    missing = missing_tpls(ctx.v, hours)
+    if missing:   # P5-4: thieu anh mau -> KHONG mo bang / khong bam mo (dong khien bam theo toa do cua dong)
+        log.warning("Khong bat khien %dh: thieu anh mau %s", hours, ", ".join(missing))
+        return "missing_tpl"
     ctx.ensure_city()
     gems_before = ocr.topbar(ctx.shot()).get("gems")
     if not ctx.tap_tpl("defense/btn_shield_icon", wait=1.5) or not ctx.wait_for("defense/title", timeout=3):
