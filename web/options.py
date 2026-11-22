@@ -17,6 +17,8 @@ GROUPS = [
         dict(key="gather.only_full", label="Chỉ tìm mỏ đầy", type="bool", ready=True),
         dict(key="gather.load_ge_mine", label="Chỉ đi mỏ mà tải trọng đội ≥ trữ lượng mỏ", type="bool", ready=True),
         dict(key="gather.min_hq_level", label="Bắt đầu thu thập từ nhà chính cấp", type="int", min=1, max=30, ready=True),
+        dict(key="gather.contested_skip_min", label="Mỏ có đội khác đang tới: tạm bỏ (phút)", type="int", min=5, max=240, ready=True),
+        dict(key="gather.occupied_skip_min", label="Mỏ đang bị chiếm: tạm bỏ (phút)", type="int", min=5, max=240, ready=True),
     ]),
     ("Huấn luyện & xây dựng", [
         dict(key="train.tier", label="Cấp lính muốn huấn luyện", type="int", min=1, max=4, ready=True),

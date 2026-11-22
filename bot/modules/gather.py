@@ -8,7 +8,7 @@ nha chinh (gather_locked:<loai>) duoc NHO lai, lan sau bat dau thang tu do. Chi 
 (gather_sig) = [cap nha chinh, so lan tuong tang cap] thay doi (nha chinh len cap / tuong trong quan doan len cap).
 """
 import time, logging
-from bot import ocr, screens
+from bot import gather_rules, ocr, screens, tplneed
 
 log = logging.getLogger("aow")
 
@@ -16,6 +16,33 @@ OK, NOT_FOUND, FULL, NO_TROOPS, ERROR, NO_SEARCH = "ok", "notfound", "full", "no
 UNREAD = "unread"  # khong doc duoc tru luong mo / tai trong -> khong ket luan duoc mo to hay nho (khong nho lai)
 LOCKED = "locked"  # "Ban chua dat cap N, tam thoi khong the thu thap ..." -> bo ca loai mo
 TOO_BIG = "toobig"  # mo con nhieu hon tai trong doi quan (doi khong cho het) -> bo qua cap nay, thu cap thap hon
+# P3 (PM 2026-11-23)
+OWN = "own"              # doi cua minh dang di toi chinh mo nay (cung loai/cap, cung thoi gian di) -> khong Xuat chinh
+CONTESTED = "contested"  # hop thoai "Co Chi huy truong khac dang hanh quan den..." -> Huy (khong gay chien), doi mo khac
+OCCUPIED = "occupied"    # mo da co nguoi (anh mau gather/mine_occupied) -> doi mo khac, khong bam nut tren mo
+MSG_BAND = (0, 270, 540, 110)        # thong bao noi giua man (bot/game_msg.py)
+DLG_BAND = (40, 400, 460, 110)       # than hop thoai xac nhan Xuat chinh (y 425-490)
+
+
+def _ev(ctx, kind, rtype=None, level=None, note=None):
+    """Ghi su kien thu thap vao memory.db (gather_ev) cho report_ro; khong co tri nho -> bo qua."""
+    m = _mem(ctx)
+    if m and hasattr(m, "log_gather"):
+        m.log_gather(ctx.dev.idx, kind, rtype, level, note)
+
+
+def _msg(img, band=MSG_BAND):
+    """OCR thong bao/hop thoai -> loai (gather_rules.classify_msg) | None. Chi goi o nhanh that bai (~150-250 ms)."""
+    try:
+        return gather_rules.classify_msg(ocr.text(img, band, scale=2, psm=6))
+    except Exception as e:
+        log.debug("gather: OCR thong bao loi: %s", e)
+        return None
+
+
+def _has_msg(ctx, img, name, why):
+    """Anh mau thong bao: co -> tim; thieu -> log 'thieu anh mau <ten>' (1 lan/gio) va tra False (dung OCR thay)."""
+    return tplneed.has(ctx.v, name, why) and bool(ctx.v.find(img, name))
 
 
 TAB_TH = 0.72  # chu tren thanh tab bi lech nua pixel khi cuon -> diem ~0.80; tab khac <= 0.65
@@ -163,27 +190,37 @@ def try_dispatch(ctx, rtype, level, max_level):
         ctx.tap_tpl("gather/chk_full_off", wait=0.6)
     ctx.tap_tpl("gather/btn_search_go", wait=3.0)
     img = ctx.shot()
-    if ctx.v.find(img, "gather/msg_not_found") or ctx.v.find(img, "gather/btn_search_go"):
+    if (_has_msg(ctx, img, "gather/msg_not_found", "thong bao khong tim thay mo")
+            or ctx.v.find(img, "gather/btn_search_go")):
         ctx.back_out()
         return NOT_FOUND
     # Ban do can giua mo vao 1 diem co dinh (~270,452 tren man 540x960). KHONG tinh theo mui ten xanh:
     # mui ten nhun len xuong nen lech ~25px -> cham trung o dat trong (menu Chuyen thanh/Chiem linh).
     cx, cy = ctx.cfg["gather"].get("node_xy", [ctx.W // 2, 452])
+    occupied = False
     for dx, dy in ((0, 0), (0, 12), (0, -12)):
         before = ctx.shot()
         ctx.tap(cx + dx, cy + dy, wait=1.2)
         if ctx.find("gather/btn_gather"):
             break
-        if ctx.find("gather/mine_occupied", fresh=False):  # mo da co nguoi
-            close_map_menu(ctx, before)
-            return NOT_FOUND
+        # mo da co nguoi (doi nguoi khac dang thu thap): KHONG bam nut nao tren bang mo (Tan cong / Trinh sat...)
+        if tplneed.has(ctx.v, "gather/mine_occupied", "bang mo dang bi chiem") and                 ctx.find("gather/mine_occupied", fresh=False):
+            occupied = True
         close_map_menu(ctx, before)  # cham trat (o dat trong / phien quan) -> dong menu (neu co) roi thu lech
+        if occupied:
+            log.info("  mo %s cap %d dang bi chiem - doi mo khac", rtype, level)
+            return OCCUPIED
     else:
         ctx.save_debug(f"no_gather_btn_{rtype}{level}")
         return NOT_FOUND
     g = ctx.cfg["gather"]
+    only_full = g.get("only_full", True)
     known = _mem(ctx).fact(ctx.dev.idx, f"mine_cap:{rtype}:{level}") if _mem(ctx) else None
-    amount = read_amount(ctx, g, known_cap=known, bounds=cap_bounds(ctx, rtype, level))
+    cap = gather_rules.table_cap(g.get("mine_caps"), rtype, level) or (int(known) if known else None)
+    # P3: biet dung tich mo day -> chi doc 1 lan (OCR hong thi dung dung tich), khong biet -> doc lai toi 3 lan nhu cu
+    read = read_amount(ctx, g, tries=1 if (cap and only_full) else 3, known_cap=cap,
+                       bounds=cap_bounds(ctx, rtype, level))
+    amount, src = gather_rules.choose_amount(read, cap, only_full)
     ctx.tap_tpl("gather/btn_gather", wait=1.5, fresh=False)
     if ctx.find("gather/msg_type_locked"):
         log.info("Chua du cap de thu thap %s - bo qua loai nay", rtype)
@@ -191,34 +228,34 @@ def try_dispatch(ctx, rtype, level, max_level):
             ctx.tap_first(ctx.POPUP_CLOSERS, wait=0.8)
         return LOCKED
     img = ctx.shot()
-    if ctx.v.find(img, "gather/msg_march_full"):
+    if _has_msg(ctx, img, "gather/msg_march_full", "thong bao het doi hanh quan"):
         ctx.close_popups()
         return FULL
-    if ctx.v.find(img, "gather/msg_no_troops"):
+    if _has_msg(ctx, img, "gather/msg_no_troops", "thong bao het linh"):
         ctx.back_out()
         return NO_TROOPS
     if not ctx.wait_for("gather/btn_march", timeout=5):
-        ctx.save_debug("no_march_panel")
+        kind = _msg(ctx.shot())          # thieu anh mau msg_* -> doc thong bao bang OCR
+        ctx.save_debug(f"no_march_panel_{kind or 'unknown'}")
         ctx.back_out()
-        return ERROR
+        return {"march_full": FULL, "no_troops": NO_TROOPS, "locked": LOCKED, "occupied": OCCUPIED}.get(kind, ERROR)
     ctx.tap_tpl("gather/btn_recommended", wait=1.0)
     img = ctx.shot()
     load = ocr.amount(ocr.text(img, tuple(g.get("load_roi", [300, 843, 50, 18])), "0123456789"))
     travel = ocr.seconds(ocr.text(img, tuple(g.get("travel_roi", [350, 905, 72, 15])), "0123456789:"))
-    log.info("  mo %s cap %d: con %s, tai trong doi %s, di mat %ss", rtype, level, amount, load, travel)
+    log.info("  mo %s cap %d: con %s (doc %s, %s), tai trong doi %s, di mat %ss", rtype, level, amount, read,
+             src or "-", load, travel)
+    if src == "bang" and read != amount:
+        log.info("  tru luong: dung dung tich mo day %s cho %s cap %d (OCR %s)", amount, rtype, level, read)
+        _ev(ctx, "cap_table", rtype, level, read)
     ctx._gather_load = load
     note_load(ctx, load)
-    if not amount and known and g.get("only_full", True):
-        # mo DAY cua mot cap co dung tich co dinh -> OCR hong thi dung gia tri da nho (#1 2026-11-22: oil/alloy cap 3-5
-        # 'unread' lien tuc nen quan doan lon bi day xuong mo cap 2 = 20000)
-        amount = int(known)
-        log.info("  khong doc duoc tru luong - dung tri nho %s cho %s cap %d", amount, rtype, level)
     m = _mem(ctx)
     if m:  # nho: dung tich mo day theo (loai, cap) + tai trong doi -> lan sau bo qua cap qua suc cho ma khong mo ban do
         if load:
             m.set_fact(ctx.dev.idx, "march_load", load)
-        if amount and g.get("only_full", True):
-            m.set_fact(ctx.dev.idx, f"mine_cap:{rtype}:{level}", max(amount, m.fact(ctx.dev.idx, f"mine_cap:{rtype}:{level}") or 0))
+        if amount and only_full:
+            m.set_fact(ctx.dev.idx, f"mine_cap:{rtype}:{level}", max(amount, int(known or 0)))
     # Chu du an 2026-11-19: LUON dam bao tai trong doi >= tru luong mo (doi cho het mo).
     # Khong doc duoc 1 trong 2 so -> khong gui (khong dam bao duoc). Phong thu so tan tat kiem tra nay.
     if g.get("load_ge_mine", True):
@@ -231,26 +268,55 @@ def try_dispatch(ctx, rtype, level, max_level):
             log.info("  tai trong %d < mo con %d - doi khong cho het, bo qua", load, amount)
             ctx.back_out()
             return TOO_BIG
-    disp = {"type": rtype, "level": level, "amount": amount, "load": load, "travel": travel, "t": time.time()}
+    now = time.time()
+    if travel and gather_rules.own_target(_dispatches(ctx), rtype, level, now, travel=travel):
+        # P3: cung loai/cap + cung thoi gian di voi doi minh vua gui ma chua toi = CUNG MO -> bam Xuat chinh se hien hop
+        # thoai "Chi huy truong khac..." (truoc P3 bot Huy o do = Huy oan, 7 lan 21-22/11) -> khong bam, doi cap khac
+        log.info("  mo %s cap %d: doi minh dang toi dung mo nay (di %ss) - khong xuat chinh", rtype, level, travel)
+        ctx.back_out()
+        return OWN
+    disp = {"type": rtype, "level": level, "amount": amount, "load": load, "travel": travel, "t": now}
     ctx.tap_tpl("gather/btn_march", wait=2.0)
     img = ctx.shot()
-    if ctx.v.find(img, "common/btn_cancel_exit"):
-        # Hop thoai xac nhan sau Xuat chinh (11 lan/ngay o #1, 2026-11-21: doi thu 2 gui vao CUNG mo doi truoc dang toi;
-        # nut Huy o y~624, khong phai hop thoai thoat game y~582). Truoc day bot bam Huy o lan goto sau nhung van
-        # bao 'ok' + ghi doi ao len web. Gio: luu anh, Huy, bo cap mo nay.
-        ctx.save_debug(f"march_confirm_{rtype}{level}")
-        log.warning("gather: Xuat chinh hien hop thoai xac nhan (%s cap %d, mo %s) - Huy, khong tinh la da gui",
-                    rtype, level, amount)
+    contested = ctx.v.has("gather/dlg_contested") and ctx.v.find(img, "gather/dlg_contested")
+    if contested or ctx.v.find(img, "common/btn_cancel_exit"):
+        # Hop thoai xac nhan sau Xuat chinh: "Chu y! Co Chi huy truong khac dang hanh quan den diem tai nguyen nay, neu
+        # ban tiep tuc hanh quan, co the se xay ra chien tranh! muon tiep tuc xuat chinh? [Huy] [Tiep tuc]".
+        # KHONG BAO GIO bam "Tiep tuc" (co the danh nhau voi nguoi choi khac - CLAUDE.md). Huy + doi mo khac.
+        if not contested and _msg(img, DLG_BAND) == "contested":
+            contested = True
+        own = gather_rules.own_target(_dispatches(ctx), rtype, level, now)
+        if contested:
+            kind = "own_dialog" if own else "contested"
+            ctx.save_debug(f"march_{kind}_{rtype}{level}")
+            log.warning("gather: hop thoai 'Chi huy truong khac dang hanh quan den mo nay' (%s cap %d, di %ss, %s) - Huy, "
+                        "doi mo khac", rtype, level, travel, "doi cua minh" if own else "doi khac")
+        else:
+            kind = "dialog_unknown"
+            ctx.save_debug(f"march_confirm_{rtype}{level}")
+            log.warning("gather: hop thoai la sau Xuat chinh (%s cap %d) - Huy, khong tinh la da gui", rtype, level)
+        _ev(ctx, kind, rtype, level, travel)
         ctx.tap_tpl("common/btn_cancel_exit", wait=1.0, fresh=False)
         ctx.back_out()
-        return ERROR
-    if ctx.v.find(img, "gather/btn_march"):  # van con bang -> khong co linh
-        log.info("Khong xuat chinh duoc (het linh?)")
+        return CONTESTED if contested else ERROR
+    if ctx.v.find(img, "gather/btn_march"):  # van con bang -> khong co linh / het doi
+        kind = _msg(img)
+        log.info("Khong xuat chinh duoc (%s)", kind or "het linh?")
         ctx.back_out()
-        return NO_TROOPS
+        return FULL if kind == "march_full" else NO_TROOPS
     ctx.last_dispatch = disp          # chi ghi khi THAT SU da gui (khong con bang / hop thoai)
     record_dispatch(ctx, disp)
     return OK
+
+
+def _dispatches(ctx):
+    """Cac lan gui gan day (state.json 'dispatches', giu qua cac lan ghe) + lan gui trong luot nay."""
+    st = getattr(ctx, "store", None)
+    out = list((st.inst(ctx.dev.idx).get("dispatches") or []) if st else [])
+    last = getattr(ctx, "last_dispatch", None)
+    if last and last not in out:
+        out.append(last)
+    return out
 
 
 def record_dispatch(ctx, d):
@@ -324,6 +390,33 @@ def sync_memory(ctx):
     for t in GATHER_TYPES:
         m.set_fact(idx, f"gather_top:{t}", None)
         m.set_fact(idx, f"gather_locked:{t}", None)
+
+
+HOLD_KEY = "gather_hold:{}:{}"       # fact: (loai, cap) tam bo toi moc nay (mo bi chiem / tranh chap / khong tim thay)
+
+
+def hold(ctx, rtype, lv, result):
+    """P3: tim kiem luon tra lai mo GAN NHAT -> mo bi chiem / tranh chap / khong co thi lan ghe sau cung vay. Nho
+    (loai, cap) toi moc gather_rules.skip_until de khong lap vo ich qua cac lan ghe."""
+    m = _mem(ctx)
+    kind = {OCCUPIED: "occupied", CONTESTED: "contested", NOT_FOUND: "not_found"}.get(result)
+    until = gather_rules.skip_until(kind, time.time(), ctx.cfg["gather"]) if kind else None
+    if m and until:
+        m.set_fact(ctx.dev.idx, HOLD_KEY.format(rtype, lv), [round(until), kind])
+
+
+def skip_reason(ctx, rtype, lv, now=None):
+    """Ly do bo (loai, cap) TRUOC khi mo bang tim kiem | None: dang tam bo (hold) hoac doi minh dang di toi mo do."""
+    now = now or time.time()
+    m = _mem(ctx)
+    h = m.fact(ctx.dev.idx, HOLD_KEY.format(rtype, lv)) if m else None
+    if h and h[0] > now:
+        return f"tam bo ({h[1]}) toi {time.strftime('%H:%M', time.localtime(h[0]))}"
+    d = gather_rules.own_target(_dispatches(ctx), rtype, lv, now)
+    if d:
+        _ev(ctx, "own_skip", rtype, lv)
+        return f"doi minh dang di toi mo nay (toi luc {time.strftime('%H:%M:%S', time.localtime(d['t'] + d['travel']))})"
+    return None
 
 
 LOAD_WINDOW_S = 3 * 86400     # tai trong lon nhat cua cac quan doan duoc nho toi da 3 ngay
@@ -416,9 +509,17 @@ def run(ctx, limit=None):
                     log.info("  %s cap %d: tri nho - mo lon hon tai trong doi, bo qua", rtype, lv)
                     exhausted.add((rtype, lv))
                     continue
+                why = skip_reason(ctx, rtype, lv)
+                if why:
+                    log.info("  %s cap %d: %s - bo qua", rtype, lv, why)
+                    exhausted.add((rtype, lv))
+                    continue
                 attempts += 1
                 result = try_dispatch(ctx, rtype, lv, max_lv)
                 log.info("  %s cap %d -> %s", rtype, lv, result)
+                _ev(ctx, {OK: "sent"}.get(result, result), rtype, lv)
+                if result in (OCCUPIED, CONTESTED, NOT_FOUND):
+                    hold(ctx, rtype, lv, result)
                 if result == OK:
                     sent += 1
                     break
@@ -431,7 +532,7 @@ def run(ctx, limit=None):
                     break
                 if result == TOO_BIG:   # chi nho khi quan doan nay la lon nhat biet (xem remember_too_big)
                     remember_too_big(ctx, rtype, lv, getattr(ctx, "_gather_load", None), min_lv)
-                if result in (NOT_FOUND, ERROR, TOO_BIG, UNREAD):
+                if result in (NOT_FOUND, ERROR, TOO_BIG, UNREAD, OWN, CONTESTED, OCCUPIED):
                     exhausted.add((rtype, lv))
             if result in (OK, FULL, NO_TROOPS, NO_SEARCH):
                 break

@@ -87,9 +87,22 @@ gather:
   node_amount_roi: [230, 521, 120, 17]  # dai chua "icon + so" con lai duoi mo (so can giua, doc bang mau xam)
   load_roi: [300, 843, 50, 18]          # "Tai trong quan doi: N" trong man Cai dat Quan doan
   travel_roi: [350, 905, 72, 15]        # dong ho duoi nut Xuat chinh
-  ocr: auto            # auto | tesseract | digits | none (digits = anh mau templates/digits/)
+  # "Hanh quan x/y": auto = anh chu so templates/mdigits (P3) -> Tesseract -> templates/digits; glyphs | tesseract | digits | none
+  ocr: auto
   tesseract_cmd: 'C:\Program Files\Tesseract-OCR\tesseract.exe'
   fallback_march_slots: 1   # khong doc duoc x/y (chua co doi nao di) -> gui toi da chung nay doi roi doc lai
+  # --- P3 (PM 2026-11-23): thu thap day hanh quan ---
+  infer_zero: true          # ban do the gioi KHONG co khung "Hanh quan" (anh mau gather/march_header) = 0 doi dang di -> 0/tong da biet
+  # dung tich mo DAY theo cap 1..8 (null = chua biet -> phai doc so tren ban do). Chi dung khi only_full: OCR tru luong
+  # hong / lech (vd '40000' cho mo 1040000) -> dung dung tich (lon nhat = an toan cho luat tai trong >= mo)
+  mine_caps:
+    metal: [40000, 80000, 160000, 320000, 560000, 800000, 1040000, 1320000]
+    food: [40000, 80000, 160000, 320000, 560000, 800000, 1040000, 1320000]
+    alloy: [null, null, 10000, 20000, 35000, 50000, 62500, 82500]
+    oil: [null, 20000, 40000, 80000, null, 200000, 260000, 330000]
+  contested_skip_min: 20    # hop thoai "Chi huy truong khac dang hanh quan den..." -> Huy, tam bo (loai, cap) N phut (KHONG bao gio Tiep tuc)
+  occupied_skip_min: 30     # mo dang bi chiem (anh mau gather/mine_occupied) -> tam bo (loai, cap) N phut
+  notfound_skip_min: 30     # tim kiem khong ra mo (loai, cap) -> tam bo N phut (truoc P3: moi lan ghe tim lai)
 observe:
   read_hq: true            # doc cap nha chinh (cham avatar) khi gia tri da cu hon 6 gio
 
