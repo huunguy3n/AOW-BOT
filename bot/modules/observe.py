@@ -171,11 +171,16 @@ def run(ctx):
     res = ocr.topbar(img)
     now = time.time()
     used_total = ctx.read_marches() if world else None
+    reserve = 0
     try:
         from bot.modules import gather
-        gather.rebels_reserve(ctx)          # cap nhat facts.rebels_reserve cho agent (het luot phan quan -> tra quan doan)
+        reserve = gather.rebels_reserve(ctx)  # cap nhat facts.rebels_reserve cho agent (het luot phan quan -> tra quan doan)
     except Exception as e:
         log.debug("rebels_reserve: %s", e)
+    if world and getattr(ctx, "mem", None) and hasattr(ctx.mem, "log_march"):
+        # P3: % lan quan sat 'Hanh quan' day (report_ro); khong doc duoc cung ghi (used/total None) de dem ti le doc hut
+        ctx.mem.log_march(ctx.dev.idx, now, used_total[0] if used_total else None,
+                          used_total[1] if used_total else None, reserve, getattr(ctx, "_march_src", None))
     used = used_total[0] if used_total else 0
     rows = ocr.marches(img, used) if used else []
     st = ctx.store.inst(ctx.dev.idx) if getattr(ctx, "store", None) else {}

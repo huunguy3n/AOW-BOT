@@ -58,8 +58,15 @@ def glyphs(d=None):
     global _GLYPHS
     if d is None and _GLYPHS is not None:
         return _GLYPHS
+    out = load_glyph_dir(d or GLYPH_DIR)
+    if d is None:
+        _GLYPHS = out
+    return out
+
+
+def load_glyph_dir(path):
+    """{ky tu: [anh xam]} tu 1 thu muc anh chu so (<so>[bien the].png, slash*.png). Thieu thu muc -> {}."""
     out = {}
-    path = d or GLYPH_DIR
     if os.path.isdir(path):
         for f in sorted(os.listdir(path)):
             if not f.endswith(".png"):
@@ -70,21 +77,28 @@ def glyphs(d=None):
             ch = "/" if f.startswith("slash") else f[0]
             if ch == "/" or ch.isdigit():
                 out.setdefault(ch, []).append(g)
-    if d is None:
-        _GLYPHS = out
     return out
 
 
 def read_glyphs(img, x, y, tpls=None, th=GLYPH_TH):
-    """Lop 1 (ham thuan): doc 'x/y' bang anh chu so quanh icon tam (x, y) -> (dang chay, tong) | None.
-    Moi ky tu: diem khop cao nhat tai moi cot; giu dinh khong trung nhau (cach >= 4px), xep theo x, phai co dang
-    'so / so' cung hang (lech y <= 3px)."""
-    tpls = glyphs() if tpls is None else tpls
-    if "/" not in tpls or not any(k.isdigit() for k in tpls):
-        return None
+    """Lop 1 (ham thuan): doc 'x/y' bang anh chu so quanh icon tam (x, y) -> (dang chay, tong) | None."""
     dx, dy, w, h = GLYPH_OFF
-    x0, y0 = max(0, x + dx), max(0, y + dy)
-    g = cv2.cvtColor(img[y0:y0 + h, x0:x0 + w], cv2.COLOR_BGR2GRAY)
+    return read_glyph_box(img, (x + dx, y + dy, w, h), glyphs() if tpls is None else tpls, th, parse)
+
+
+def read_glyph_box(img, box, tpls, th=GLYPH_TH, parse_fn=None):
+    """Ham thuan dung chung (P2 hang cho, P3 'Hanh quan x/y'): doc 'so/so' trong vung box=(x, y, w, h) bang anh chu so.
+    Moi ky tu: diem khop cao nhat tai moi cot; giu dinh khong trung nhau (cach >= 4px), xep theo x, phai co dang
+    'so / so' cung hang (lech y <= 3px). parse_fn: chuoi 'a/b' -> gia tri | None (mac dinh parse cua hang cho)."""
+    parse_fn = parse_fn or parse
+    if not tpls or "/" not in tpls or not any(k.isdigit() for k in tpls):
+        return None
+    x, y, w, h = box
+    x0, y0 = max(0, x), max(0, y)
+    crop = img[y0:y + h, x0:x + w]
+    if crop.size == 0:
+        return None
+    g = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
     hits = []
     for ch, lst in tpls.items():
         for t in lst:
@@ -109,7 +123,7 @@ def read_glyphs(img, x, y, tpls=None, th=GLYPH_TH):
             continue
         if abs(a[2] - k[2]) > 3 or abs(b[2] - k[2]) > 3 or k[1] - a[1] > 10 or b[1] - k[1] > 10:
             continue
-        v = parse(f"{a[3]}/{b[3]}")
+        v = parse_fn(f"{a[3]}/{b[3]}")
         if v:
             return v
     return None

@@ -11,6 +11,8 @@ Chi so (cung cach tinh o moi lan chay de so sanh duoc):
   useless_visits/_h            lan ghe smart ma moi buoc trigger trong ly do deu tra ve 0
   reasons                      lan ghe smart theo ly do (da bo gio/so)
   steps                        theo buoc: lan, phut, so lan tra 0, phut tra 0
+  march                        P3: % lan quan sat 'Hanh quan x/y' day (march_obs; DB cu: bang observations)
+  gather_ev                    P3: su kien thu thap theo loai (own_dialog = Huy oan, contested, occupied...)
 """
 import argparse, json, os, re, sqlite3, statistics, sys, time
 
@@ -89,6 +91,8 @@ def metrics(q, t0=None, t1=None, insts=None):
             s["zero_min"] += (dur or 0) / 60
     out["perf"] = perf_metrics(q, cond.replace("started", "at"), args)
     out["queues"] = queue_metrics(q, cond.replace("started", "at"), args)
+    out["march"] = march_metrics(q, cond.replace("started", "at"), args)
+    out["gather_ev"] = gather_events(q, cond.replace("started", "at"), args)
     out["vm_h"], out["useless_h"] = round(out["vm_h"], 2), round(out["useless_h"], 2)
     for s in out["steps"].values():
         s["min"], s["zero_min"] = round(s["min"], 1), round(s["zero_min"], 1)
@@ -104,6 +108,43 @@ def queue_metrics(q, cond, args):
                                   f"WHERE {cond} GROUP BY kind", args):
         out[kind] = {"n": n, "idle_pct": round(100 * (idle or 0) / n, 1), "idle_slots_avg": round((slots or 0) / n, 2)}
     return out
+
+
+def _has_table(q, name):
+    return bool(q("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)))
+
+
+def march_metrics(q, cond, args):
+    """P3: lan quan sat cuoi luot co 'Hanh quan' DAY. Bang march_obs (P3): day = used >= total - reserve (de danh cho
+    phan quan), khong doc duoc thi dem rieng. Khoang khong co march_obs (truoc P3) -> bang observations, cach cu:
+    khong doc duoc bi ghi 0 nen ti le day cu bi THAP hon thuc te."""
+    if _has_table(q, "march_obs"):
+        rows = q(f"SELECT used, total, reserve, src FROM march_obs WHERE {cond}", args)
+        if rows:
+            read = [(u, t, r or 0) for u, t, r, _ in rows if t]
+            full = sum(u >= t - r for u, t, r in read)
+            strict = sum(u >= t for u, t, _ in read)
+            src = {}
+            for *_, s in rows:
+                src[s or "khong doc duoc"] = src.get(s or "khong doc duoc", 0) + 1
+            return {"src": "march_obs", "n": len(rows), "read": len(read),
+                    "full_pct": round(100 * full / len(read), 1) if read else None,
+                    "full_strict_pct": round(100 * strict / len(read), 1) if read else None, "by_src": src}
+    if not _has_table(q, "observations"):
+        return {}
+    rows = q(f"SELECT march_used, march_total FROM observations WHERE {cond} AND march_total > 0", args)
+    if not rows:
+        return {}
+    full = sum((u or 0) >= t for u, t in rows)
+    return {"src": "observations", "n": len(rows), "read": len(rows), "full_pct": round(100 * full / len(rows), 1),
+            "full_strict_pct": round(100 * full / len(rows), 1), "by_src": {}}
+
+
+def gather_events(q, cond, args):
+    """P3 (bang gather_ev): {loai su kien: so lan}. Chua co bang -> {}."""
+    if not _has_table(q, "gather_ev"):
+        return {}
+    return {k: n for k, n in q(f"SELECT kind, COUNT(*) FROM gather_ev WHERE {cond} GROUP BY kind ORDER BY 2 DESC", args)}
 
 
 def perf_metrics(q, cond, args):
@@ -140,6 +181,16 @@ def show(title, m):
         print("   hang cho (lan quan sat con cho ranh):")
         for k, v in m["queues"].items():
             print(f"     {k:<10}{v['idle_pct']:>6} % / {v['n']} lan, TB {v['idle_slots_avg']} cho ranh")
+    mc = m.get("march")
+    if mc:
+        print(f"   hanh quan day (P3, nguon {mc['src']}): {mc['full_pct']} % / {mc['read']} lan doc duoc "
+              f"({mc['n']} lan quan sat); day tuyet doi {mc['full_strict_pct']} %; nguon doc {mc['by_src']}")
+    if m.get("gather_ev"):
+        ev = m["gather_ev"]
+        print(f"   thu thap (gather_ev): Huy oan (own_dialog) {ev.get('own_dialog', 0)}, hop thoai la "
+              f"{ev.get('dialog_unknown', 0)}, tranh chap {ev.get('contested', 0)}, bo qua mo minh dang toi "
+              f"{ev.get('own_skip', 0) + ev.get('own', 0)}, khong doc tru luong {ev.get('unread', 0)}")
+        print("     " + ", ".join(f"{k} {n}" for k, n in ev.items()))
     if m.get("perf"):
         print("   hieu nang (bang perf):")
         for k, v in list(m["perf"]["kinds"].items())[:15]:

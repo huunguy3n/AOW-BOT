@@ -49,6 +49,10 @@ CREATE TABLE IF NOT EXISTS perf (
   n INTEGER, total REAL, p50 REAL, p90 REAL, max REAL);
 CREATE TABLE IF NOT EXISTS queue_obs (
   inst INTEGER NOT NULL, at REAL NOT NULL, kind TEXT NOT NULL, used INTEGER, total INTEGER);
+CREATE TABLE IF NOT EXISTS march_obs (
+  inst INTEGER NOT NULL, at REAL NOT NULL, used INTEGER, total INTEGER, reserve INTEGER, src TEXT);
+CREATE TABLE IF NOT EXISTS gather_ev (
+  inst INTEGER NOT NULL, at REAL NOT NULL, kind TEXT NOT NULL, rtype TEXT, level INTEGER, note TEXT);
 CREATE INDEX IF NOT EXISTS exp_tpl ON exp(tpl, x, y);
 CREATE INDEX IF NOT EXISTS runs_inst_t ON runs(inst, started);
 CREATE INDEX IF NOT EXISTS visits_inst_t ON visits(inst, started);
@@ -161,6 +165,18 @@ class Memory:
             self._conn().executemany("INSERT INTO queue_obs(inst, at, kind, used, total) VALUES (?,?,?,?,?)", rows)
         except Exception as e:
             self._warn(e)
+
+    def log_march(self, inst, at, used, total, reserve=0, src=None):
+        """P3: 1 lan quan sat 'Hanh quan x/y' cuoi luot (observe). used/total None = khong doc duoc (van ghi de dem).
+        reserve = so quan doan de danh cho phan quan (gather dung som co chu dich) - report_ro tinh 'day' = used >= total - reserve."""
+        self._exec("INSERT INTO march_obs(inst, at, used, total, reserve, src) VALUES (?,?,?,?,?,?)",
+                   (inst, at, used, total, reserve or 0, src))
+
+    def log_gather(self, inst, kind, rtype=None, level=None, note=None):
+        """P3: su kien thu thap (sent, own_skip, own_dialog = Huy oan, contested, dialog_unknown, occupied, not_found,
+        unread, cap_table, too_big, full, no_troops) -> report_ro dem theo loai."""
+        self._exec("INSERT INTO gather_ev(inst, at, kind, rtype, level, note) VALUES (?,?,?,?,?,?)",
+                   (inst, time.time(), kind, rtype, level, None if note is None else str(note)[:200]))
 
     def log_perf(self, visit, inst, step, rows):
         """A-MEAS-1: tong hop bo dem hieu nang cua 1 buoc (bot/perf.py Perf.drain())."""

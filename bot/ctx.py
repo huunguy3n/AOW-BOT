@@ -594,23 +594,42 @@ class Ctx:
 
     # ---------- doc "Hanh quan x/y" ----------
     def read_marches(self):
+        """'Hanh quan x/y' -> (dang di, tong) | None. P3: anh chu so mdigits truoc, Tesseract/digits sau, roi khung
+        'Hanh quan' vang mat tren ban do the gioi = 0 doi (bot/march_count.py)."""
+        from bot import march_count
         g = self.cfg["gather"]
         img = self.shot()
         x, y, w, h = g["march_counter_roi"]
         roi = img[y:y + h, x:x + w]
         mode = g.get("ocr", "auto")
-        val = None
-        if mode in ("auto", "tesseract"):
-            val = self._ocr_tesseract(roi, g.get("tesseract_cmd"))
+        val, src = None, None
+        if mode in ("auto", "glyphs"):
+            val, src = march_count.read_glyphs(img), "glyphs"
+        if val is None and mode in ("auto", "tesseract"):
+            val, src = self._ocr_tesseract(roi, g.get("tesseract_cmd")), "tesseract"
         if val is None and mode in ("auto", "digits"):
-            val = self._ocr_digits(roi)
+            val, src = self._ocr_digits(roi), "digits"
         if val is None and mode in ("auto", "tesseract"):   # #1: nguong 150 doc "4/5" thanh "4S" -> Otsu, phong 4
             from bot import ocr as _ocr
-            val = self._parse(_ocr.text(img, (x, y, w, h), "0123456789/", scale=4))
+            val, src = self._parse(_ocr.text(img, (x, y, w, h), "0123456789/", scale=4)), "tesseract"
+        if g.get("infer_zero", True):
+            got = march_count.infer(val, march_count.header_state(self.v, img), self._known_march_total())
+            if got and not val:
+                src = "no_header"
+                log.info("Hanh quan: khong thay khung tren ban do the gioi -> 0/%d", got[1])
+            val = got
+        self._march_src = src if val else None
         if val:
             log.info("Hanh quan %d/%d", *val)
             self._march = (val[0], val[1], time.time())
         return val
+
+    def _known_march_total(self):
+        c = getattr(self, "_march", None)
+        if c:
+            return c[1]
+        st = self.store.inst(self.dev.idx) if getattr(self, "store", None) else {}
+        return st.get("march_total")
 
     def march_full(self):
         """Het doi hanh quan? Chu du an 2026-11-21: so quan doan toi da = so hanh dong ngoai the gioi cung luc

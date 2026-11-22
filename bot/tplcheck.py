@@ -20,7 +20,10 @@ def needed(cfg):
     g = cfg.get("gather", {})
     for r in g.get("priority", []):
         names.add(f"gather/tab_{r}")
-    if g.get("ocr", "auto") in ("auto", "digits"):
+    if g.get("ocr", "auto") in ("auto", "glyphs"):
+        # P3: "Hanh quan x/y" doc bang templates/mdigits (cat tu anh that; 0/6-9 chua gap: khung an khi 0 doi, toi da 5 doi)
+        names |= {f"mdigits/{d}" for d in "12345"} | {"mdigits/slash"}
+    if g.get("ocr", "auto") == "digits":     # bo du phong cu: chi bat buoc khi chon rieng ocr: digits
         names |= {f"digits/{d}" for d in "0123456789"} | {"digits/slash"}
     for n in range(g.get("min_level", 1), g.get("max_level", 6) + 1):
         names.add(f"gather/lv/{n}")

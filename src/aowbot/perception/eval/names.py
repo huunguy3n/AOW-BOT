@@ -79,6 +79,8 @@ NAMES: Mapping[str, str] = MappingProxyType({
     "gather/chk_full_off": "Ô chọn Đầy (tắt)", "gather/msg_type_locked": "Thông báo loại mỏ bị khóa",
     "gather/tab_alloy": "Thẻ Hợp kim", "gather/tab_food": "Thẻ Thực phẩm", "gather/tab_metal": "Thẻ Luyện kim",
     "gather/tab_oil": "Thẻ Lọc dầu",
+    "gather/march_header": "Khung Hành quân (bản đồ thế giới)",
+    "gather/dlg_contested": "Hộp thoại Chỉ huy trưởng khác đang tới mỏ",
     # --- Tướng
     "hero/arrow_up": "Mũi tên Tăng cấp", "hero/btn_book": "Nút Sách kinh nghiệm", "hero/btn_levelup": "Nút Tăng cấp tướng",
     "hero/btn_star": "Nút Sao tướng", "hero/btn_star_up": "Nút Tăng sao", "hero/story_chest": "Rương cốt truyện",

@@ -12,7 +12,8 @@ def template_ids():
     for f in glob.glob(os.path.join(ROOT, "templates", "*", "*.png")):
         grp = os.path.basename(os.path.dirname(f))
         stem = os.path.basename(f)[:-4]
-        if "@" not in stem and grp not in ("digits", "qdigits"):   # anh chu so (bot/queues.py), khong phai vat the
+        # anh chu so (bot/queues.py, bot/march_count.py), khong phai vat the
+        if "@" not in stem and grp not in ("digits", "qdigits", "mdigits"):
             out.append(f"{grp}/{stem}")
     return out
 
