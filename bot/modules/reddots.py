@@ -13,6 +13,7 @@ lai lam hien cham do moi. Buoc nay chay ngay truoc 'observe':
 import logging, os
 import cv2
 from bot.badges import red_dots
+from aowbot.domain import drain
 from bot import scheduler, screens
 from bot.modules import notify, rewards, intel, campaign, daily, alliance, play, rebels, research, train, upgrade, chat
 
@@ -125,6 +126,18 @@ def allowed(kind, cfg):
     if kind == "shop_gift":
         return mods.get("rewards", True), "modules.rewards"
     return True, ""
+
+
+KIND_STEP = {"intel": "intel", "campaign": "campaign", "daily": "daily", "play": "play", "alliance": "alliance",
+             "research": "research", "train": "train", "build": "upgrade", "rally": "rebels"}
+
+
+def already_idle(ctx, kind):
+    """Buoc rieng cua icon nay vua chay TRONG LAN GHE NAY va khong lam duoc gi -> mo lai cham do cung vo ich
+    (cham do van hien vi game dem thong bao khac; do 2026-11-22: campaign/intel/daily mo lai ~20-40 s moi cai)."""
+    step = KIND_STEP.get(kind)
+    vd = getattr(ctx, "visit_done", None)
+    return bool(step and vd is not None and step in vd and not drain.worked(vd[step]))
 
 
 def _handle(ctx, kind, x, y):
@@ -272,6 +285,11 @@ def run(ctx):
                 dead.add(_key((x, y)))
                 ignored.add(_key((x, y)))      # co y bo qua -> khong tinh la 'con sot'
                 log.info("Cham do %s @%d,%d: dang tat trong tuy chon (%s) - bo qua", kind, x, y, gate)
+                continue
+            if rc.get("skip_idle_steps", True) and already_idle(ctx, kind):
+                dead.add(_key((x, y)))
+                ignored.add(_key((x, y)))
+                log.info("Cham do %s @%d,%d: buoc rieng vua chay xong khong lam duoc gi - bo qua", kind, x, y)
                 continue
             n = _handle(ctx, kind, x, y)
             n = n if isinstance(n, int) else 0

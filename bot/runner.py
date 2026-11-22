@@ -502,6 +502,7 @@ class Runner:
             lost = 0   # so buoc lien tiep goto() khong ve duoc thanh pho/ban do (vd canh tan thu toi den, #4 2026-11-19)
             queue = list(ORDER) + [("observe", observe)]
             qi, done, rerun = 0, {}, collections.Counter()
+            ctx.visit_done = done   # reddots: biet buoc nao vua chay xong ma khong lam duoc gi
             dcfg = cfg.get("drain") or {}
             t_visit = time.time()
             while qi < len(queue):

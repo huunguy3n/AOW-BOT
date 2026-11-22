@@ -170,6 +170,7 @@ notify:
   events: true            # o su kien cot phai (nhan qua an toan)
 reddots:
   max_rounds: 6        # lap toi khi het cham do; dung som neu 1 vong khong nhan them duoc gi
+  skip_idle_steps: true  # cham do cua icon ma buoc rieng vua chay trong lan ghe nay va tra 0 -> khong mo lai
   dead_h: 2            # cham do mo ra khong nhan duoc gi -> bo qua vi tri do N gio
   chat_clear: true      # mo roi thoat bang Tro chuyen de mat huy hieu tin nhan chua doc (chi doc, khong gui) - chu du an 2026-11-22
 recruit:
