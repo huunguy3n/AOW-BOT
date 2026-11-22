@@ -3,9 +3,10 @@
 Chi nghe tren 127.0.0.1 (may nay). Muon xem tu dien thoai cung mang LAN: --host 0.0.0.0 (khong co mat khau!).
 """
 import logging, os, time
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, redirect, request, send_from_directory
 
 from web.options import MODULES, GROUPS
+from bot.vnames import fix_name
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SHOTS = os.path.join(os.path.dirname(HERE), "logs", "shots")
@@ -73,8 +74,12 @@ def create_app(runner, store, ring):
             c = store.cfg_for(base, idx)
             mem = getattr(runner, "mem", None)
             bo = [{"step": b[0], "fails": b[1], "until": b[2], "note": b[3]} for b in mem.backoffs(idx)] if mem else []
+            rs = s.get("research")
+            if isinstance(rs, dict) and rs.get("name"):   # ten cu luu truoc khi co fix_name: sua luc hien thi
+                s = {**s, "research": {**rs, "name": fix_name(rs["name"])}}
             inst.append({**s, "idx": idx, "enabled": s.get("enabled", True), "backoff": bo, "rebels": rebels_info(mem, idx, c), "timers": timers_info(mem, idx),
                          "smart": g.get("schedule", {}).get("mode") == "smart",
+                         "mode": (c.get("schedule") or {}).get("mode"),
                          "modules": {k: bool(c["modules"].get(k)) for k, _ in MODULES}})
         opts = [{"group": name, "items": [{**o, "value": get_path(g, o["key"])} for o in items]}
                 for name, items in GROUPS]
@@ -118,6 +123,18 @@ def create_app(runner, store, ring):
         store.set_settings(idx, {"modules": {j["name"]: bool(j["on"])}})
         return jsonify(ok=True)
 
+    @app.post("/api/instance/<int:idx>/mode")
+    def set_mode(idx):
+        """Che do theo may: lich chung (xoa ghi de) | agent | demo (hoc mau: bot dung yen ghi thao tac cua ban)."""
+        m = (request.json or {}).get("mode")
+        if m not in ("", "agent", "demo", "follow"):
+            return jsonify(ok=False, error="che do khong hop le"), 400
+        if m:
+            store.set_settings(idx, {"schedule": {"mode": m}})
+        else:
+            store.unset_setting(idx, "schedule.mode")
+        return jsonify(ok=True)
+
     @app.post("/api/option")
     def option():
         j = request.json or {}
@@ -142,7 +159,7 @@ def create_app(runner, store, ring):
     # ---------- giai doan I: "Bot hoc duoc gi" + chu du an day bot ----------
     ROOT = os.path.dirname(HERE)
     IMG_DIRS = {"unknown": os.path.join(ROOT, "logs", "unknown"), "human": os.path.join(ROOT, "logs", "human"),
-                "cand": os.path.join(ROOT, "data", "learn", "cand")}
+                "cand": os.path.join(ROOT, "data", "learn", "cand"), "tpl": os.path.join(ROOT, "templates")}
 
     def _safe(kind, rel):
         base = IMG_DIRS.get(kind)
@@ -151,13 +168,11 @@ def create_app(runner, store, ring):
         p = os.path.normpath(os.path.join(base, rel))
         return p if p.startswith(os.path.normpath(base)) and p.endswith(".png") and os.path.exists(p) else None
 
+    # /hoc va /agent da gop vao tab "Học & Agent" cua trang chinh; giu URL cu de link/bookmark khong gay
     @app.get("/hoc")
-    def learn_page():
-        return send_from_directory(HERE, "learn.html")
-
     @app.get("/agent")
-    def agent_page():
-        return send_from_directory(HERE, "agent.html")
+    def learn_agent_page():
+        return redirect("/#hoc")
 
     @app.get("/api/agent")
     def agent_api():
@@ -195,6 +210,13 @@ def create_app(runner, store, ring):
                     hum.append(f"{day}/{f}")
         s["human"] = hum[:40]
         s["labels"] = list(learn.SCREEN_LABELS)
+        from bot import screen_types
+        s["types"], s["intents"] = screen_types.catalog(), screen_types.INTENTS
+        try:
+            from bot import human_review
+            s["human_queue"] = human_review.pending(runner.vision)
+        except Exception as e:      # hang cho loi khong duoc lam hong ca trang
+            s["human_queue"], s["human_queue_error"] = [], str(e)
         return jsonify(s)
 
     @app.get("/learnimg/<kind>/<path:rel>")
@@ -206,24 +228,39 @@ def create_app(runner, store, ring):
 
     @app.post("/api/learn/teach")
     def learn_teach():
-        """Chu du an dan nhan man la (+ cho can cham). Man -> tests/fixtures/screens/<nhan>/ (hoi quy) + mau kNN."""
-        import cv2, shutil
-        from bot import learn
+        """Chu du an day 1 man: loai man (goc hoac chi tiet) + cho cham + muc dich (thoat / nhan / tien trinh / mo).
+        src='human': tu hang cho thao tac tay (khong xoa anh goc); mac dinh: man la (xoa khoi logs/unknown)."""
+        import cv2
+        from bot import human_review, screen_types
         j = request.json or {}
-        p = _safe("unknown", j.get("file", ""))
-        label = j.get("label")
-        if not p or (label not in learn.SCREEN_LABELS and label != "skip"):
-            return jsonify(ok=False, error="file/nhan khong hop le"), 400
-        if label != "skip":
-            img = cv2.imread(p)
+        human = j.get("src") == "human"
+        p = human_review.path_of(j.get("file")) if human else _safe("unknown", j.get("file", ""))
+        kind = j.get("type") or j.get("label")          # 'label' = ten cu (chi loai goc)
+        if not p or not kind:
+            return jsonify(ok=False, error="file/loai man khong hop le"), 400
+        if kind != "skip":
             x, y = j.get("x"), j.get("y")
-            learn.teach(runner.mem, img, label, None if x is None else int(x), None if y is None else int(y))
-            # thu muc RIENG (identify chua nhan ra cac man nay -> de chung tests/fixtures/screens se lam hong hoi quy)
-            dst = os.path.join(ROOT, "tests", "fixtures", "taught", label)
-            os.makedirs(dst, exist_ok=True)
-            shutil.copy(p, os.path.join(dst, os.path.basename(p)))
-        os.remove(p)
+            err = screen_types.teach(runner.mem, runner.vision, cv2.imread(p), j["file"], kind, j.get("intent"),
+                                     None if x is None else int(x), None if y is None else int(y),
+                                     "human" if human else "unknown")
+            if err:
+                return jsonify(ok=False, error=err), 400
+        if human:
+            human_review.mark_done(j["file"], "skip" if kind == "skip" else f"taught:{kind}")
+        else:
+            os.remove(p)
         return jsonify(ok=True)
+
+    @app.post("/api/learn/type")
+    def learn_type():
+        """Them loai man chi tiet (ten tieng Viet + loai goc + co 'bot khong lam theo')."""
+        from bot import screen_types
+        j = request.json or {}
+        try:
+            key = screen_types.add(j.get("vn"), j.get("parent"), j.get("no_follow"), j.get("note") or "")
+        except ValueError as e:
+            return jsonify(ok=False, error=str(e)), 400
+        return jsonify(ok=True, key=key)
 
     @app.post("/api/learn/candidate")
     def learn_candidate():
@@ -237,11 +274,22 @@ def create_app(runner, store, ring):
             runner.vision.reload_variants()
         return jsonify(ok=True, promoted=bool(res))
 
+    @app.post("/api/learn/variant/remove")
+    def learn_variant_remove():
+        """Go bien the anh mau da hoc (duyet nham) -> data/learn/removed/, bot thoi dung ngay."""
+        from bot import learn
+        if not learn.remove_variant((request.json or {}).get("path")):
+            return jsonify(ok=False), 400
+        runner.vision.reload_variants()
+        return jsonify(ok=True)
+
     @app.get("/api/logs")
     def logs():
         n = int(request.args.get("n", 200))
         return jsonify(lines=list(ring.lines)[-n:])
 
+    from web import perception_api
+    perception_api.register(app)
     return app
 
 

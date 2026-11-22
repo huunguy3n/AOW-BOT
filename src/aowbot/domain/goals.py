@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from types import MappingProxyType
 
 from aowbot.domain.marches import Availability
 
@@ -15,6 +16,13 @@ class Goal(Enum):
     MARCH_UTILIZATION = "march_utilization"
     RESOURCE_FARMING = "resource_farming"
     CONTINUOUS_CONSTRUCTION = "continuous_construction"
+    TRAINING = "training"            # Q4: 3 nha linh luon huan luyen toi gioi han T3
+    RESEARCH = "research"            # Q4: hang nghien cuu luon chay toi khi het node / cho nha chinh
+
+
+# Q4 - thu tu chu du an 2026-11-21: cham do > loi choi > tinh bao > phan quan > thu thap (~80 %), sau do cac hang cho
+# luon phai chay (huan luyen, xay, nghien cuu). Cac buoc dau do runner cu chay moi lan ghe; agent lo phan hang cho.
+QUEUE_PRIORITY = MappingProxyType({Goal.TRAINING: 0.6, Goal.RESEARCH: 0.4})
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +56,15 @@ def march_utilization(avail: Availability | None, total: int | None, f: AccountF
         return GoalStatus(Goal.MARCH_UTILIZATION, prio, 1.0, False, "chua biet so doi hanh quan")
     deficit = avail.free / total
     return GoalStatus(Goal.MARCH_UTILIZATION, prio, deficit, avail.free == 0, f"{avail.free}/{total} doi ranh")
+
+
+def queue_busy(goal: Goal, used_total: tuple[int, int] | None, priority: float) -> GoalStatus:
+    """Q4: hang cho (nha linh / nghien cuu) 'dang chay/tong' doc tu cot icon trai thanh pho (bot/queues.py)."""
+    if used_total is None:
+        return GoalStatus(goal, priority, 1.0, False, "chua biet hang cho")
+    used, total = used_total
+    idle = max(0, total - used)
+    return GoalStatus(goal, priority, idle / max(1, total), idle == 0, f"{idle}/{total} ranh")
 
 
 def continuous_construction(f: AccountFacts) -> GoalStatus:

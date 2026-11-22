@@ -13,8 +13,8 @@ from aowbot.domain import policy
 from aowbot.domain.policy import SHIELD_TAP as TAP, shield_spend as spent_amount
 
 log = logging.getLogger("aow")
-ROWS = {1: "defense/row_1h", 12: "defense/row_12h", 72: "defense/row_3d"}
-PRICE = {1: 500, 12: 4800, 72: 25200}
+ROWS = {1: "defense/row_1h", 8: "defense/row_8h", 12: "defense/row_12h", 72: "defense/row_3d"}
+PRICE = {1: 500, 8: 3600, 12: 4800, 72: 25200}   # 8h: gia uoc luong, chi dung khi allow_buy (ngay chien tranh khong mua)
 ACTIVE_ROI = (130, 79, 280, 17)   # "Thoi gian co hieu luc 2d:05:54:58"
 
 
@@ -96,9 +96,12 @@ def parse_owned(text):
     return int(t) if t.isdigit() else None
 
 
-def shield(ctx, force=False):
+def shield(ctx, force=False, hours=None, allow_buy=None, extend=False):
+    """hours/allow_buy: ghi de cau hinh (ngay chien tranh: 8h/12h, chi dung vat pham). extend=True: bat them khi
+    van con khien (gia han truoc khi het) thay vi coi la 'active'."""
     d = ctx.cfg.get("defense", {})
-    hours = int(d.get("shield_hours", 1))
+    hours = int(hours if hours is not None else d.get("shield_hours", 1))
+    buy = bool(d.get("shield_buy_gems")) if allow_buy is None else bool(allow_buy)
     if hours not in ROWS:
         log.error("defense.shield_hours = %s khong hop le (chi %s) - khong bat khien", hours, sorted(ROWS))
         return "error"
@@ -109,7 +112,7 @@ def shield(ctx, force=False):
         return "error"
     img = ctx.shot()
     digits = re.findall(r"\d", ocr.text(img, ACTIVE_ROI, "0123456789d:"))
-    if any(c != "0" for c in digits):  # con thoi gian bao ho (00:00:00 / trong = khong con)
+    if not extend and any(c != "0" for c in digits):  # con thoi gian bao ho (00:00:00 / trong = khong con)
         log.info("Dang con bao ho (%s) - khong can bat khien", ocr.text(img, ACTIVE_ROI))
         ctx.back_out()
         return "active"
@@ -122,7 +125,7 @@ def shield(ctx, force=False):
     btn = (469, row[1] + 27)
     price = PRICE[hours]
     act, why = shield_choice(owned, gems_before, price, _spent_today(ctx), d.get("gem_cap_daily", 0),
-                             bool(d.get("shield_buy_gems")))
+                             buy)
     if act not in TAP:
         log.warning("Khong bat khien %dh: %s", hours, why)
         ctx.back_out()

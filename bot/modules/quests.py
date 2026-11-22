@@ -6,7 +6,10 @@ cao cap co the ton kim cuong) - tien do hang ngay den tu cac buoc khac (gui quan
 Nhan thuong nhiem vu da xong: buoc 'daily'.
 """
 import logging
-from bot import build
+import time
+
+from aowbot.domain import blockers
+from bot import build, game_msg, screens
 from bot.modules import tutorial
 
 log = logging.getLogger("aow")
@@ -55,10 +58,57 @@ def _block_battle(ctx):
         log.info("Nhiem vu chuong thua tran -> chi danh lai khi luc chien >= %d", need)
 
 
+ROW_MAX_DIST = 12   # bit lech toi da cung 1 dong (do tren anh bang nhiem vu: cung dong 0-3, khac dong >= 28)
+
+
+def row_key(img, p):
+    """Dau van tay dong nhiem vu = dhash vung TIEU DE (tren nut Den, bo so tien do x/y hay doi)."""
+    y = int(p[1])
+    return screens.dhash(img[max(0, y - 52):max(1, y - 20), 110:390], 12)
+
+
+def _blocks(ctx, now):
+    st = getattr(ctx, "store", None)
+    return blockers.load(st.inst(ctx.dev.idx).get("quest_blocks") if st else None, now)
+
+
+def _save_blocks(ctx, blocks):
+    st = getattr(ctx, "store", None)
+    if st:
+        st.update(ctx.dev.idx, quest_blocks=blockers.dump(blocks))
+
+
+def _ttl(ctx):
+    q = ctx.cfg.get("quests", {})
+    ttl = dict(blockers.DEFAULT_TTL_S)
+    if "none_retry_h" in q:
+        ttl[blockers.BlockReason.NO_EFFECT] = float(q["none_retry_h"]) * 3600
+    return ttl
+
+
+def remember_block(ctx, blocks, key, now, first=None):
+    """S2: 'Den' khong co tac dung -> doc thong bao noi cua game de biet vi sao, nho dong nay toi han.
+    first: khung chup ngay sau khi cham (thong bao noi chi hien vai giay)."""
+    reason, text = None, ""
+    for img in (first, ctx.shot()):
+        if img is not None and reason is None:
+            reason, text = game_msg.read(img)
+    reason = reason or blockers.BlockReason.NO_EFFECT
+    b = blockers.block(key, reason, now, _ttl(ctx))
+    blocks[key] = b
+    _save_blocks(ctx, blocks)
+    log.info("Nhiem vu: dong bi chan (%s) toi %s%s", reason.value, time.strftime("%H:%M", time.localtime(b.until)),
+             f" - game: {text[:60]!r}" if text and reason is not blockers.BlockReason.NO_EFFECT else "")
+    return reason
+
+
 def run(ctx):
     q = ctx.cfg.get("quests", {})
     if not ctx.cfg.get("build", {}).get("follow_quests", True):
         log.info("Tat xay theo nhiem vu - bo qua")
+        return 0
+    from bot import hqplan
+    if hqplan.yield_builder(ctx, "quests"):   # G1: tho ranh dang danh cho nha chinh
         return 0
     tabs = []
     if q.get("story", True):
@@ -68,6 +118,8 @@ def run(ctx):
     max_go = q.get("max_go_per_run", 6)
     started = tries = 0
     no_battle = _battle_blocked(ctx)
+    now = time.time()
+    blocks = _blocks(ctx, now)
     for tab in tabs:
         tried = set()
         while tries < max_go:
@@ -78,12 +130,23 @@ def run(ctx):
                 return started
             if not open_tab(ctx, tab):
                 break
-            if tab is None:                  # bang Chuong: nhan thuong dong da xong + thuong chuong (nut SANG)
-                n = ctx.claim_loop(["tutorial/btn_claim_all", "tutorial/btn_claim"], max_taps=8, th=0.85)
-                if n:
-                    log.info("Bang chuong: nhan %d", n)
-                    tried.clear()            # dong da nhan bien mat -> cac dong dich len, danh so lai
-            gos = sorted(ctx.v.find_all(ctx.shot(), "quest/btn_go"), key=lambda p: p[1])  # tren -> duoi
+            # nhan thuong dong da xong + thuong chuong ("Nhan toan bo") - ca tab Chuong va Chinh (anh chu du an
+            # 2026-11-21: ca 2 tab co nut Nhan ma bot bo qua) -> do nut theo mau + chu, them anh mau cu cho tab Chuong
+            n = ctx.claim_buttons(max_taps=8)
+            if tab is None:
+                n += ctx.claim_loop(["tutorial/btn_claim_all", "tutorial/btn_claim"], max_taps=8, th=0.85)
+            if n:
+                log.info("Bang %s: nhan %d", (tab or "chuong").split("/")[-1], n)
+                tried.clear()                # dong da nhan bien mat -> cac dong dich len, danh so lai
+            img = ctx.shot()
+            gos = sorted(ctx.v.find_all(img, "quest/btn_go"), key=lambda p: p[1])  # tren -> duoi
+            keys = {k: row_key(img, p) for k, p in enumerate(gos)}
+            for k in keys:   # S2: dong da biet bi chan (lo dat chua mo, thieu dieu kien, 'Den' vo tac dung) -> bo qua
+                b = blockers.find_active(blocks, keys[k], now, ROW_MAX_DIST)
+                if b and k not in tried:
+                    tried.add(k)
+                    log.info("Nhiem vu %s dong %d: bo qua (%s, con %.0f phut)", (tab or "chuong").split("/")[-1],
+                             k + 1, b.reason.value, (b.until - now) / 60)
             todo = [(k, p) for k, p in enumerate(gos) if k not in tried]
             if not todo:
                 break
@@ -91,6 +154,7 @@ def run(ctx):
             tried.add(k)
             tries += 1
             ctx.tap(p[0], p[1], wait=2.5)
+            first = ctx.shot() if tab is not None else None   # giu khung co thong bao noi (neu co) cho S2
             res = build.upgrade_here(ctx)
             if res == "none" and tab is None:  # khong phai xay: tuong / don phe tich / xay moi... -> theo huong dan game
                 res = "follow_" + str(tutorial.follow(ctx, ctx.cfg.get("quests", {}).get("follow_steps", 40),
@@ -101,6 +165,8 @@ def run(ctx):
             log.info("Nhiem vu %s dong %d -> %s", (tab or "chuong").split("/")[-1], k + 1, res)
             if res == "none":   # A-INV-1: 'Den' khong dan toi man nang cap (391 lan 11-19..21) -> luu anh dieu tra
                 build.inv_capture(ctx, f"quests_{(tab or 'chuong').split('/')[-1]}_row{k + 1}")
+                if tab is not None:   # tab Chuong da theo huong dan game (follow) -> khong chan o day
+                    remember_block(ctx, blocks, keys[k], now, first)
             if res in ("started", "follow_build_started"):
                 started += 1
             ctx.back_out()

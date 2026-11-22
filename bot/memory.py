@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS screen_samples (
 CREATE TABLE IF NOT EXISTS perf (
   id INTEGER PRIMARY KEY, visit INTEGER, inst INTEGER, step TEXT, at REAL, kind TEXT, src TEXT,
   n INTEGER, total REAL, p50 REAL, p90 REAL, max REAL);
+CREATE TABLE IF NOT EXISTS queue_obs (
+  inst INTEGER NOT NULL, at REAL NOT NULL, kind TEXT NOT NULL, used INTEGER, total INTEGER);
 CREATE INDEX IF NOT EXISTS exp_tpl ON exp(tpl, x, y);
 CREATE INDEX IF NOT EXISTS runs_inst_t ON runs(inst, started);
 CREATE INDEX IF NOT EXISTS visits_inst_t ON visits(inst, started);
@@ -147,6 +149,16 @@ class Memory:
             c, now = self._conn(), time.time()
             c.executemany("INSERT INTO nav(visit, inst, step, at, screen, action, changed) VALUES (?,?,?,?,?,?,?)",
                           [(visit, inst, step, now, s, a, None if ch is None else int(ch)) for s, a, ch in rows])
+        except Exception as e:
+            self._warn(e)
+
+    def log_queues(self, inst, at, queues):
+        """Q0: anh chup hang cho (tho xay / nghien cuu / huan luyen) - do 'hang cho ranh bao lau' (report_ro)."""
+        rows = [(inst, at, k, v[0], v[1]) for k, v in queues.items() if v]
+        if not rows:
+            return
+        try:
+            self._conn().executemany("INSERT INTO queue_obs(inst, at, kind, used, total) VALUES (?,?,?,?,?)", rows)
         except Exception as e:
             self._warn(e)
 

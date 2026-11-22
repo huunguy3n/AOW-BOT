@@ -101,6 +101,79 @@ def target_ok(rec, lv, fail_h=12, now=None):
     return best == 0 or lv <= best + 1
 
 
+def pick_level(rec, start=10, fail_h=12, now=None):
+    """Q6: cap de tim qua o tim kiem: da thang cap N -> N+1; chua co -> start; cap do vua du doan thua -> lui dan."""
+    best = rec.get("best") or 0
+    lv = best + 1 if best else start
+    while lv > 1 and not target_ok(rec, lv, fail_h, now):
+        lv -= 1
+    return lv
+
+
+def search_target(ctx, level):
+    """Q6: O tim kiem ban do (kinh lup, dung chung voi thu thap) -> tab Co giap -> cap -> Di toi. Camera dat muc tieu
+    giua man -> tra diem cham (truoc day chi tim quanh can cu: 5/7 lan 'khong thay', 2026-11-21)."""
+    from bot.modules import gather
+    if not ctx.tap_tpl("gather/btn_search", wait=1.5):
+        return None
+    if not ctx.wait_for("gather/btn_search_go", timeout=3):
+        ctx.back_out()
+        return None
+    if not gather.select_tab(ctx, "mech", name="rebels/tab_mech"):
+        log.info("Phan quan: o tim kiem khong co tab Co giap")
+        ctx.back_out()
+        return None
+    if not gather.set_level(ctx, level):
+        log.info("Phan quan: khong dat duoc cap %d trong o tim kiem", level)
+    ctx.tap_tpl("gather/btn_search_go", wait=3.0)
+    if ctx.find("gather/msg_not_found") or ctx.find("gather/btn_search_go"):
+        log.info("Phan quan: khong tim thay Co giap cap %d", level)
+        ctx.back_out()
+        return None
+    cx, cy = ctx.cfg["gather"].get("node_xy", [ctx.W // 2, 452])
+    return cx, cy
+
+
+def launch_rally(ctx, rc, rec, lv, rec_pw="", record=True):
+    """Dang o popup "Phan quan Co giap Lv.N": Tap ket tan cong -> thoi gian -> quan doan -> (du doan thang) -> Xuat chinh.
+    -> 1 da xuat chinh | 0 bo han (loi man hinh) | -1 thu muc tieu khac (khong du doan thang / khong co nut).
+    record=False (tinh bao): khong ghi cap 'best' / quan doan, de khong lam lech tien do cap cua buoc phan quan."""
+    if not ctx.tap_tpl("rebels/btn_rally", wait=1.8):
+        ctx.close_popups(1)
+        return -1
+    if ctx.wait_for("rebels/rally_time_title", timeout=3):
+        ctx.tap_tpl("rebels/btn_rally_confirm", wait=2.0)
+    if not ctx.wait_for("rebels/legion_title", timeout=4):
+        ctx.save_debug("rebels_no_legion")
+        ctx.back_out(3)
+        return 0
+    legion = rec.get("legion") or rc.get("legion", "Odin")
+    tab = ctx.find("rebels/tab_odin", th=0.75)                 # hang tab quan doan (y theo anh mau)
+    ty = tab[1] if tab else 424
+    ctx.tap(LEGION_TABS.get(legion, 125), ty, wait=1.5)
+    img = ctx.shot()
+    if not pred_win(img):
+        rec.setdefault("fail", {})[str(lv)] = time.time()
+        _save(ctx, rec)
+        log.info("Phan quan Lv.%d: quan doan %s KHONG du doan thang -> bo, nho cap nay", lv, legion)
+        ctx.back_out(3)
+        ctx.ensure_world()
+        return -1
+    if not ctx.tap_tpl("rebels/btn_march_out", wait=2.0):
+        ctx.save_debug("rebels_no_march")
+        ctx.back_out(3)
+        return 0
+    ctx.march_sent()
+    if record:
+        rec["best"] = max(rec.get("best") or 0, lv)
+        rec["legion"] = legion
+        _save(ctx, rec)
+    log.info("Phan quan Lv.%d (de xuat %s): tap ket 3 phut, quan doan %s xuat chinh (du doan thang)%s",
+             lv, rec_pw or "?", legion, f" -> lan sau thu Lv.{lv + 1}" if record else " [tinh bao]")
+    ctx.ensure_world()
+    return 1
+
+
 def attack(ctx):
     """Tu mo 1 tap ket danh Phan quan Co giap tren ban do. -> 1 neu da Xuat chinh, 0 neu khong."""
     rc = ctx.cfg.get("rebels", {})
@@ -113,14 +186,19 @@ def attack(ctx):
     ctx.ensure_world()
     time.sleep(1.0)
     img = ctx.shot()
-    cands = sorted(ctx.v.find_all(img, "rebels/label_mech", th=0.75, roi=(0, 120, 540, 700)),
-                   key=lambda p: abs(p[0] - 270) + abs(p[1] - 480))
-    if not cands:
-        log.info("Phan quan: khong thay Phan quan Co giap quanh can cu (can anh o tim kiem de tim xa hon)")
-        ctx.save_debug("rebels_no_target")
-        return 0
-    for lx, ly, _ in cands[:4]:
-        ctx.tap(lx, ly - 40, wait=1.8)                        # than co giap nam tren nhan ten
+    near = sorted(ctx.v.find_all(img, "rebels/label_mech", th=0.75, roi=(0, 120, 540, 700)),
+                  key=lambda p: abs(p[0] - 270) + abs(p[1] - 480))
+    taps = [(lx, ly - 40) for lx, ly, _ in near[:4]]          # than co giap nam tren nhan ten
+    if not taps:
+        lv = pick_level(rec, rc.get("start_level", 10), rc.get("fail_h", 12))
+        p = search_target(ctx, lv)
+        if not p:
+            log.info("Phan quan: khong thay Co giap quanh can cu, tim kiem cap %d cung khong ra", lv)
+            return 0
+        log.info("Phan quan: tim kiem cap %d -> toi muc tieu", lv)
+        taps = [p, (p[0], p[1] + 12), (p[0], p[1] - 12)]
+    for tx, ty in taps:
+        ctx.tap(tx, ty, wait=1.8)
         img = ctx.shot()
         title = ctx.v.find(img, "rebels/popup_title", th=0.8)
         if not title:
@@ -132,39 +210,11 @@ def attack(ctx):
             log.info("Phan quan Lv.%s: bo (cap da thang cao nhat %s)", lv, rec.get("best"))
             ctx.tap_first(["common/btn_close", "common/btn_x"], wait=0.8)
             continue
-        if not ctx.tap_tpl("rebels/btn_rally", wait=1.8):
-            ctx.close_popups(1)
-            continue
-        if ctx.wait_for("rebels/rally_time_title", timeout=3):
-            ctx.tap_tpl("rebels/btn_rally_confirm", wait=2.0)
-        if not ctx.wait_for("rebels/legion_title", timeout=4):
-            ctx.save_debug("rebels_no_legion")
-            ctx.back_out(3)
+        r = launch_rally(ctx, rc, rec, lv, rec_pw)
+        if r == 1:
+            return 1
+        if r == 0:
             return 0
-        legion = rec.get("legion") or rc.get("legion", "Odin")
-        tab = ctx.find("rebels/tab_odin", th=0.75)                 # hang tab quan doan (y theo anh mau)
-        ty = tab[1] if tab else 424
-        ctx.tap(LEGION_TABS.get(legion, 125), ty, wait=1.5)
-        img = ctx.shot()
-        if not pred_win(img):
-            rec["fail"][str(lv)] = time.time()
-            _save(ctx, rec)
-            log.info("Phan quan Lv.%d: quan doan %s KHONG du doan thang -> bo, nho cap nay", lv, legion)
-            ctx.back_out(3)
-            ctx.ensure_world()
-            continue
-        if not ctx.tap_tpl("rebels/btn_march_out", wait=2.0):
-            ctx.save_debug("rebels_no_march")
-            ctx.back_out(3)
-            return 0
-        ctx.march_sent()
-        rec["best"] = max(rec.get("best") or 0, lv)
-        rec["legion"] = legion
-        _save(ctx, rec)
-        log.info("Phan quan Lv.%d (de xuat %s): tap ket 3 phut, quan doan %s xuat chinh (du doan thang) -> lan sau thu Lv.%d",
-                 lv, rec_pw or "?", legion, lv + 1)
-        ctx.ensure_world()
-        return 1
     return 0
 
 

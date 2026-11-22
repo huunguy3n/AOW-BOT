@@ -787,7 +787,13 @@ def run(ctx, max_steps=600, idle_limit=10, max_retry=5, follow=False, no_battle=
                 ctx.save_debug(f"{tag}_stuck")
                 log.warning("Tan thu: man la, Back %d lan van khong qua - dung", backs - 1)
                 return "stuck" if follow else False
-            ctx.safe_back()   # o thanh pho khong bam Back (chi hien "Roi tro choi?")
+            # man 'Tro giup lien minh' khong dong bang phim Back (i0/i2 2026-11-22 follow_stuck): thu nut "<" truoc,
+            # tu lan 2 tro di cham mui ten goc tren-trai (chi khi khong o thanh pho/ban do)
+            if not ctx.tap_first(["common/btn_back", "common/btn_back2"], wait=0.8):
+                if backs >= 2 and not ctx.is_home():
+                    ctx.tap(50, 26, wait=1.0)
+                else:
+                    ctx.safe_back()   # o thanh pho khong bam Back (chi hien "Roi tro choi?")
             idle = 2
             continue
         if act == "tap":

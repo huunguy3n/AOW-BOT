@@ -17,7 +17,9 @@ log = logging.getLogger("aow")
 
 def open_queue(ctx):
     ctx.ensure_city()
-    if not ctx.tap_tpl("train/queue_icon", wait=1.5):
+    # th 0,7: so "0/3" doi thanh "1/3" sau khi luyen -> diem khop tut 0,89 -> 0,82 (sat nguong, #0 2026-11-22) nen lan 2/3 'khong thay';
+    # cho khac < 0,45 nen nguong thap an toan
+    if not ctx.tap_tpl("train/queue_icon", wait=1.5, th=0.7, roi=(0, 90, 120, 320)):
         log.info("Khong thay icon doi ngu huan luyen")
         return False
     return True

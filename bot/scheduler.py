@@ -12,12 +12,12 @@ Thu tu buoc trong 1 lan ghe van theo ORDER (runner), lich chi chon buoc nao + lu
 import json, time
 from dataclasses import dataclass, field
 
-from aowbot.domain import marches
+from aowbot.domain import marches, warday
 
-TRIGGERS = ("gather", "mainquest", "quests", "research", "rebels")
+TRIGGERS = ("warday", "gather", "upgrade", "mainquest", "quests", "research", "rebels")
 DEFAULTS = {"max_gap_min": 240, "min_gap_min": 10, "batch_window_min": 5, "idle_check_min": 15,
             "gather_retry_min": 60, "unknown_return_min": 60, "build_every_min": 120, "research_every_min": 120, "extra_every_min": 180, "tutorial_every_min": 30,
-            "research_hq_min": 8, "daily_reset_utc": 0}
+            "research_hq_min": 7, "daily_reset_utc": 0}
 
 
 @dataclass
@@ -126,7 +126,7 @@ def plan_gather(mem, idx, sc, now, cfg=None):
     return Plan(at <= now, at, why, confident=conf)
 
 
-BUILD_STEPS = ("mainquest", "quests")
+BUILD_STEPS = ("upgrade", "mainquest", "quests")
 
 
 def build_streak(rows, since=0):
@@ -184,8 +184,18 @@ def plan_build(mem, idx, sc, now, step, cfg=None):
 
 def plan_research(mem, idx, sc, now):
     hq = mem.fact(idx, "hq_level")
+    need = mem.fact(idx, "research_wait_hq")     # Q3: node can nha chinh len cap -> khong keo may toi khi HQ doi
+    if need is not None and (hq is None or hq <= need):
+        return Plan(False, None, f"nghien cuu cho nha chinh > {need}")
     if hq is not None and hq < sc["research_hq_min"]:
         return Plan(False, None, f"nha chinh {hq} < {sc['research_hq_min']}: chua mo nghien cuu")
+    lab = mem.fact(idx, "research_wait_lab_until")      # dang nang cap Vien nghien cuu de mo node (research.upgrade_lab)
+    try:
+        lab = float(lab) if lab is not None else None
+    except (TypeError, ValueError):
+        lab = None
+    if lab and lab > now:
+        return Plan(False, lab, f"cho nang cap Vien nghien cuu xong {_hhmm(lab)}")
     tm = mem.timers(idx, "research")
     if tm:
         return Plan(tm[0][1] <= now, tm[0][1], f"nghien cuu xong {_hhmm(tm[0][1])}")
@@ -242,7 +252,59 @@ def plan_rebels(mem, idx, sc, now, cfg=None):
     return Plan(at <= now, at, f"phan quan {why}")
 
 
+# ---------- ngay chien tranh + moc the luc ----------
+def war_cfg(cfg):
+    return {"enabled": True, "stamina": True, "lead_h": 2, "renew_before_min": 20, "stamina_delay_min": 1,
+            "dates": [], **((cfg or {}).get("warday") or {})}
+
+
+def war_days(mem, idx, cfg, now=None):
+    c = war_cfg(cfg)
+    return warday.war_days(mem.fact(idx, "war_notice_seen"), c["dates"], now)
+
+
+def war_blocks(mem, idx, step, cfg, now):
+    """Buoc dua quan ra ngoai (thu thap, phan quan) bi cam trong cua so chien tranh."""
+    c = war_cfg(cfg)
+    return c["enabled"] and warday.blocks_step(step, now, war_days(mem, idx, cfg, now), c["lead_h"])
+
+
+def stamina_due(mem, idx, cfg, now):
+    c = war_cfg(cfg)
+    return c["enabled"] and c["stamina"] and warday.stamina_due(now, mem.fact(idx, "stamina_claim_at"),
+                                                                 c["stamina_delay_min"])
+
+
+def plan_warday(mem, idx, sc, now, cfg=None):
+    """Keo may len dung moc the luc (0h/8h/15h UTC) va dung gio can bat/gia han khien ngay chien tranh."""
+    c = war_cfg(cfg)
+    if not c["enabled"]:
+        return None
+    cands = []
+    if c["stamina"]:
+        at = warday.stamina_next_at(now, mem.fact(idx, "stamina_claim_at"), c["stamina_delay_min"])
+        cands.append((at, "moc the luc " + _hhmm_utc(warday.last_stamina_mark(max(at, now)))))
+    sp = warday.shield_plan(now, war_days(mem, idx, cfg, now), mem.fact(idx, "shield_until"), c["lead_h"],
+                            c["renew_before_min"])
+    if sp.at is not None:
+        cands.append((sp.at, sp.why))
+    if not cands:
+        return None
+    at, why = min(cands)
+    return Plan(at <= now, at, why)
+
+
+def _hhmm_utc(t):
+    return time.strftime("%H:%M UTC", time.gmtime(t))
+
+
 def plan_step(mem, idx, step, sc, now, enabled, cfg=None):
+    if step == "warday":
+        return plan_warday(mem, idx, sc, now, cfg)
+    if step in warday.BLOCK_STEPS and war_blocks(mem, idx, step, cfg, now):
+        c = war_cfg(cfg)
+        w = warday.active_window(now, war_days(mem, idx, cfg, now), c["lead_h"])
+        return Plan(False, w.end, "ngay chien tranh: cam thu thap")
     if step == "rebels":
         return plan_rebels(mem, idx, sc, now, cfg)
     if step == "gather":
@@ -250,6 +312,11 @@ def plan_step(mem, idx, step, sc, now, enabled, cfg=None):
             # dang tan thu: ban do the gioi chua mo, nha chinh < min_hq_level -> khong keo may moi gio (#4 2026-11-19)
             return Plan(False, None, "dang tan thu: chua thu thap")
         return plan_gather(mem, idx, sc, now, cfg)
+    if step == "upgrade":       # Q2: xay theo nha chinh - HQ da toi gioi han (30 = toi da) thi bo muc tieu xay
+        hq, cap = mem.fact(idx, "hq_level"), ((cfg or {}).get("build") or {}).get("hq_max_level", 30)
+        if hq is not None and hq >= cap:
+            return None
+        return plan_build(mem, idx, sc, now, step, cfg)
     if step in ("mainquest", "quests"):
         return plan_build(mem, idx, sc, now, step, cfg)
     if step == "research":
@@ -265,7 +332,8 @@ def plan_step(mem, idx, step, sc, now, enabled, cfg=None):
 
 
 DAILY = ("daily", "rewards", "notify", "play")   # play: 3 luot dau truong mien phi + cuop boc theo ngay
-ALWAYS = ("reddots",)  # quet cham do cuoi luot: re, chay moi lan ghe (chu du an 2026-11-20)  # co qua theo ngay -> chay lan dau sau reset du chua toi chu ky
+STAMINA_STEPS = ("notify", "rewards")   # moc the luc: nhan qua online/phuc loi
+ALWAYS = ("reddots", "heal")  # chay moi lan ghe: quet cham do (chu du an 2026-11-20), benh vien (Q5, re khi khong co thuong binh)
 
 
 def last_reset(now, hour_utc):
@@ -334,11 +402,32 @@ def decide_one(mem, idx, order, enabled, cfg, now):
                 continue
             p = plans[n]
             if p is None:
-                if n in ALWAYS or extra_due(mem, idx, n, sc, now):
-                    steps.append(n)  # buoc chay kem (theo chu ky rieng / sau reset ngay)
+                if n in ALWAYS or extra_due(mem, idx, n, sc, now) or (n in STAMINA_STEPS and stamina_due(mem, idx, cfg, now)):
+                    steps.append(n)  # buoc chay kem (theo chu ky rieng / sau reset ngay / moc the luc)
             elif p.ready or (p.at is not None and p.at <= ready_at) or not p.confident:
                 steps.append(n)  # trigger toi han / uoc luong theo chu ky (ghe thi kiem tra luon)
     return Visit(idx, at, steps, "; ".join(why) or "khong ro", full)
+
+
+def piggyback_steps(mem, idx, order, enabled, cfg, now):
+    """May DA BAT san (lan ghe agent): buoc cu toi han trong cua so gop + buoc chay kem (reddots, chu ky rieng).
+    Vi sao: lan ghe agent tung chi gui quan roi tat may -> cham do / qua bi bo qua du may da ton ~70 s khoi dong."""
+    sc = sched_cfg(cfg)
+    names = [n for n in order if enabled.get(n)]
+    if (cfg.get("schedule") or {}).get("mode") == "agent":
+        names = [n for n in names if n != "gather"]
+    soon = now + sc["batch_window_min"] * 60
+    out = []
+    for n in names:
+        if mem.backoff_until(idx, n) > now:
+            continue
+        p = plan_step(mem, idx, n, sc, now, enabled, cfg)
+        if p is None:
+            if n in ALWAYS or extra_due(mem, idx, n, sc, now) or (n in STAMINA_STEPS and stamina_due(mem, idx, cfg, now)):
+                out.append(n)
+        elif p.ready or (p.at is not None and p.at <= soon) or not p.confident:
+            out.append(n)
+    return out
 
 
 def decide(mem, insts, order, enabled_for, cfg_for, now=None):

@@ -88,8 +88,10 @@ def test_policy(policy, action: ActionSpec, attempts, conf, allowed):
 
 
 # ---------------------------------------------------------------- B5/6 decide
-def state(used, observed_ago, hq=30, busy=2, timers=((NOW + 3600, 0.9),)):
+def state(used, observed_ago, hq=30, busy=2, timers=((NOW + 3600, 0.9),), reserve=None):
     s = InMemoryStateSource()
+    if reserve is not None:
+        s.facts[(1, "rebels_reserve")] = Fact(reserve, "t", NOW - 60)
     s.facts[(1, "hq_level")] = Fact(hq, "t", NOW - 60)
     s.facts[(1, "builders_busy")] = Fact(busy, "t", NOW - 60)
     s.facts[(1, "march_total")] = Fact(5, "t", NOW - observed_ago)
@@ -105,6 +107,15 @@ def test_dispatch_when_free_and_fresh():
     d = decide(EV, state(used=3, observed_ago=60), CFG.decide)
     assert d.action is ActionName.DISPATCH_GATHER
     assert "march_utilization" in d.why and d.next_eval_at == NOW + spec(ActionName.DISPATCH_GATHER).duration_s
+
+
+def test_rebels_reserve_keeps_one_legion_free_for_rebels():
+    """#1 2026-11-22: gather lap day 5/5 nen buoc phan quan luon 'het quan doan ranh' -> de 1 quan doan."""
+    d = decide(EV, state(used=4, observed_ago=60, reserve=1), CFG.decide)
+    g = next(o for o in d.options if o.action == "dispatch_gather")
+    assert not g.feasible and "phan quan" in g.blocker and d.action is not ActionName.DISPATCH_GATHER
+    assert decide(EV, state(used=3, observed_ago=60, reserve=1), CFG.decide).action is ActionName.DISPATCH_GATHER
+    assert decide(EV, state(used=4, observed_ago=60, reserve=0), CFG.decide).action is ActionName.DISPATCH_GATHER
 
 
 def test_observe_first_when_stale():

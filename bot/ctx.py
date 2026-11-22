@@ -96,6 +96,21 @@ class Ctx:
             time.sleep(interval)
         return None
 
+    def settle(self, max_s=3.0, interval=0.35, th=1.5):
+        """S1: chup toi khi 2 khung lien tiep gan nhu giong nhau (camera ngung truot, bang mo xong) hoac het
+        max_s -> anh on dinh (cung la self._img). Vi sao: sau 'Den' game truot camera toi cong trinh; kiem tra
+        sau mot khoang cho co dinh thay man dang chay -> tra 'none' du nut Tang cap hien ngay sau do."""
+        from bot import screens
+        t0 = time.time()
+        prev = self.shot()
+        while time.time() - t0 < max_s:
+            time.sleep(interval)
+            img = self.shot()
+            if screens.same(prev, img, th):
+                return img
+            prev = img
+        return prev
+
     def tap(self, x, y, wait=1.0, tpl=None):
         self._exp_begin("tap", x, y, tpl)
         self.dev.tap(x, y)
@@ -244,20 +259,30 @@ class Ctx:
                 return
             if not self.tap_first(["campaign/btn_done", "campaign/btn_done_lose", "common/btn_back", "common/btn_back2"]
                                   + self.POPUP_CLOSERS, wait=0.8):
-                self.dev.back()
-                time.sleep(0.8)
-                # neu bam Back hien hop thoai thoat game -> huy
-                self.tap_tpl("common/btn_cancel_exit", wait=0.6)
+                if not self.press_back("back_out"):
+                    return                       # da ve thanh pho / ban do
 
     def safe_back(self):
         """Phim Back CHI khi khong o thanh pho / ban do the gioi: o do Back chi hien hop thoai "Roi tro choi?"
         (chu du an 2026-11-20: "vi sao instance nay lien tuc muon roi tro choi"). -> True neu da bam."""
+        return self.press_back("key_back")
+
+    def press_back(self, why):
+        """MOI lan bam phim Back cua bot di qua day (chu du an 2026-11-21: bam thoat game ~130 lan/ngay).
+        - Dang o thanh pho / ban do -> KHONG bam (Back o do = hop thoai "Roi tro choi?").
+        - Kiem 2 lan cach 0,5 s: ngay sau khi xuat chinh / chuyen ban do, ban do con truot -> is_home doc truot 1 lan.
+        - Van hien hop thoai thoat -> Huy + ghi canh bao kem ly do (de biet ai con bam sai).
+        -> True neu da bam Back."""
         if self.is_home():
             return False
-        self._exp_begin("back", None, None, "key_back")
+        time.sleep(0.5)
+        if self.is_home():
+            return False
+        self._exp_begin("back", None, None, why)
         self.dev.back()
         time.sleep(0.8)
-        self.tap_tpl("common/btn_cancel_exit", wait=0.6)   # phong khi van hien hop thoai -> Huy
+        if self.tap_tpl("common/btn_cancel_exit", wait=0.6):
+            log.warning("Phim Back (%s, buoc %s) mo hop thoai thoat game -> da Huy", why, getattr(self, "step", "?"))
         return True
 
     def is_home(self):
@@ -432,6 +457,31 @@ class Ctx:
     # ---------- nhan thuong ----------
     # Khong dung nut X chung o day: se dong luon bang thu/nhiem vu dang mo.
     REWARD_CLOSERS = ["common/btn_confirm_hero", "common/btn_confirm", "common/tap_to_continue", "common/tap_to_close", "common/btn_reward_close"]
+
+    def claim_buttons(self, roi=None, max_taps=12):
+        """Bam moi nut "Nhan"/"Nhan toan bo" tren man hien tai, nhan theo MAU + CHU (bot/buttons.py) - khong can anh
+        mau tung bang. Nut bam ma man khong doi -> khong bam lai. -> so lan nhan."""
+        from bot import buttons, screens
+        n, dead = 0, set()
+        for _ in range(max_taps * 2):
+            if n >= max_taps:
+                break
+            img = self.shot()
+            todo = [b for b in buttons.claims(img, roi) if (b.x // 20, b.y // 20) not in dead]
+            if not todo:
+                break
+            b = todo[0]
+            self._exp_begin("tap", b.x, b.y, "btn:" + b.text)
+            self.dev.tap(b.x, b.y)
+            self._after_tap(1.0 * self.wait_scale)
+            after = self.shot()
+            if screens.same(img, after):
+                dead.add((b.x // 20, b.y // 20))
+                continue
+            log.info("Nhan (nut '%s') @%d,%d", b.text, b.x, b.y)
+            n += 1
+            self.dismiss_reward()
+        return n
 
     def dismiss_reward(self, rounds=3):
         """Dong bang 'Nhan duoc phan thuong' sau khi bam Nhan."""

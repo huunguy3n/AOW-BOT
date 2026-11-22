@@ -175,10 +175,12 @@ def test_scheduler_leaves_gather_to_agent(tmp_path):
     assert "gather" in legacy.steps and "gather" not in agent.steps
 
 
-def test_runner_spawns_agent_visit_for_due_event():
+def test_runner_spawns_agent_visit_for_due_event(tmp_path):
     class Agent:
         def due_event(self, idx):
             return EV if idx == 1 else None
+
+    mods = {"reddots": True, "gather": True, "quests": True}
 
     class Store:
         def inst(self, idx):
@@ -186,9 +188,32 @@ def test_runner_spawns_agent_visit_for_due_event():
 
         def runner(self, **kw):
             pass
+
+        def cfg_for(self, base, idx=None):     # may hoc mau (demo) bi loai khoi vong agent
+            return {"schedule": {"mode": "agent"}, "modules": mods}
     r = Runner.__new__(Runner)
     r.base_cfg, r.store, r.agent, r._busy = {"instances": [0, 1]}, Store(), Agent(), {}
+    r.mem = Memory(str(tmp_path / "m.db"))
     spawned = []
     r._spawn = lambda idx, **kw: spawned.append((idx, kw))
     assert r._spawn_agent()
-    assert spawned == [(1, {"modules": set(), "why": "agent march_return_due", "mode": "agent", "agent_event": EV})]
+    (idx, kw), = spawned
+    assert idx == 1 and kw["mode"] == "agent" and kw["agent_event"] is EV
+    # lan ghe agent khong con bo qua cham do (chu du an 2026-11-21); gather van do agent lo
+    assert "reddots" in kw["modules"] and "gather" not in kw["modules"]
+
+
+def test_dispatch_goes_to_world_before_reading_counter(monkeypatch):
+    """Truoc: doc x/y o thanh pho -> None -> FAILED -> quan sat lai -> thu lai: ra vao the gioi lien tuc."""
+    order = []
+
+    class C(Ctx):
+        def ensure_world(self):
+            order.append("world")
+
+        def read_marches(self):
+            order.append("read")
+            return self.reads.pop(0)
+    monkeypatch.setattr(legacy_actions.gather, "run", lambda ctx, limit=None: 1)
+    legacy_actions.LegacyActionRunner(C([(2, 5), (3, 5)])).run(ActionName.DISPATCH_GATHER)
+    assert order[:2] == ["world", "read"]

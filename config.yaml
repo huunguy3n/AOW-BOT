@@ -17,6 +17,7 @@ match_threshold: 0.82
 
 # Bat/tat tung buoc cho moi tai khoan (chay theo thu tu nay)
 modules:
+  warday: true       # ngay chien tranh SVS (khien 8h/12h, cam thu thap) + moc the luc 0h/8h/15h UTC
   tutorial: false    # chi bat cho tai khoan moi
   mainquest: true    # UU TIEN: thanh nhiem vu chinh -> danh / xay / chien dich theo noi no dan toi
   collect_city: true # cham bieu tuong tai nguyen noi tren cong trinh
@@ -28,8 +29,10 @@ modules:
   rewards: true      # nhan qua: thu, diem danh, VIP, qua mien phi (truoc nghien cuu/huan luyen de co them tai nguyen)
   research: true     # nghien cuu cong nghe nhanh thu thap
   train: true        # dao tao linh T3
+  upgrade: true      # Q2: tho ranh -> nang nha chinh; thieu dieu kien -> 'Nhay' xay cong trinh dieu kien (HQ30 bo qua)
   rebels: true       # tham gia tap ket Phan quan Co giap (truoc khi gui quan)
   intel: true        # tinh bao moi luot (sau cham do, truoc gui quan) - thu tu that: ORDER trong bot/runner.py
+  heal: true         # Q5: benh vien co thuong binh -> 'Hoi phuc' bang tai nguyen (khong bao gio 'Hoi phuc ngay')
   gather: true       # gui quan di mo - lap day moi doi hanh quan
   play: true         # Loi choi: nhan ruong Mo khoang san + Dau truong 3 luot mien phi (chi doi thu luc chien do)
   reddots: true      # cuoi luot: quet lai cot icon phai con cham do -> mo, chi nhan nut "Nhan" xanh (bo icon Qua $)
@@ -55,7 +58,7 @@ daily:
 gather:
   # alloy = Xuong Hop Kim, metal = Xuong Luyen Kim, oil = Xuong Loc Dau, food = Xuong Thuc Pham
   priority: [alloy, metal, food]  # alloy > metal > food (co the them oil)
-  max_level: 6         # thanh cap trong game toi da 8; hop kim thap nhat cap 3
+  max_level: 8         # do mo tu cap 8 ha dan (chu du an 2026-11-21); tri nho cap thoa luu o gather_top:<loai>, do lai chi khi nha chinh/tuong len cap; hop kim thap nhat cap 3
   min_level: 1
   max_attempts: 40                # gioi han an toan moi tai khoan
   # so "x/y" trong khung "Hanh quan x/y" goc trai tren (x, y, w, h) - chi hien khi co doi dang di
@@ -76,7 +79,7 @@ observe:
   read_hq: true            # doc cap nha chinh (cham avatar) khi gia tri da cu hon 6 gio
 
 research:
-  min_hq: 8               # Vien nghien cuu chi xuat hien khi Xuong kien truc >= cap 8
+  min_hq: 7               # So Cong Nghe vao duoc tu Xuong kien truc cap 7 (anh chu du an 2026-11-22)
   use_help: true
   use_free_speedup: true
   max_starts: 2           # CHUA DUNG: research.py chua doc khoa nay (2026-11-21, A-CFG-1)
@@ -120,7 +123,7 @@ schedule:
   build_backoff: true     # tho ranh ma cac lan ghe truoc khong xay duoc gi -> gian chu ky min_gap x2 moi 2 lan, toi da build_every_min (A-FIX-3)
   research_every_min: 120 # chua doc duoc gio nghien cuu xong -> kiem tra moi N phut
   tutorial_every_min: 30  # TK dang bat tan thu: ghe toi da moi N phut
-  research_hq_min: 8      # nghien cuu chi mo khi nha chinh >= 8
+  research_hq_min: 7      # nghien cuu mo tu nha chinh 7 (#0 2026-11-22: So Cong Nghe Cap 1 vao duoc o HQ 7; truoc day 8)
   daily_reset_utc: 0      # reset ngay cua server (0h UTC = 7h VN)
   backoff_base_min: 30    # buoc loi/ket lien tiep -> tam bo 30, 60, 120... phut
   backoff_cap_h: 6        # toi da tam bo N gio
@@ -137,12 +140,14 @@ watchdog:
 
 # ===== Xay dung / nhiem vu / phong thu =====
 build:
-  hq_max_level: 22     # khong nang nha chinh qua cap nay
+  hq_max_level: 30     # khong nang nha chinh qua cap nay (chu du an 2026-11-21: xay o moi cap; HQ30 = toi da -> bo muc tieu xay)
   max_builders: 1      # so tho xay dung duoc (farm 1; TK chinh #1 = 2, dat rieng tren web/settings) - chu du an 2026-11-21
   follow_quests: true  # xay/nang nha theo nut "Den" cua nhiem vu
 quests: {daily: true, main: true, alliance: true, story: true, max_go_per_run: 6,
          follow: true,      # dong Chuong khong phai xay (tuong, don phe tich...) -> lam theo huong dan game (tutorial.decide)
-         follow_steps: 40}  # so buoc toi da moi dong
+         follow_steps: 40,  # so buoc toi da moi dong
+         none_retry_h: 2}   # S2: dong "Den" khong dan toi man nang cap, game khong bao ly do -> thu lai sau N gio
+                            # (co thong bao: lo dat chua mo 12 h, thieu cong trinh dieu kien 6 h - aowbot/domain/blockers.py)
 notify:
   welfare: true
   bubble: true
@@ -158,6 +163,7 @@ notify:
 reddots:
   max_rounds: 6        # lap toi khi het cham do; dung som neu 1 vong khong nhan them duoc gi
   dead_h: 2            # cham do mo ra khong nhan duoc gi -> bo qua vi tri do N gio
+  chat_clear: true      # mo roi thoat bang Tro chuyen de mat huy hieu tin nhan chua doc (chi doc, khong gui) - chu du an 2026-11-22
 recruit:
   use_tickets: false   # chi chieu mo mien phi; true = dung ca phieu (KHONG BAO GIO kim cuong)
 construct:            # xay cong trinh MOI qua icon bua (bot/modules/construct.py)
@@ -188,6 +194,17 @@ perf:                      # A-MEAS-1: dem so lan + thoi gian lenh adb / chup an
   enabled: true            # false = tat (khong anh huong thao tac)
 speed:
   wait_scale: 0.75         # nhan thoi gian cho sau moi lan cham (1.0 = nhu cu; giam neu may nhanh, tang neu hay lo man)
+demo:                      # che do HOC MAU (bot/demo.py): may co schedule.mode = demo (dat theo may tren web)
+  idle_min: 3             # ban ngung thao tac N phut -> ket thuc lan hoc mau
+  max_min: 60             # toi da N phut moi lan
+  keep_open: false          # xong khong tat may (ban co the dang choi tiep)
+
+follow:                    # che do LAM THEO MAU (bot/imitate.py): may co schedule.mode = follow
+  max_actions: 80          # toi da N thao tac moi lan
+  max_min: 30              # toi da N phut moi lan
+  max_repeat: 4            # 1 thao tac mau dung qua N lan trong 1 lan chay -> chan (chong lap vong)
+  wait_s: 1.2              # cho sau moi lan cham
+
 learn:                     # giai doan E+F (docs/bot/05-ke-hoach-hoc-may-mini.md, bot/learn.py)
   enabled: true            # ghi kinh nghiem moi lan cham (bang exp, data/exp/crops) + hoc
   explore: true            # man la: cham theo hang xom kNN / cham thu nut dong 'gan khop' (chi nut dong/quay lai)
@@ -223,6 +240,7 @@ arena:                    # Dau truong (Loi choi) - chu du an 2026-11-21
   max_ratio: 1.0          # chi danh doi thu luc chien <= luc chien minh x ti le nay (manh nhat trong so do)
   lost_days: 7            # nho doi thu da thua (theo luc chien +-3%) N ngay -> khong danh lai
 rebels:
+  start_level: 10        # Q6: chua thang cap nao -> tim Co giap cap nay qua o tim kiem; thang N -> lan sau N+1, du doan thua -> lui
   join_mech_rally: true   # tham gia tan cong Phan quan Co giap khi con the luc
   min_stamina: 0
   min_hq_level: 15        # chu du an 2026-11-21: tu nha chinh cap 15 moi danh Phan quan tap kich
@@ -231,6 +249,15 @@ rebels:
   attack: true            # TU MO tap ket danh Phan quan Co giap (3 phut, quan doan -> Xuat chinh khi du doan thang)
   legion: Odin            # quan doan mac dinh (Odin/Thor/Loki/Hawk/Hulk); bot nho quan doan da thang
   fail_h: 12              # cap du doan khong thang -> khong thu lai cap do trong N gio (lui ve cap da thang)
+warday:
+  enabled: true
+  stamina: true             # dang nhap dung moc 0h, 8h, 15h UTC de nhan the luc
+  stamina_delay_min: 1      # ghe sau moc N phut
+  lead_h: 2                 # bat khien truoc 0h UTC thu 7 bao nhieu gio (2 = 22h UTC thu 6)
+  renew_before_min: 20      # khien con <= N phut thi bat tiep (chua qua ngay)
+  buy_gems: false           # chi dung vat pham khien, KHONG mua bang kim cuong (ADR-0008)
+  dates: []                 # ngay chien tranh khai tay "YYYY-MM-DD" (thu 7 UTC); mac dinh suy ra tu bang thong bao phoi hop chien tranh
+
 defense:
   shield_on_attack: true  # bi tan cong -> bat khien
   shield_hours: 1

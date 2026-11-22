@@ -1,6 +1,7 @@
 """A-SAFE-2/3/4: cham do ton trong tuy chon, dau truong khi khong doc duoc luc chien, chieu mo can bang chung."""
 import copy
 import inspect
+import json
 import pathlib
 
 import pytest
@@ -128,3 +129,32 @@ def test_serial_lookup_accepts_int_and_str_keys():
     assert _serial({"adb_serials": {1: "a"}}, 1) == "a"
     assert _serial({"adb_serials": {"1": "b"}}, 1) == "b"
     assert _serial({}, 1) is None
+
+
+def test_candidate_that_ever_missed_cannot_be_approved(tmp_path, monkeypatch):
+    """Ung vien tung cham sai (vd nen mo / mat nhan vat bi nham la nut quay lai) -> khong duyet duoc."""
+    monkeypatch.setattr(learn, "CAND", str(tmp_path))
+    d = tmp_path / "common__btn_back"
+    d.mkdir()
+    meta = {"bad": {"ok": 0, "fail": 1}, "zero": {"ok": 0, "fail": 0}}
+    (d / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    called = []
+    monkeypatch.setattr(learn, "promote", lambda *a: called.append(a) or "x")
+    assert learn.review_candidate("common/btn_back", "bad", True) == ("bad", None)
+    assert learn.review_candidate("common/btn_back", "zero", True) == ("bad", None)
+    assert not called
+    assert learn.review_candidate("common/btn_back", "bad", False) == ("ok", None)   # bo thi luon duoc
+
+
+def test_remove_variant_only_auto_variants_of_learnable(tmp_path, monkeypatch):
+    monkeypatch.setattr(learn, "TPL", str(tmp_path / "templates"))
+    monkeypatch.setattr(learn, "BASE", str(tmp_path))
+    (tmp_path / "templates" / "common").mkdir(parents=True)
+    (tmp_path / "templates" / "common" / "btn_back.png").write_bytes(b"x")
+    (tmp_path / "templates" / "common" / "btn_back@auto1.png").write_bytes(b"x")
+    assert not learn.remove_variant("common/btn_back.png")             # anh mau goc: khong bao gio go
+    assert not learn.remove_variant("rewards/btn_claim@auto1.png")      # ngoai LEARNABLE
+    assert not learn.remove_variant("common/btn_back@auto1.png/../x")
+    assert learn.remove_variant("common/btn_back@auto1.png")
+    assert not (tmp_path / "templates" / "common" / "btn_back@auto1.png").exists()
+    assert len(list((tmp_path / "data" / "learn" / "removed").iterdir())) == 1

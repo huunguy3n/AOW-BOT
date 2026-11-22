@@ -1,11 +1,12 @@
 """Danh sach tuy chon hien tren web. ready=False: da co cho cai dat nhung tinh nang chua lam (sap co)."""
 
 MODULES = [  # cung thu tu chay (bot/runner.py ORDER)
-    ("tutorial", "Tân thủ"), ("notify", "Chấm đỏ"), ("reddots", "Quét hết chấm đỏ"), ("rewards", "Nhận quà"),
-    ("collect_city", "Nhặt tài nguyên"), ("daily", "Nhiệm vụ"), ("intel", "Tình báo"),
-    ("mainquest", "NV chính"), ("construct", "Xây công trình mới"), ("quests", "Xây theo NV"), ("train", "Huấn luyện"), ("research", "Nghiên cứu"),
-    ("alliance", "Liên minh"), ("campaign", "Chiến dịch"), ("play", "Lối chơi (mỏ, đấu trường)"),
-    ("rebels", "Phản quân tập kích"), ("gather", "Gửi quân"),
+    ("warday", "Ngày chiến tranh + mốc thể lực"), ("tutorial", "Tân thủ"), ("notify", "Chấm đỏ"), ("reddots", "Quét hết chấm đỏ"), ("rewards", "Nhận quà"),
+    ("collect_city", "Nhặt tài nguyên"), ("play", "Lối chơi (mỏ, đấu trường)"), ("intel", "Tình báo"),
+    ("rebels", "Phản quân tập kích"), ("heal", "Chữa thương binh"), ("gather", "Gửi quân"), ("train", "Huấn luyện"),
+    ("upgrade", "Xây theo nhà chính"), ("mainquest", "NV chính"), ("construct", "Xây công trình mới"),
+    ("quests", "Xây theo NV"), ("research", "Nghiên cứu"),
+    ("alliance", "Liên minh"), ("campaign", "Chiến dịch"), ("daily", "Nhiệm vụ"),
 ]
 
 GROUPS = [

@@ -1,9 +1,10 @@
 """Nang cap cong trinh tu menu cong trinh / man "Tang cap" (dung cho nhiem vu va xay theo nhiem vu).
 
 Man Tang cap (540x960): tieu de + "Cap hien tai N"; dieu kien chua dat co nut "Nhay" -> sang cong trinh do;
-nut PHAI "Tang cap" (co dong ho). KHONG BAO GIO bam "Tang cap ngay" (nut trai, ton kim cuong).
+nut PHAI "Tang cap" (co dong ho). KHONG BAO GIO bam "Tang cap ngay" (nut trai, ton kim cuong) TRU khi dong duoi ghi
+"Mien phi" va khong co so (chu du an 2026-11-22; free_instant_button).
 """
-import os, time, logging
+import os, re, time, logging
 from bot import ocr
 
 log = logging.getLogger("aow")
@@ -66,11 +67,77 @@ def inv_capture(ctx, tag):
         return None
 
 
-def upgrade_here(ctx, depth=0, max_depth=4):
+PAN_RING = ((0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1))
+
+
+def find_plot_lock(ctx, dx=200, dy=300):
+    """Tim bieu tuong o khoa lo dat: xem man hien tai roi luot camera theo vong quanh (nhu tim nha chinh)."""
+    roi = (40, 150, 460, 700)
+    img = ctx.settle()
+    pos = (0, 0)
+    for step in range(len(PAN_RING) + 1):
+        p = ctx.v.find(img, "build/plot_lock", th=0.75, roi=roi)
+        if p:
+            return p
+        if step >= len(PAN_RING):
+            break
+        nx, ny = PAN_RING[step]
+        ctx.dev.swipe(270, 480, 270 + (nx - pos[0]) * dx, 480 + (ny - pos[1]) * dy, 600)
+        pos = (nx, ny)
+        img = ctx.settle()
+    return None
+
+
+def probe_plot_lock(ctx):
+    """Giai doan 1 (chu du an cho phep 2026-11-22: mo lo dat khi KHONG ton kim cuong): camera dang o lo dat khoa ->
+    cham o khoa, chup hop thoai + doc chu de biet chi phi. KHONG xac nhan. Tra ve chuoi OCR hop thoai hoac None."""
+    p = find_plot_lock(ctx)
+    if not p:
+        log.info("O khoa lo dat: khong thay bieu tuong tren man")
+        inv_capture(ctx, "plot_lock_missing")
+        return None
+    log.info("O khoa lo dat @%d,%d (%.2f) - mo hop thoai de doc chi phi", p[0], p[1], p[2])
+    ctx.tap(p[0], p[1], wait=1.8)
+    img = ctx.settle()
+    import cv2
+    d = os.path.join("logs", "inv", "plot_lock_dialog")
+    os.makedirs(d, exist_ok=True)
+    cv2.imwrite(os.path.join(d, time.strftime("%Y%m%d-%H%M%S") + f"-i{ctx.dev.idx}.png"), img)
+    from bot import ocr
+    txt = " | ".join(ocr.text(img, roi, psm=6) or "" for roi in ((0, 150, 540, 400), (0, 400, 540, 400), (0, 760, 540, 200)))
+    log.info("O khoa lo dat - hop thoai: %r", txt[:200])
+    ctx.back_out(1)
+    return txt
+
+
+FREE_RX = re.compile(r"\bmi\w{1,2}n ph\w{0,2}\b")
+
+
+def is_free_instant(top, bottom):
+    """Nut "Tang cap ngay" CHI duoc bam khi dong duoi ghi "Mien phi" va KHONG co so (gia kim cuong) - chu du an 2026-11-21/22:
+    'Tang cap ngay - Mien phi' (0 kim cuong, moc nang cap ngan) thi bam. Ham thuan (text da bo dau, chu thuong)."""
+    return "ngay" in top and bool(FREE_RX.search(bottom)) and not re.search(r"\d", bottom)
+
+
+def free_instant_button(img, up):
+    """Nut trai "Tang cap ngay / Mien phi" canh nut "Tang cap" (up = tam nut Tang cap) -> (x, y) | None."""
+    from bot import buttons, ocr
+    for b in buttons.find(img):
+        if abs(b.y - up[1]) > 14 or not 150 < up[0] - b.x < 320:
+            continue
+        top = buttons._norm(ocr.text(img, (b.x - 70, b.y - 22, 140, 22), scale=3, psm=7, bright=170))
+        bottom = buttons._norm(ocr.text(img, (b.x - 60, b.y, 120, 24), scale=3, psm=7, bright=170))
+        if is_free_instant(top, bottom):
+            return b.x, b.y
+    return None
+
+
+def upgrade_here(ctx, depth=0, max_depth=4, late=False):
     """Dang o menu cong trinh (icon Tang cap) hoac man Tang cap. Tra ve: 'started' | 'hq_cap' |
     'blocked' (thieu dieu kien/tai nguyen/het tho) | 'none' (khong phai man nang cap)."""
     cap = ctx.cfg.get("build", {}).get("hq_max_level", 22)
-    ic = ctx.find("build/btn_upgrade_icon")
+    ctx.settle()   # S1: camera con truot sau 'Den'/'Nhay' -> doc man khi da dung yen (A-INV-1: nut hien ngay sau do)
+    ic = ctx.find("build/btn_upgrade_icon", fresh=False)
     if ic:
         # chu du an 2026-11-21: cong trinh DANG XAY -> ghi nhan, khong lam lai toi khi xong; Lv.30 = toi da -> bo
         busy = menu_busy(ctx._img, ic[0], ic[1])
@@ -88,6 +155,11 @@ def upgrade_here(ctx, depth=0, max_depth=4):
     ctx.skip_dialogs()   # vd "Can thoa man dieu kien tien de moi" che man Tang cap (do #5, 2026-11-18)
     img = ctx.shot()
     if not (ctx.v.find(img, "build/btn_upgrade") or ctx.v.find(img, "build/btn_jump")):
+        if not ic and not late:   # chua thay gi: cho them 1 nhip on dinh roi doc lai (man nang cap / menu hien tre)
+            img = ctx.settle(max_s=4.0)
+            if any(ctx.v.find(img, n) for n in ("build/btn_upgrade_icon", "build/btn_upgrade", "build/btn_jump")):
+                log.info("Man nang cap hien tre - doc lai")
+                return upgrade_here(ctx, depth, max_depth, late=True)
         if depth:      # da 'Nhay' sang cong trinh dieu kien ma khong toi man nang cap (A-INV-1)
             inv_capture(ctx, f"jump_none_d{depth}")
         return "none"
@@ -109,7 +181,13 @@ def upgrade_here(ctx, depth=0, max_depth=4):
         return upgrade_here(ctx, depth + 1, max_depth)
     if not ctx.cfg.get("build", {}).get("follow_quests", True):
         return "blocked"
-    ctx.tap_tpl("build/btn_upgrade", wait=2.0, fresh=False)
+    up = ctx.v.find(img, "build/btn_upgrade")
+    free = free_instant_button(img, up) if up else None
+    if free:
+        log.info("Tang cap ngay MIEN PHI (0 kim cuong) - bam")
+        ctx.tap(free[0], free[1], wait=2.0, tpl="btn:tang_cap_ngay_mien_phi")
+    else:
+        ctx.tap_tpl("build/btn_upgrade", wait=2.0, fresh=False)
     ctx.skip_dialogs()   # "Xuong kien truc bat dau tang cap, hay tang toc..." hien SAU khi da bat dau (do #5)
     # Thanh cong: man Tang cap dong lai, ve thanh pho. Con man / hien hop thoai -> thieu tai nguyen hoac
     # het tho -> DONG lai (khong bao gio xac nhan hop thoai co the ton kim cuong).
@@ -120,6 +198,13 @@ def upgrade_here(ctx, depth=0, max_depth=4):
         ctx.tap_first(ctx.POPUP_CLOSERS, wait=0.8)
         ctx.back_out()
         return "no_builder"
+    lv2 = screen_level(img)
+    if lv is not None and lv2 is not None and lv2 == lv + 1:
+        # nang cap xong NGAY (vd 'Tang cap ngay - Mien phi'): man van o trang nang cap cua cap ke tiep, cap hien tai
+        # da tang -> la thanh cong, khong phai 'blocked' (do #4 2026-11-22: Radar 1 -> 2 'Tang cap thanh cong!')
+        log.info("Da nang cap xong ngay (cap %s -> %s)", lv, lv2)
+        ctx.back_out()
+        return "started"
     if ctx.v.find(img, "build/btn_upgrade") or not ctx.is_home():
         log.info("Khong nang cap duoc (thieu tai nguyen / het tho?) - dong")
         ctx.save_debug("build_blocked")

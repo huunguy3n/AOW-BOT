@@ -88,9 +88,21 @@ def metrics(q, t0=None, t1=None, insts=None):
             s["zero"] += 1
             s["zero_min"] += (dur or 0) / 60
     out["perf"] = perf_metrics(q, cond.replace("started", "at"), args)
+    out["queues"] = queue_metrics(q, cond.replace("started", "at"), args)
     out["vm_h"], out["useless_h"] = round(out["vm_h"], 2), round(out["useless_h"], 2)
     for s in out["steps"].values():
         s["min"], s["zero_min"] = round(s["min"], 1), round(s["zero_min"], 1)
+    return out
+
+
+def queue_metrics(q, cond, args):
+    """Q0 (bang queue_obs): ti le lan quan sat hang cho con cho ranh, theo loai. Chua co bang -> {}."""
+    if not q("SELECT 1 FROM sqlite_master WHERE type='table' AND name='queue_obs'"):
+        return {}
+    out = {}
+    for kind, n, idle, slots in q(f"SELECT kind, COUNT(*), SUM(used < total), SUM(total - used) FROM queue_obs "
+                                  f"WHERE {cond} GROUP BY kind", args):
+        out[kind] = {"n": n, "idle_pct": round(100 * (idle or 0) / n, 1), "idle_slots_avg": round((slots or 0) / n, 2)}
     return out
 
 
@@ -124,6 +136,10 @@ def show(title, m):
     print(f"   {'buoc':<13}{'lan':>5}{'phut':>8}{'tra 0':>7}{'phut tra 0':>12}")
     for step, s in sorted(m["steps"].items(), key=lambda kv: -kv[1]["min"]):
         print(f"   {step:<13}{s['n']:>5}{s['min']:>8}{s['zero']:>7}{s['zero_min']:>12}")
+    if m.get("queues"):
+        print("   hang cho (lan quan sat con cho ranh):")
+        for k, v in m["queues"].items():
+            print(f"     {k:<10}{v['idle_pct']:>6} % / {v['n']} lan, TB {v['idle_slots_avg']} cho ranh")
     if m.get("perf"):
         print("   hieu nang (bang perf):")
         for k, v in list(m["perf"]["kinds"].items())[:15]:

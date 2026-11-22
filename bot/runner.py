@@ -10,19 +10,20 @@ from bot.ctx import Ctx, Stuck
 from bot import ocr
 from bot.memory import Memory
 from bot import perf, scheduler
-from bot.modules import tutorial, mainquest, construct, city, rewards, alliance, quests, campaign, notify, research, train, rebels, gather, daily, observe, defense, intel, reddots, play
+from bot.modules import tutorial, mainquest, construct, city, rewards, alliance, quests, campaign, notify, research, train, rebels, gather, daily, observe, defense, intel, reddots, play, upgrade, heal, warday
 
 log = logging.getLogger("aow")
 # Thu tu (chu du an 2026-11-18): tan thu -> CHAM DO (thong bao, qua, nhiem vu) -> TINH BAO -> THU THAP -> phan con lai
 # Thu tu chu du an chot 2026-11-21: vao game -> HET cham do, nhan qua, tinh bao -> xay dung, dao tao linh, nghien cuu
 # -> (nha chinh >= rebels.min_hq_level) tan cong Phan quan tap kich, 5 luot/ngay -> gui quan thu thap -> observe.
-ORDER = [("tutorial", tutorial),
-         ("notify", notify), ("reddots", reddots), ("rewards", rewards), ("collect_city", city), ("daily", daily),
-         ("intel", intel),
-         ("mainquest", mainquest), ("construct", construct), ("quests", quests), ("train", train), ("research", research),
-         ("alliance", alliance), ("campaign", campaign), ("play", play),
-         ("rebels", rebels),
-         ("gather", gather)]
+# Q1 - thu tu uu tien chu du an 2026-11-21: cham do -> loi choi (mo, dau truong) -> tinh bao -> phan quan -> thu thap
+# (~80 % thao tac tro choi); roi cac hang cho luon phai chay: huan luyen, xay dung, nghien cuu; cuoi: phan con lai
+ORDER = [("warday", warday), ("tutorial", tutorial),
+         ("notify", notify), ("reddots", reddots), ("rewards", rewards), ("collect_city", city),
+         ("play", play), ("intel", intel), ("rebels", rebels), ("heal", heal), ("gather", gather),
+         ("train", train), ("upgrade", upgrade), ("mainquest", mainquest), ("construct", construct), ("quests", quests),
+         ("research", research),
+         ("alliance", alliance), ("campaign", campaign), ("daily", daily)]
 
 
 class Stop(Exception):
@@ -183,7 +184,7 @@ class Runner:
             while not self._stop.is_set():
                 self._log_settings()
                 t0 = time.time()
-                ids = [i for i in self.base_cfg["instances"] if self.store.inst(i).get("enabled", True)]
+                ids = self._auto_ids()
                 todo = list(ids)
                 while (todo or self.queue or self._busy) and not self._stop.is_set():
                     while len(self._busy) < self._parallel() and (self.queue or todo) and not self._stop.is_set():
@@ -214,16 +215,22 @@ class Runner:
             log.info("Runner da dung")
 
     # ---------- vong lap theo lich (schedule.mode = smart) ----------
+    def _auto_ids(self):
+        """May trong vong tu dong: bat auto va KHONG o che do hoc mau (may hoc mau chi chay khi bam Chay ngay)."""
+        from bot import demo
+        return [i for i in self.base_cfg["instances"] if self.store.inst(i).get("enabled", True)
+                and not demo.is_manual(self.store.cfg_for(self.base_cfg, i))]
+
     def plan_visits(self, now=None):
-        ids = [i for i in self.base_cfg["instances"] if self.store.inst(i).get("enabled", True)]
+        ids = self._auto_ids()
         return scheduler.decide(self.mem, ids, [n for n, _ in ORDER],
                                 lambda i: dict(self.store.cfg_for(self.base_cfg, i)["modules"]),
                                 lambda i: self.store.cfg_for(self.base_cfg, i), now)
 
     def _spawn_agent(self):
         """May o che do agent co su kien den han -> 1 lan ghe agent. -> True neu da bat may."""
-        for idx in self.base_cfg["instances"]:
-            if idx in self._busy or not self.store.inst(idx).get("enabled", True):
+        for idx in self._auto_ids():
+            if idx in self._busy:
                 continue
             try:
                 ev = self.agent.due_event(idx)
@@ -231,11 +238,32 @@ class Runner:
                 log.warning("Agent: khong doc duoc su kien may %d: %s", idx, e)
                 continue
             if ev is not None:
-                log.info("Agent: ghe may %d (%s)", idx, ev.key)
+                steps = self._piggyback(idx)
+                log.info("Agent: ghe may %d (%s)%s", idx, ev.key, f" + buoc {','.join(steps)}" if steps else "")
                 self.store.runner(state="running")
-                self._spawn(idx, modules=set(), why=f"agent {ev.type.value}", mode="agent", agent_event=ev)
+                self._spawn(idx, modules=set(steps), why=f"agent {ev.type.value}", mode="agent", agent_event=ev)
                 return True
         return False
+
+    def _piggyback(self, idx, now=None):
+        """Buoc cu den han chay kem lan ghe agent (may da bat thi lam luon, khong de lan ghe sau)."""
+        try:
+            cfg = self.store.cfg_for(self.base_cfg, idx)
+            return scheduler.piggyback_steps(self.mem, idx, [n for n, _ in ORDER], dict(cfg["modules"]), cfg,
+                                             now or time.time())
+        except Exception as e:
+            log.warning("Khong tinh duoc buoc chay kem may %d: %s", idx, e)
+            return []
+
+    def _agent_event(self, idx):
+        """Lan ghe theo lich cu cua may agent: su kien agent den han thi lam luon trong lan ghe nay."""
+        if not self.agent:
+            return None
+        try:
+            return self.agent.due_event(idx)
+        except Exception as e:
+            log.warning("Agent: khong doc duoc su kien may %d: %s", idx, e)
+            return None
 
     def _loop_smart(self):
         log.info("Lap lich theo tri nho (schedule.mode=smart)")
@@ -259,7 +287,8 @@ class Runner:
                     v = due[0]  # tre han lau nhat truoc
                     log.info("Lich: ghe may %d (%s) - buoc %s", v.idx, v.why, ",".join(v.steps))
                     self.store.runner(state="running")
-                    self._spawn(v.idx, modules=set(v.steps) if not v.full else None, why=v.why, mode="smart")
+                    self._spawn(v.idx, modules=set(v.steps) if not v.full else None, why=v.why, mode="smart",
+                                agent_event=self._agent_event(v.idx))
                     continue
                 cfg = self.store.cfg_for(self.base_cfg)
                 nxt = min((v.at for v in visits), default=now + 900)
@@ -381,10 +410,14 @@ class Runner:
             log.warning("Lam theo huong dan loi: %s", e)
 
     def run_account(self, idx, modules=None, why=None, mode="fixed", agent_event=None):
+        from bot import demo
         cfg = self.store.cfg_for(self.base_cfg, idx)
+        demo_mode = demo.is_demo(cfg)
         enabled = dict(cfg["modules"])
         if modules is not None:
             enabled = {k: (k in modules) for k, _ in ORDER}
+        if mode in ("smart", "agent") and (cfg.get("schedule") or {}).get("mode") == "agent":
+            enabled["gather"] = False   # SCH-X: hanh quan may agent do agent lo (ke ca lan ghe 'tran an toan' du buoc)
         st = self.store
         st.update(idx, status="starting", step="bat may", started=time.time(), last_error=None)
         log.info("===== Instance %d =====", idx)
@@ -404,12 +437,19 @@ class Runner:
             with span("_adb_ready"):
                 ready = dev.wait_ready(cfg["ldplayer"].get("boot_timeout", 120))
             if not ready:
+                # may 'dang chay' nhung ADB offline (#4/#0 2026-11-22: 5 lan lien tiep): khoi dong lai may 1 lan
+                log.warning("ADB #%d khong tra loi sau %ds - khoi dong lai may", idx, cfg["ldplayer"].get("boot_timeout", 120))
+                self.ld.quit(idx)
+                if self.ld.launch(idx):
+                    with span("_adb_ready"):
+                        ready = dev.wait_ready(cfg["ldplayer"].get("boot_timeout", 120))
+            if not ready:
                 raise RuntimeError("ADB khong ket noi duoc")
             ctx = Ctx(dev, self.vision, cfg)
             ctx.store = st
             ctx.mem, ctx.visit = self.mem, visit
             ctx.wd_enabled = cfg.get("watchdog", {}).get("enabled", True)
-            if (cfg.get("learn") or {}).get("watch_human", True):
+            if demo_mode or (cfg.get("learn") or {}).get("watch_human", True):
                 from bot.human import HumanWatch
                 ctx.human = HumanWatch(ctx, cfg["ldplayer"]["adb"]).start()   # chup anh khi chu du an thao tac tay
             st.update(idx, status="running", step="mo game")
@@ -418,8 +458,29 @@ class Runner:
                 self.ld.runapp(idx, pkg)
             with span("_wait_game"):
                 self._wait_game(ctx, cfg, pkg)
+            if demo_mode:              # hoc mau: bot KHONG cham gi, ke ca dong popup
+                ctx.wd_enabled = False   # man dung yen la binh thuong -> watchdog khong duoc nem Stuck
+                st.update(idx, step="hoc mau")
+                n = demo.session(ctx, cfg, self._check, lambda t: st.update(idx, step=t))
+                st.update(idx, status="idle", step=None, last_run=time.time(), last_demo=n)
+                vres = "ok"
+                return
+            try:
+                warday.sniff(ctx)    # bang thong bao phoi hop chien tranh co the bi dong popup nuot -> bat truoc
+            except Exception as e:
+                log.debug("warday.sniff: %s", e)
             with span("_popups"):
                 ctx.close_popups(rounds=10, settle=3)
+            if demo.mode_of(cfg) == demo.FOLLOW:     # lam theo mau: thay ca ORDER bang thao tac hoc tu chu du an
+                from bot import imitate
+                ctx.wd_enabled = False
+                st.update(idx, step="lam theo mau")
+                index = imitate.Index(imitate.load_demos(idx), imitate.stop_feats())
+                log.info("Lam theo mau: %d thao tac mau cua may #%d", len(index), idx)
+                res = imitate.follow(ctx, index, cfg, self._check, lambda t: st.update(idx, step=t))
+                st.update(idx, status="idle", step=None, last_run=time.time(), last_follow=res)
+                vres = "ok"
+                return
             if pf:
                 self.mem.log_perf(visit, idx, "_start", pf.drain())
             forced = idx in getattr(self, "_forced", set())
@@ -434,7 +495,7 @@ class Runner:
                     st.update(idx, agent_last=self.agent.session(ctx, idx, agent_event), agent_at=time.time())
                 if pf:
                     self.mem.log_perf(visit, idx, "agent", pf.drain())
-                enabled = {}  # lan ghe agent: chi agent + quan sat cuoi
+                # sau agent: cac buoc cu den han (modules) van chay - lan ghe agent khong con bo qua cham do
             restarts = 0
             blind = 0  # so buoc lien tiep khong chup duoc man hinh (may treo du adb van 'device')
             lost = 0   # so buoc lien tiep goto() khong ve duoc thanh pho/ban do (vd canh tan thu toi den, #4 2026-11-19)
@@ -451,6 +512,9 @@ class Runner:
                     if not ok_:
                         log.info("-- Bo buoc rebels: %s", why_)
                         continue
+                if scheduler.war_blocks(self.mem, idx, name, cfg, time.time()):
+                    log.info("-- Bo buoc %s: ngay chien tranh SVS (cam thu thap)", name)
+                    continue
                 if name == "rebels" and ctx.march_full():
                     log.info("-- Bo buoc rebels: het quan doan ranh (hanh quan day)")
                     continue
@@ -552,8 +616,9 @@ class Runner:
             except Exception:
                 pass
             try:
-                with span("_quit"):
-                    self.ld.quit(idx)
+                if not (demo_mode and (cfg.get("demo") or {}).get("keep_open", True)):   # hoc mau: de may mo
+                    with span("_quit"):
+                        self.ld.quit(idx)
             except Exception:
                 pass
             if pf:

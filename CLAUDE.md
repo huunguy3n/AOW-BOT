@@ -24,7 +24,7 @@ Bot farm tự động cho game **Age of Warpath: Global Warzone** chạy trên *
 ### 1. Bot farm (đã chạy)
 Runner xử lý **2 instance cùng lúc** (`schedule.parallel`, mỗi máy một luồng, không vượt `max_running`; ADR-0002 sửa đổi 2026-11-20), mỗi instance bật auto: bật máy → mở game → đóng popup → các bước theo thứ tự → `observe` → tắt máy → máy kế tiếp. Hết vòng thì nghỉ `cycle.pause_between_cycles_min` phút. Trước **mỗi** bước kiểm tra có đang bị tấn công không (`defense`).
 
-Thứ tự bước (`ORDER` trong [bot/runner.py](bot/runner.py)), chủ dự án chốt lại 2026-11-21: **tân thủ → hết chấm đỏ (notify, reddots), nhận quà (rewards, collect_city, daily), tình báo → xây dựng (mainquest, construct, quests), đào tạo lính (train), nghiên cứu (research) → liên minh, chiến dịch → phản quân tập kích (`rebels`, từ nhà chính cấp `rebels.min_hq_level` 15, `rebels.daily_target` 5 lượt/ngày) → thu thập (`gather`)**. Thu thập: lịch hẹn ghé lại lúc đội cuối cùng tới mỏ (giờ thu thập chỉ hiện khi đã tới mỏ); thời gian về = thời gian đi. Bảng dưới liệt kê theo nhóm chức năng:
+Thứ tự bước (`ORDER` trong [bot/runner.py](bot/runner.py)), chủ dự án chốt lại 2026-11-21 (lần 2): **tân thủ → chấm đỏ (notify, reddots) + nhận quà (rewards, collect_city) → lối chơi (`play`: mỏ khoáng sản, đấu trường) → tình báo → phản quân (`rebels`, từ nhà chính cấp `rebels.min_hq_level` 15, `rebels.daily_target` 5 lượt/ngày) → thu thập (`gather`) → huấn luyện → xây dựng (mainquest, construct, quests) → nghiên cứu → liên minh, chiến dịch → daily**. Chấm đỏ dẫn tới lối chơi / tình báo / phản quân / hàng chờ rảnh (nghiên cứu, huấn luyện) thì làm luôn tiến trình đó; tính năng chưa biết thì lưu vào mục học (web). Kế hoạch "giữ mọi hàng chờ luôn chạy": [docs/strategy/priority-queues-plan.md](docs/strategy/priority-queues-plan.md). Thu thập: lịch hẹn ghé lại lúc đội cuối cùng tới mỏ (giờ thu thập chỉ hiện khi đã tới mỏ); thời gian về = thời gian đi. Bảng dưới liệt kê theo nhóm chức năng:
 
 | Bước (`modules.*`) | File | Làm gì |
 |---|---|---|
@@ -40,7 +40,9 @@ Thứ tự bước (`ORDER` trong [bot/runner.py](bot/runner.py)), chủ dự á
 | `research` | [research.py](bot/modules/research.py) | Nghiên cứu nhánh thu thập tài nguyên, trợ giúp/miễn phí |
 | `train` | [train.py](bot/modules/train.py) | Huấn luyện lính T3 đến đủ `số đội × troops_per_march` |
 | `rebels` | [rebels.py](bot/modules/rebels.py) | Từ nhà chính cấp 15, 5 lượt/ngày: **tự mở tập kết** Phản quân Cơ giáp trên bản đồ (3 phút, quân đoàn `rebels.legion`, chỉ Xuất chinh khi dự đoán "Thắng toàn diện"); nhớ cấp cao nhất đã đánh → lần sau thử cấp +1, dự đoán thua thì lùi; sau đó tham gia tập kết liên minh |
-| `gather` | [gather.py](bot/modules/gather.py) | Gửi quân đi mỏ đến khi "Hành quân x/y" đầy; ưu tiên alloy > metal > food, cấp cao → thấp, **tải trọng đội ≥ trữ lượng mỏ** (đội chở hết mỏ; không đọc được số thì không gửi); trước nhà chính cấp `gather.min_hq_level` (9, đủ 3 nhà lính) thì bỏ qua thu thập để làm nhiệm vụ căn cứ; nhớ dung tích mỏ theo cấp (`memory.db`) để bỏ cấp quá sức chở |
+| `upgrade` | [upgrade.py](bot/modules/upgrade.py) | Thợ rảnh → về thành phố từ thế giới (camera giữa nhà chính) → chạm (270,440), kiểm nhãn "Xưởng kiến trúc" → nâng cấp; thiếu điều kiện → "Nhảy" sang công trình điều kiện. HQ = `build.hq_max_level` (30) thì bỏ |
+| `heal` | [heal.py](bot/modules/heal.py) | Bệnh viện (chữ thập đỏ trên mái) → "Hồi phục" bằng tài nguyên; không bao giờ "Hồi phục ngay" |
+| `gather` | [gather.py](bot/modules/gather.py) | Gửi quân đi mỏ đến khi "Hành quân x/y" đầy; ưu tiên alloy > metal > food, cấp cao → thấp, **tải trọng đội ≥ trữ lượng mỏ** (đội chở hết mỏ; không đọc được số thì không gửi); trước nhà chính cấp `gather.min_hq_level` (9, đủ 3 nhà lính) thì bỏ qua thu thập để làm nhiệm vụ căn cứ; nhớ dung tích mỏ theo cấp (`memory.db`) để bỏ cấp quá sức chở. Dò mỏ **từ cấp 8 hạ dần** tới cấp thỏa tải trọng; nhớ cấp cao nhất còn thỏa (`gather_top:<loại>`) và loại bị khóa theo nhà chính, chỉ dò lại từ cấp 8 khi nhà chính hoặc tướng (notify tăng cấp) đổi (`gather_sig`) — chủ dự án 2026-11-21 |
 | `daily` | [daily.py](bot/modules/daily.py) | Nhận thưởng nhiệm vụ + rương điểm năng động |
 | `play` | [play.py](bot/modules/play.py) | Lối chơi (TK cấp cao): nhận rương Mỏ khoáng sản; Đấu trường 3 lượt miễn phí: ưu tiên đối thủ lực chiến **màu đỏ**, không có thì đánh đối thủ lực chiến ≤ lực chiến mình × `arena.max_ratio` (mạnh nhất trong số đó); luôn bấm "Đội hình đề xuất", nhớ đối thủ đã thua (`arena.*`); cướp xe cam/tím (`loot.*`). Chạy lần đầu sau reset ngày; không mua lượt / Làm mới |
 | `reddots` | [reddots.py](bot/modules/reddots.py) | Cuối lượt: quét lại cột icon phải còn chấm đỏ → mở, chỉ nhận nút "Nhận" xanh; bỏ icon "Quà" ($) |
@@ -53,10 +55,11 @@ Thứ tự bước (`ORDER` trong [bot/runner.py](bot/runner.py)), chủ dự á
 
 **Giao diện web** ([web/server.py](web/server.py), [web/index.html](web/index.html)) — `run.bat` hoặc `python main.py --web` → http://localhost:8080:
 - Mỗi máy: bật/tắt auto, "Chạy ngay", bật/tắt từng bước, nút "Bật khiên".
+- Mọi giờ hiển thị theo **GMT+7, định dạng dd/MM/yyyy HH:mm:ss** (hàm `clock` trong index.html). Tên nghiên cứu OCR sai dấu được sửa bằng [bot/vnames.py](bot/vnames.py) (bảng từ vựng `VOCAB`, thêm từ khi gặp tên lỗi).
 - Hiển thị tài nguyên, lực chiến, hành quân (đang đi / xong lúc / về lúc), lỗi gần nhất, log.
 - Tùy chọn chung + theo máy lưu `data/settings.json` (đè lên `config.yaml`). Danh sách tùy chọn ở [web/options.py](web/options.py); `ready=False` = "sắp có".
 
-**Cố ý KHÔNG tự động:** nút tốn kim cương ("Huấn luyện ngay", "Tăng cấp ngay"…), chiêu mộ cao cấp bằng kim cương (chiêu mộ bằng **phiếu** chỉ khi nút "10 lần" có chấm đỏ: qua `notify`, hoặc ở chế độ `follow` khi chữ V chỉ vào nút đó, tối đa 1 lần — chủ dự án 2026-11-18, 2026-11-20), chat liên minh, mua đồ tiệm, xây cờ, "Tăng tốc"/"Dùng thử" thợ xây, đường trả phí ("Mở khóa", "Cấp mùa", "Nạp thẻ"…).
+**Cố ý KHÔNG tự động:** nút tốn kim cương ("Huấn luyện ngay", "Tăng cấp ngay"…) — ngoại lệ: nút "… ngay" ghi **"Miễn phí"** (mốc miễn phí, 0 kim cương) thì được bấm (chủ dự án 2026-11-21; chế độ làm theo mẫu kiểm bằng OCR, đọc ra số kim cương hoặc không đọc được thì vẫn chặn), chiêu mộ cao cấp bằng kim cương (chiêu mộ bằng **phiếu** chỉ khi nút "10 lần" có chấm đỏ: qua `notify`, hoặc ở chế độ `follow` khi chữ V chỉ vào nút đó, tối đa 1 lần — chủ dự án 2026-11-18, 2026-11-20), chat liên minh (chỉ được MỞ rồi thoát để xóa huy hiệu tin nhắn chưa đọc — `bot/modules/chat.py`, chủ dự án 2026-11-22; không gõ, không gửi, không bấm liên kết), mua đồ tiệm, xây cờ, "Tăng tốc"/"Dùng thử" thợ xây, đường trả phí ("Mở khóa", "Cấp mùa", "Nạp thẻ"…).
 
 ### 2. Account Manager (đang PoC)
 Mục tiêu: **1 instance LDPlayer, nhiều tài khoản**, chuyển qua lại bằng snapshot/restore dữ liệu app (Option C, root mode LDPlayer). Đã đạt 10/10 lần chuyển đúng danh tính trên #7, đã chuyển chéo #7→#8 (hai instance này đã xóa sau PoC). Script: [poc/slot.sh](poc/slot.sh), [poc/ident.sh](poc/ident.sh), [poc/switch_test.sh](poc/switch_test.sh), [poc/inventory.sh](poc/inventory.sh). → [ADR-0009](docs/adr/0009-da-tai-khoan-snapshot-du-lieu-app.md)
@@ -114,8 +117,9 @@ python main.py --capture 0             # chụp màn hình → logs/
 python tools/run_tutorial.py --idx 5   # chạy riêng bước tân thủ (game đang mở) → logs/live/
 python tools/replay_tutorial.py        # kiểm tra offline decide() với bản ghi mới nhất
 python tools/check_tutorial.py         # hồi quy decide() trên các khung từng kẹt (tests/fixtures/tutorial/)
-python tools/learn.py report           # (hoặc web http://localhost:8080/hoc) bot học được gì: tỉ lệ chạm ăn/trượt, chỗ chết, mẫu kNN, biến thể ảnh mẫu
+python tools/learn.py report           # (hoặc web http://localhost:8080/#hoc, tab "Học & Agent") bot học được gì: tỉ lệ chạm ăn/trượt, chỗ chết, mẫu kNN, biến thể ảnh mẫu
 python tools/learn.py train / eval     # nạp mẫu kNN từ ảnh cũ / đo độ chính xác
+python tools/imitate_eval.py --idx 3   # đo offline bộ "làm theo mẫu" (bot/imitate.py) trên thao tác tay đã ghi của máy #3
 python main.py --web                   # web quản lý (launch config: .claude/launch.json "aow-web")
 python tools/report_ro.py [--split "YYYY-mm-dd HH:MM"]   # số đo chỉ-đọc trước/sau (lần ghé vô ích, perf ADB/ảnh/OCR)
 python -m aowbot world|plan|shadow <idx>                 # agent dry-run: trạng thái + độ tươi / quyết định + lý do / phát lại

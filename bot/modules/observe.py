@@ -7,7 +7,7 @@ Thoi gian tuyet doi (epoch) de web tu dem nguoc:
 """
 import re, time, logging
 import cv2, numpy as np
-from bot import ocr
+from bot import ocr, queues
 from aowbot.domain import marches
 
 log = logging.getLogger("aow")
@@ -32,7 +32,7 @@ HQ_ROI = (160, 758, 180, 22)  # dong "Cap Xuong kien truc: N" trong man Thong ti
 
 def parse_hq(text):
     # OCR hay doc sai chu ("truc" -> "tric") -> chi dua vao so sau dau ':' (lan loi #0 2026-11-19 08:43)
-    m = re.search(r"[:;]\s*(\d{1,2})", text or "") or re.search(r"tr\S{0,2}c\s*(\d{1,2})", text or "", re.I)
+    m = re.search(r"[:;]\s*(\d{1,2})\b", text or "") or re.search(r"tr\S{0,2}c\s*(\d{1,2})\b", text or "", re.I)
     return int(m.group(1)) if m else None
 
 
@@ -115,7 +115,18 @@ def run(ctx):
             log.warning("Doc cap nha chinh loi: %s", e)
     ctx.ensure_city()
     cimg = ctx.shot()
-    b = read_builders(ctx.v, cimg)
+    qs = queues.read(ctx.v, cimg)         # Q0: tho xay / nghien cuu / huan luyen tu cot icon trai
+    b = qs.get("build") or read_builders(ctx.v, cimg)
+    if qs:
+        log.info("Hang cho: %s", ", ".join(f"{k} {v[0]}/{v[1]}" if v else f"{k} ?" for k, v in qs.items()))
+        if getattr(ctx, "store", None):
+            ctx.store.update(ctx.dev.idx, queues={k: list(v) if v else None for k, v in qs.items()},
+                             queues_at=time.time())
+        if getattr(ctx, "mem", None):
+            ctx.mem.log_queues(ctx.dev.idx, time.time(), qs)
+            for k, v in qs.items():
+                if v:
+                    ctx.mem.set_fact(ctx.dev.idx, f"queue_{k}", list(v))
     if b and getattr(ctx, "mem", None):
         ctx.mem.set_fact(ctx.dev.idx, "builders_busy", b[0])
         log.info("Tho xay: %d/%d dang xay (dung toi da %d)", b[0], b[1], ctx.cfg.get("build", {}).get("max_builders", 1))
@@ -130,6 +141,11 @@ def run(ctx):
     res = ocr.topbar(img)
     now = time.time()
     used_total = ctx.read_marches() if world else None
+    try:
+        from bot.modules import gather
+        gather.rebels_reserve(ctx)          # cap nhat facts.rebels_reserve cho agent (het luot phan quan -> tra quan doan)
+    except Exception as e:
+        log.debug("rebels_reserve: %s", e)
     used = used_total[0] if used_total else 0
     rows = ocr.marches(img, used) if used else []
     st = ctx.store.inst(ctx.dev.idx) if getattr(ctx, "store", None) else {}

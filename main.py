@@ -15,6 +15,14 @@ from bot.vision import Vision
 from bot.state import Store
 from bot.runner import Runner, RingLog
 
+
+def _port_busy(port, host="127.0.0.1"):
+    """Da co tien trinh nghe cong nay chua (thu ket noi that, vi bind tren Windows khong bao trung)."""
+    import socket
+    with socket.socket() as s:
+        s.settimeout(0.5)
+        return s.connect_ex((host, port)) == 0
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 log = logging.getLogger("aow")
 RING = RingLog()
@@ -104,6 +112,11 @@ def main():
         print("Da luu", path)
         return
 
+    if a.web and _port_busy(a.port):
+        # Windows: werkzeug bat SO_REUSEADDR -> web thu 2 van "chay" cung cong nhung request roi vao ban CU
+        # (2 runner song song, giao dien cu). Dung ngay thay vi am tham chay chong.
+        print(f"Cong {a.port} dang co web khac chay (ban cu?). Tat no truoc, hoac dung --port khac.")
+        sys.exit(1)
     store = Store()
     from aowbot.app.agent import build_agent_hooks  # lazy: chi khi chay runner (khong can cho --check/--capture)
     runner = Runner(cfg, store, vision, agent=build_agent_hooks(lambda i: store.cfg_for(cfg, i), BASE))

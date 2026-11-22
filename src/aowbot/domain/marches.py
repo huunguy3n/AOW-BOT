@@ -39,14 +39,20 @@ def availability(obs: MarchObservation, now: float, unknown_return_s: float) -> 
 
     Doi dang di khong co dong ho KHONG phai doi ranh: uoc luong ve luc observed_at + unknown_return_s.
     Dong ho da qua = doi da ve. Chua co x/y -> moi timer la 1 doi dang di (cach cu, truoc A-FIX-1).
+    Ngoai le: dong ho UOC LUONG (do tin < CONFIDENT) da qua TRUOC lan doc x/y ma x/y van bao doi dang di thi
+    uoc luong do sai (phat lai #1 2026-11-22: uoc luong cu 7 gio -> agent thay '1 doi ranh' du game bao 5/5,
+    lap dispatch_gather -> observe_marches toi het tran 8 hanh dong) -> coi nhu doi 'khong ro gio ve'.
     """
     total, used, observed_at, timers = obs.total, obs.used, obs.observed_at, obs.timers
     if used is None or observed_at is None:
         used, observed_at = len(timers), now
     used = max(0, min(int(used), int(total)))
     known = sorted(timers)[:used]
-    returns = [Return(t, c >= CONFIDENT, False) for t, c in known]
-    returns += [Return(observed_at + unknown_return_s, False, True)] * (used - len(known))
+    unknown = Return(observed_at + unknown_return_s, False, True)
+    stale = obs.used is not None
+    returns = [unknown if stale and c < CONFIDENT and t <= observed_at else Return(t, c >= CONFIDENT, False)
+               for t, c in known]
+    returns += [unknown] * (used - len(known))
     free = total - used + sum(1 for r in returns if r.at <= now)
     future = sorted((r for r in returns if r.at > now), key=lambda r: r.at)
     return Availability(free, future[0] if future else None)

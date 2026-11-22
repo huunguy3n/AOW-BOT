@@ -204,6 +204,17 @@ def done_ticks(img, roi=(0, 90, 540, 770)):
     return sorted(out, key=lambda p: p[1])
 
 
+def crate_pin(ctx, img, p):
+    """Ghim HOP TIEP TE (xanh, icon hop): mau intel/crate_pin (cat tu anh chu du an 2026-11-22) nam tren vong pin_base. #1 chi lam
+    ghim vang/tim nen ghim hop xanh bi bo ('chua lam xong cac muc do')."""
+    x, y = int(p[0]), int(p[1])
+    for n in ("intel/crate_pin", "intel/crate_pin_world"):
+        b = ctx.v.best(img, n, roi=(max(0, x - 40), max(0, y - 90), 80, 90))
+        if b and b[2] >= 0.7:
+            return True
+    return False
+
+
 def pin_gold(img, x, y):
     """Ghim tinh bao DAC BIET (VANG hoac TIM dau lau) hay XANH thuong: mau trung vi dau ghim (tren vong pin_base
     25-60 px). Do #1 2026-11-21: vang H ~20, tim H ~137, xanh H ~103."""
@@ -262,7 +273,7 @@ def intel(ctx, max_n):
         pins = [p for p in ctx.v.find_all(img, "intel/pin_base", th=0.6, min_dist=15)  # vong mo, chong nhau
                 if (p[0] // 20, p[1] // 20) not in tried]
         if only_gold:   # chu du an 2026-11-21: "#1 chi lam mau vang" + "nhan them mau tim dau lau"
-            pins = [p for p in pins if pin_gold(img, p[0], p[1])]
+            pins = [p for p in pins if pin_gold(img, p[0], p[1]) or crate_pin(ctx, img, p)]   # + ghim hop tiep te (xanh)
             for sx, sy in special_pins(img):            # ghim mat vong (bi che) -> them theo mau dau ghim
                 if all(abs(sx - p[0]) > 30 or abs(sy + 35 - p[1]) > 40 for p in pins)                         and (sx // 20, (sy + 35) // 20) not in tried:
                     pins.append((sx, sy + 35, 1.0))     # quy uoc ghim = vong, cham tai y - 35 = dau ghim
@@ -281,6 +292,10 @@ def intel(ctx, max_n):
             done += 1
         if r in ("no_march", "lose"):
             break
+        if r == "skipped":
+            if not ctx.find("intel/title"):
+                ctx.ensure_city()
+            continue
         if r == "unknown" and energy(ctx) is None and not refill_energy(ctx, force=True):
             break       # co the thieu nang luong ma khong doc duoc so -> thu 1 vien, het thuoc thi dung
         if not ctx.find("intel/title"):
@@ -288,9 +303,38 @@ def intel(ctx, max_n):
     return done
 
 
+def rebels_pin(ctx):
+    """Ghim tinh bao Phan quan Co giap: popup "Tap ket tan cong" -> quan doan xuat chinh (cung luong voi buoc phan quan, khong ghi
+    cap 'best'). Het quan doan / thua du doan -> bo ghim nay."""
+    from bot.modules import rebels
+    if ctx.march_full():
+        log.info("Tinh bao: het quan doan ranh -> khong tap ket phan quan")
+        ctx.back_out()
+        return "no_march"
+    img = ctx.shot()
+    title = ctx.v.find(img, "rebels/popup_title", th=0.8)
+    lv = rebels.popup_level(img, title) if title else None
+    rc = ctx.cfg.get("rebels", {})
+    _, rec = rebels._mem(ctx)
+    if lv is None or not rebels.target_ok({"fail": rec.get("fail", {})}, lv, rc.get("fail_h", 12)):
+        log.info("Tinh bao: ghim Phan quan Lv.%s - bo (doc cap khong ra / vua du doan thua)", lv)
+        ctx.back_out()
+        return "skipped"
+    r = rebels.launch_rally(ctx, rc, rec, lv, record=False)
+    return "marched" if r == 1 else "skipped"
+
+
 def intel_mission(ctx):
     """Dang mo bang nhiem vu tinh bao -> 'win'|'lose'|'marched'|'no_march'|'unknown'."""
     if not ctx.tap_tpl("intel/btn_go", wait=3.0):
+        # ghim HOP QUA: cham la hien ngay bang "Chuc mung nhan duoc" (khong co nut "Di") - 2 anh debug 2026-11-22 (#0
+        # 13:31, 16:34) deu la bang nay, truoc day bi tinh 'unknown' va de bang che man hinh -> ghim sau bi cham xuyen
+        if ctx.find("common/msg_reward", th=0.75, fresh=False):
+            ctx.dismiss_reward()
+            return "picked"
+        # 2026-11-22: 'Tinh bao: unknown' tren moi may (ghim hop xanh duoc nhan ra nhung khong co nut "Di") -> luu
+        # anh bang nhiem vu de cat mau nut / biet loai ghim (tiep te? ruong?)
+        ctx.save_debug("intel_panel_unknown")
         ctx.tap_first(ctx.POPUP_CLOSERS, wait=0.8)
         return "unknown"
     if not (ctx.wait_for("intel/btn_attack", timeout=2) or ctx.find("intel/btn_pickup", fresh=False)):
@@ -310,8 +354,17 @@ def intel_mission(ctx):
     if ctx.tap_tpl("intel/btn_pickup", wait=2.0):     # Tiep te vat tu: don vi tinh bao rieng, khong ton doi
         return "picked"
     if not ctx.tap_tpl("intel/btn_attack", wait=2.5):
+        if ctx.find("rebels/btn_rally", fresh=False):   # ghim Phan quan Co giap: chi co "Tap ket tan cong" (chu du an 2026-11-22)
+            return rebels_pin(ctx)
         ctx.back_out()
         return "unknown"
+    # man doi hinh / bang hanh quan len cham: #0 2026-11-22 (anh 0015 -> 0016) mat ~4 s sau khi bam "Tan cong"; wait_scale 0,55
+    # rut cho con ~1,4 s -> khong thay nut Chien dau -> back_out -> 'unknown' (moi ghim kiem deu 'unknown')
+    for _ in range(14):
+        img = ctx.shot()
+        if ctx.v.find(img, "campaign/btn_fight") or ctx.v.find(img, "gather/btn_march"):
+            break
+        time.sleep(0.7)
     if ctx.find("campaign/btn_fight"):              # Chien dich Tuong: tran tu danh
         return campaign.battle(ctx)
     if ctx.find("gather/btn_march", fresh=False):   # Quet sach phan quan: hanh quan that tren ban do
@@ -346,6 +399,23 @@ def recruit_choice(free_ok, ten_dot, one_free, free_wait, use_tickets):
     return None
 
 
+def recruit_gift(ctx, img):
+    """Icon "Qua Chieu Mo" (cot phai man Tuyen dung han che, ~495,380) co cham do -> bam, nhan qua (chu du an
+    2026-11-22: 'bam vao day'). Qua mien phi, khong tieu kim cuong. -> so lan nhan."""
+    dots = [d for d in red_dots(img) if 450 < d[0] < 535 and 330 < d[1] < 410]
+    if not dots:
+        return 0
+    ctx.tap(dots[0][0] + 15, dots[0][1] + 17, wait=2.0)   # cham do o goc tren-trai icon -> tam icon o phai-duoi
+    ctx.save_debug("recruit_gift")          # anh bang qua de doi chieu / cat mau nut Nhan neu can
+    got = (claim_content(ctx) or 0) + ctx.claim_buttons()   # claim_buttons: nut "Mien phi" xanh (khong bam nut co gia kim cuong)
+    log.info("Chieu mo: Qua Chieu Mo - nhan %s", got)
+    for _ in range(3):                      # ve man Tuyen dung
+        if ctx.find("recruit/title"):
+            break
+        ctx.back_out(1)
+    return got
+
+
 RECRUIT_LABEL = {"free": "1 lan (mien phi)", "ten": "10 lan (phieu)", "one_free": "1 lan (mien phi, cham do)",
                  "one_ticket": "1 lan (phieu)"}
 
@@ -364,6 +434,7 @@ def recruit(ctx):
             if (ten or free) and screens.same(img, ctx.shot()):
                 break
             time.sleep(1.0)
+        n += 1 if recruit_gift(ctx, img) else 0
         # nut "Mien phi" (luot mien phi trong ngay, nut trai) -> uu tien (do #5 2026-11-18: truoc day bi bo sot);
         # nut co cham do goc tren-phai (~+80,-23) cung tinh la mien phi du mau nut lech
         one = ctx.v.find(img, "recruit/btn_one")
@@ -400,9 +471,21 @@ def _dot_near(img, p, dx=70, dy=-10, tol=(30, 25)):
     return any(abs(d[0] - p[0] - dx) < tol[0] and abs(d[1] - p[1] - dy) < tol[1] for d in red_dots(img))
 
 
-def hero_detail(ctx):
-    """Man chi tiet 1 tuong: 'Tang cap' khi nut co cham do (du EXP), 'Tang sao' khi nut sao co cham do (du manh).
-    Khong bao gio bam nut khong co cham do. -> so lan bam."""
+def hero_detail(ctx, max_rounds=6):
+    """Man chi tiet 1 tuong: 'Tang cap' khi nut co cham do (du EXP/vang), 'Tang sao' khi nut sao co cham do (du manh),
+    sach Cau chuyen co cham do. Khong bao gio bam nut khong co cham do. -> so lan bam.
+    LAP toi khi 1 vong khong lam them duoc gi: tang sao xong thi gioi han cap tang -> nut 'Tang cap' MOI hien cham do
+    (#4 2026-11-21 17:48: tang sao 2 lan roi bo di, nut Tang cap con cham do)."""
+    n = 0
+    for _ in range(max_rounds):
+        got = _hero_levelup(ctx) + _hero_star(ctx) + hero_story(ctx)
+        n += got
+        if not got:
+            break
+    return n
+
+
+def _hero_levelup(ctx):
     n = 0
     for _ in range(30):
         img = ctx.shot()
@@ -411,6 +494,16 @@ def hero_detail(ctx):
             break
         ctx.tap(b[0], b[1], wait=0.8)
         n += 1
+    if n:
+        log.info("Tuong: tang cap %d lan", n)
+        m = getattr(ctx, "mem", None)
+        if m:   # tuong len cap -> tai trong doi co the tang -> gather do lai mo tu cap cao nhat (gather.sync_memory)
+            m.set_fact(ctx.dev.idx, "hero_ups", (m.fact(ctx.dev.idx, "hero_ups", 0) or 0) + n)
+    return n
+
+
+def _hero_star(ctx):
+    n = 0
     for _ in range(5):          # nang sao (manh tuong) - do #5 2026-11-18
         img = ctx.shot()
         st = ctx.v.find(img, "hero/btn_star", th=0.9)
@@ -426,7 +519,6 @@ def hero_detail(ctx):
         n += 1
         ctx.tap(270, 900, wait=1.5)                   # dong man "Tang sao thanh cong"
         ctx.tap_first(["common/btn_back"], wait=1.2)  # man tang sao -> chi tiet tuong
-    n += hero_story(ctx)
     return n
 
 
@@ -437,7 +529,7 @@ def hero_story(ctx):
     """Icon SACH (goc phai) co cham do -> bang "Cau chuyen": tab co cham do -> cham HOP VANG o goc tranh
     -> nhan thuong (vd 20 kim cuong). Chu du an chi 2026-11-18 (#5)."""
     img = ctx.shot()
-    bk = ctx.v.find(img, "hero/btn_book", th=0.9)
+    bk = ctx.v.find(img, "hero/btn_book", th=0.85)   # 0,87 tren man chu du an gui 2026-11-21; van can cham do
     if not bk or not _dot_near(img, bk, dx=16, dy=-18, tol=(12, 12)):
         return 0
     ctx.tap(bk[0], bk[1], wait=1.5)
@@ -540,6 +632,8 @@ def event_tiles(ctx, max_taps=12):
     """Trong 1 man su kien: cham lan luot o/vat co CHAM DO -> neu hien bang co nut "Nhan" (event/btn_popup_claim)
     thi nhan, dong bang (X). Khong bam gi khac. -> so lan nhan."""
     n, seen = 0, set()
+    if not ctx.find("recruit/title"):       # trang 'Chieu mo han gio' (Hoat dong) co icon "Qua Chieu Mo" ben phai
+        n += 1 if recruit_gift(ctx, ctx.shot()) else 0
     for _ in range(max_taps):
         dots = [d for d in red_dots(ctx.shot(), EVENT_BODY) if (d[0] // 40, d[1] // 40) not in seen]
         if not dots:

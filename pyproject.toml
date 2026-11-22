@@ -125,3 +125,17 @@ name = "D5: interfaces khong dung truc tiep ha tang"
 type = "forbidden"
 source_modules = ["aowbot.interfaces"]
 forbidden_modules = ["aowbot.infrastructure"]
+
+[[tool.importlinter.contracts]]
+name = "P1: perception.contract thuan (khong cv2/numpy/bot)"
+type = "forbidden"
+source_modules = ["aowbot.perception.contract"]
+forbidden_modules = ["bot", "web", "cv2", "numpy", "pytesseract", "sqlite3", "subprocess", "flask", "yaml"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "P1: perception khong import ma cu (nhan dien khong ra lenh hanh dong)"
+type = "forbidden"
+source_modules = ["aowbot.perception"]
+forbidden_modules = ["bot", "web", "aowbot.application", "aowbot.infrastructure", "aowbot.interfaces", "aowbot.app"]
+allow_indirect_imports = true

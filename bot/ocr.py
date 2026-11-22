@@ -23,7 +23,7 @@ TOPBAR = {
 # Khung "Hanh quan x/y" goc trai tren (chi hien khi co doi dang di)
 MARCH_STATUS = (50, 166, 120, 18)   # dong 1: trang thai
 MARCH_TIMER = (52, 186, 70, 16)     # dong 1: dong ho dem nguoc
-MARCH_ROW_H = 50                    # khoang cach giua cac dong (CHUA kiem chung voi >1 doi)
+MARCH_ROW_H = 44                    # khoang cach giua cac dong (do tren anh 5 doi #1 2026-11-22: 175, 220, 265, 308, 352; 50 lam dong 2-5 lech)
 
 
 def init(cmd):
@@ -40,8 +40,9 @@ def init(cmd):
     return _ok
 
 
-def text(img, roi, whitelist=None, scale=3, psm=7, bright=None):
-    """bright=N: chi giu diem anh sang hon N (chu trang tren nen mau/thanh tien do)."""
+def text(img, roi, whitelist=None, scale=3, psm=7, bright=None, pad=0):
+    """bright=N: chi giu diem anh sang hon N (chu trang tren nen mau/thanh tien do).
+    pad=N: vien trang N px quanh anh da nhi phan (chu sat mep vung cat -> Tesseract hay bo sot)."""
     if not _ok:
         return ""
     import pytesseract
@@ -54,6 +55,8 @@ def text(img, roi, whitelist=None, scale=3, psm=7, bright=None):
         _, b = cv2.threshold(g, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         if b.mean() < 127:  # chu sang tren nen toi -> dao thanh chu den nen trang
             b = 255 - b
+    if pad:
+        b = cv2.copyMakeBorder(b, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=255)
     cfg = f"--psm {psm}" + (f" -c tessedit_char_whitelist={whitelist}" if whitelist else "")
     try:
         with perf.measure("ocr"):            # 1 tien trinh tesseract / lan goi
@@ -131,6 +134,26 @@ def march_state(s):
     return "unknown"
 
 
+TIMER_CFGS = [(66, 48, None), (66, 56, None), (62, 56, None), (68, 48, None), (68, 48, 140), (68, 48, 170)]   # (x, rong, nguong sang | None = Otsu)
+
+
+def read_timer(img, y):
+    """Dong ho cua 1 dong hanh quan -> giay | None. Doc nhieu cau hinh (Otsu / nguong sang) roi BO PHIEU: chap nhan gia tri
+    khi Otsu va nguong sang cung ra 1 gia tri, hoac >= 3 cau hinh Otsu trung nhau; con lai None (sai gio con te
+    hon khong biet: sprite tau de len dong ho lam 2 cach doc cung ra 23:63 thay vi 51:23 tren anh #1 2026-11-22)."""
+    from collections import Counter
+    otsu, bright = Counter(), Counter()
+    for x, w, b in TIMER_CFGS:
+        t = text(img, (x, y, w, 16), "0123456789:", scale=4, bright=b) if b else text(img, (x, y, w, 16), "0123456789:", scale=4)
+        v = seconds(t)
+        if v is not None:
+            (bright if b else otsu)[v] += 1
+    for v, n in otsu.most_common():
+        if n >= 3 or v in bright:
+            return v
+    return None
+
+
 def marches(img, count):
     """Doc trang thai + dong ho cua `count` doi dau tien trong khung Hanh quan."""
     out = []
@@ -140,8 +163,7 @@ def marches(img, count):
         tx, ty, tw, th = MARCH_TIMER
         # chu tren thanh tien do mau xanh (tro ve/thu thap) can nguong sang; hanh quan thi Otsu
         st = text(img, (sx, sy + dy, sw, sh), bright=170) + " | " + text(img, (sx, sy + dy, sw, sh))
-        roi = (tx, ty + dy, tw, th)
-        tm = seconds(text(img, roi, "0123456789:", bright=150)) or seconds(text(img, roi, "0123456789:"))
+        tm = read_timer(img, ty + dy)
         state = march_state(st)
         if state == "unknown" and tm:
             state = "marching"

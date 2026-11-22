@@ -13,7 +13,7 @@ F2 Anh mau tu mo rong: man la ma nut dong/quay lai khop 0,65-0,82 -> cham thu; m
 AN TOAN: chi hoc tren nut DONG / QUAY LAI / HUY (LEARNABLE). Khong bao gio hoc hay tu bam nut nhan thuong, mua,
 nang cap... (ADR-0008). Moi loi trong module nay bi nuot (khong lam hong luot chay).
 """
-import glob, json, logging, os, shutil, threading, time
+import glob, json, logging, os, re, shutil, threading, time
 import cv2, numpy as np
 
 log = logging.getLogger("aow")
@@ -309,6 +309,8 @@ def review_candidate(tpl, h, approve):
         if not m:
             return "missing", None
         res = None
+        if approve and (m.get("fail", 0) > 0 or m.get("ok", 0) < 1):
+            return "bad", None      # tung cham sai / chua cham dung lan nao -> khong cho duyet (ke ca goi API tay)
         if approve:
             res = promote(tpl, os.path.join(os.path.dirname(meta_p), h + ".png"))
             m["promoted" if res else "rejected"] = time.time()
@@ -316,6 +318,22 @@ def review_candidate(tpl, h, approve):
             m["rejected"] = time.time()
         _save_meta(meta_p, meta)
     return "ok", res
+
+
+def remove_variant(rel):
+    """Go 1 bien the da hoc (vd duyet nham): templates/<tpl>@autoN.png -> data/learn/removed/. -> True neu da go."""
+    rel = (rel or "").replace("\\", "/")
+    base, _, tail = rel.partition("@")
+    if base not in LEARNABLE or not re.fullmatch(r"auto\d+\.png", tail):
+        return False
+    src = os.path.join(TPL, rel)
+    if not os.path.isfile(src):
+        return False
+    dst_dir = os.path.join(BASE, "data", "learn", "removed")
+    os.makedirs(dst_dir, exist_ok=True)
+    shutil.move(src, os.path.join(dst_dir, f"{int(time.time())}-{rel.replace('/', '__')}"))
+    log.info("Hoc: chu du an go bien the anh mau %s", rel)
+    return True
 
 
 def regress_ok(extra=None):
@@ -393,6 +411,10 @@ def summary(mem, days=3):
     out["dead"] = [{"who": k[0], "x": k[1] * GRID, "y": k[2] * GRID, "ok": v[0], "n": v[1]}
                    for k, v in L.stats.items() if v[1] >= 8 and v[0] / v[1] < 0.1][:20]
     out["knn"] = dict(mem.query("SELECT label, COUNT(*) FROM screen_samples GROUP BY label"))
+    # hop thoai "Roi tro choi?" bot tu bat (moi lan = 1 lan bam Huy) theo buoc, 24h -> web theo doi sau sua press_back
+    out["exit_dialogs"] = [{"step": st, "n": n} for st, n in mem.query(
+        "SELECT step, COUNT(*) FROM exp WHERE at>? AND tpl='common/btn_cancel_exit' AND kind!='human' "
+        "GROUP BY step ORDER BY 2 DESC", (now - 86400,))]
     out["waits"] = sorted(({"key": k, "n": len(v), "p80": round(float(np.percentile(v[:40], 80)), 2)}
                            for k, v in L.react.items() if len(v) >= 8), key=lambda x: -x["n"])[:15]
     out["variants"] = [os.path.relpath(f, TPL).replace("\\", "/")
@@ -402,7 +424,9 @@ def summary(mem, days=3):
         p = os.path.join(d, "meta.json")
         meta = json.load(open(p, encoding="utf-8")) if os.path.exists(p) else {}
         for h, m in meta.items():
-            if not m.get("promoted") and not m.get("rejected"):
+            # chi dua len web ung vien CO THE dung: da cham dung >= 1 lan va chua lan nao sai
+            # (cham sai = vung do khong phai nut -> khong bao gio duyet, vd nen mo sau popup, mat nhan vat)
+            if not m.get("promoted") and not m.get("rejected") and m.get("fail", 0) == 0 and m.get("ok", 0) >= 1:
                 cands.append({"tpl": os.path.basename(d).replace("__", "/"), "hash": h, "ok": m["ok"], "fail": m["fail"]})
     out["candidates"] = cands
     return out

@@ -41,4 +41,5 @@ def test_agent_api_and_page(tmp_path):
     got = c.get("/api/agent").get_json()
     assert got["decisions"][0]["account"] == 1 and got["decisions"][0]["options"]
     assert got["events"][0]["type"] == "observe_due"
-    assert c.get("/agent").status_code == 200
+    r = c.get("/agent")  # trang cu da gop vao tab #hoc cua trang chinh
+    assert r.status_code == 302 and r.headers["Location"].endswith("/#hoc")

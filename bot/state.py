@@ -129,6 +129,16 @@ class Store:
                 ins[str(scope)] = deep_merge(ins.get(str(scope), {}), data)
             _save("settings.json", self.settings)
 
+    def unset_setting(self, idx, path):
+        """Xoa 1 ghi de rieng may (vd 'schedule.mode') -> may dung lai gia tri chung."""
+        with _lock:
+            d = self.settings.get("instances", {}).get(str(idx), {})
+            *head, last = path.split(".")
+            for k in head:
+                d = d.get(k) if isinstance(d, dict) else None
+            if isinstance(d, dict) and d.pop(last, None) is not None:
+                _save("settings.json", self.settings)
+
     def get_settings(self):
         with _lock:
             return copy.deepcopy(self.settings)

@@ -2,9 +2,11 @@
 cho cung ket qua tren cung du lieu."""
 import json
 import os
+import threading
 
 import pytest
 
+from aowbot.app.agent import AgentHooks
 from aowbot.domain.freshness import Fact
 from aowbot.domain.marches import MarchObservation
 from aowbot.infrastructure.sqlite.legacy_memory_reader import LEGACY_CONFIDENCE, LegacyMemoryReader
@@ -66,3 +68,24 @@ def test_marches(src):
 
 def test_return_gaps(src):
     assert list(src.return_gaps(1)) == [1200.0]
+
+
+def test_agent_hooks_work_from_runner_thread(tmp_path):
+    """Hooks tao o luong chinh (main.py), runner goi tu luong nen: truoc day moi lan goi loi
+    'SQLite objects created in a thread...' -> agent khong bao gio chay, may agent mat luon buoc gather."""
+    (tmp_path / "data").mkdir()
+    Memory(str(tmp_path / "data" / "m.db"))
+    hooks = AgentHooks(lambda i: {"schedule": {"mode": "agent"}}, str(tmp_path / "data" / "m.db"), str(tmp_path / "l"))
+    out, err = [], []
+
+    def work():
+        try:
+            out.append(hooks.due_event(1))
+            out.append(hooks.next_at(1))
+        except Exception as e:      # noqa: BLE001 - test ghi lai loi de assert
+            err.append(e)
+    t = threading.Thread(target=work)
+    t.start()
+    t.join()
+    assert not err
+    assert out[0] is not None                                   # chua co gi -> su kien quan sat ngay

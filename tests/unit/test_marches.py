@@ -19,6 +19,11 @@ TRUTH = [
     ("dong ho do tin thap", 1, 1, NOW, [(NOW + 50, 0.3)], H, 0, (NOW + 50, False, False)),
     ("tat ca ranh", 4, 0, NOW, [], H, 4, None),
     ("used > total bi kep", 2, 9, NOW, [], H, 0, (NOW + H, False, True)),
+    # phat lai #1 2026-11-22: 5/5 vua doc, uoc luong cu 7 gio (do tin 0,3) khong duoc tinh la 'da ve'
+    ("uoc luong cu truoc lan doc x/y bi mau thuan", 5, 5, NOW - 60, [(NOW - 7 * H, 0.3), (NOW + 23 * 60, 0.3)], H, 0,
+     (NOW + 23 * 60, False, False)),
+    ("dong ho chac chan da qua van = ranh", 5, 5, NOW - 60, [(NOW - 7 * H, 0.9)], H, 1, (NOW - 60 + H, False, True)),
+    ("uoc luong da qua SAU lan doc = ranh", 5, 5, NOW - 120, [(NOW - 30, 0.3)], H, 1, (NOW - 120 + H, False, True)),
 ]
 
 

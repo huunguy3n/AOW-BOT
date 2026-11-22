@@ -65,6 +65,40 @@ def free_spot(img, box, avoid=()):
     return int(xx), int(yy)
 
 
+CAND_ZONE = (80, 190, 460, 740)                  # vung ung vien (sat mep hon -> camera troi)
+
+
+def spot_candidates(img, box, avoid=(), n=12, min_cover=0.5):
+    """Ung vien cho dat xep theo do phu co (ham thuan): kernel hinh thoi cung co o dat, do phu = ti le diem
+    'co' duoi no. Chat hon free_spot khong bat buoc phu kin 100% (nen can cu chat: #5 2026-11-22, ban chat, free_spot
+    tra None) - game tu bao do/xanh sau moi lan keo nen cho nhieu ung vien tot hon la bo cuoc.
+    -> [(x, y, do_phu)] giam dan, cach nhau >= 45px va cach 'avoid' >= 45px."""
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    H, S, V = hsv[..., 0], hsv[..., 1], hsv[..., 2]
+    g = ((H >= 29) & (H <= 40) & (S >= 130) & (S <= 200) & (V >= 85) & (V <= 140)).astype(np.uint8)
+    g = cv2.morphologyEx(g, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))
+    g[820:], g[:110] = 0, 0
+    x, y, w, h = box
+    g[max(0, y - 10):y + h + 10, max(0, x - 10):x + w + 10] = 0
+    kw, kh = max(60, int(w * 0.8)), max(36, int(h * 0.8))
+    k = np.zeros((kh, kw), np.float32)
+    cv2.fillConvexPoly(k, np.array([[kw // 2, 0], [kw - 1, kh // 2], [kw // 2, kh - 1], [0, kh // 2]]), 1)
+    cover = cv2.filter2D(g.astype(np.float32), -1, k / max(1.0, float(k.sum())))
+    z = np.zeros_like(cover)
+    z[CAND_ZONE[1]:CAND_ZONE[3], CAND_ZONE[0]:CAND_ZONE[2]] = 1
+    cover *= z
+    for ax, ay in avoid:
+        cv2.circle(cover, (ax, ay), 45, 0, -1)
+    out = []
+    while len(out) < n:
+        _, m, _, loc = cv2.minMaxLoc(cover)
+        if m < min_cover:
+            break
+        out.append((int(loc[0]), int(loc[1]), float(m)))
+        cv2.circle(cover, loc, 45, 0, -1)
+    return out
+
+
 def card_info(ctx, img, x):
     """The cong trinh o cot x: -> (khoa, da_xay, toi_da) | None (khong co the)."""
     roi = img[CARD_Y - 30:CARD_Y + 45, x - 75:x + 75]
@@ -75,7 +109,7 @@ def card_info(ctx, img, x):
     return locked, (int(m.group(1)) if m else None), (int(m.group(2)) if m else None)
 
 
-def place(ctx, x, tries=8):
+def place(ctx, x, tries=12):
     """Keo the o cot x len ban do, tim cho xanh, bam tick + "Xay dung". -> True neu da xay."""
     ctx.dev.swipe(x, CARD_Y - 30, 270, 450, 1500)
     time.sleep(1.5)
@@ -104,6 +138,9 @@ def place(ctx, x, tries=8):
             return True
         t = free_spot(img, box, tried)
         if t is None:
+            c = spot_candidates(img, box, tried, n=1)
+            t = c[0][:2] if c else None
+        if t is None:
             if not spare:
                 break
             t = spare.pop(0)
@@ -117,6 +154,9 @@ def place(ctx, x, tries=8):
 
 def run(ctx):
     bc = ctx.cfg.get("construct", {})
+    from bot import hqplan
+    if hqplan.yield_builder(ctx, "construct"):   # G1: tho ranh dang danh cho nha chinh
+        return 0
     built, tried = 0, set()
     for _ in range(bc.get("max_per_run", 6)):
         ctx.skip_dialogs()            # xay xong hay mo khoa tinh nang -> hoi thoai huong dan (vd "mo khoa lien minh")
@@ -163,4 +203,8 @@ def run(ctx):
         else:
             tried.discard(g)          # nhom con the khac/cung loai (vd 0/3 -> 1/3) -> lan sau thu lai
     ctx.ensure_city()
+    if built:
+        if hqplan.after_construct(ctx):   # G1: vua xay cong trinh moi (co the la dieu kien cua nha chinh) -> thu lai ngay
+            from bot.modules import upgrade
+            upgrade.run(ctx)
     return built

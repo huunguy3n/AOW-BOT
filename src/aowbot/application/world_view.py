@@ -8,7 +8,8 @@ from aowbot.application.ports import AccountStateSource, Clock
 from aowbot.domain.freshness import Fact, Freshness, FreshnessPolicy, freshness
 from aowbot.domain.marches import Availability, availability, lower_quartile
 
-FACT_KEYS = ("hq_level", "builders_busy", "resources", "march_total", "march_used", "world_open")
+FACT_KEYS = ("hq_level", "builders_busy", "resources", "march_total", "march_used", "world_open",
+             "queue_train", "queue_research", "research_wait_hq", "rebels_reserve")
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,7 +33,8 @@ class AccountState:
     marches: MarchView
 
     def get(self, key: str) -> Labeled:
-        return dict(self.facts)[key]
+        # khoa khong co (vd phat lai shadow tu du lieu cu, truoc Q4) = chua biet, khong phai loi
+        return dict(self.facts).get(key, Labeled(None, Freshness.UNKNOWN))
 
 
 @dataclass(frozen=True, slots=True)

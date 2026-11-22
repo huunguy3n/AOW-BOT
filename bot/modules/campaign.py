@@ -41,7 +41,11 @@ def auto_formation(ctx):
 def fight_one(ctx, only_win):
     """'win' | 'lose' | 'skip' (du doan khong thang) | 'error'"""
     if not ctx.tap_tpl("campaign/btn_challenge", wait=1.5):
-        return "error"
+        # khong co nut "Thach dau" = man ke tiep chua mo / dang cho dieu kien -> khong phai loi, bo qua (2026-11-22:
+        # 'Chien dich: error' ~8 lan/dem tren #0,#2,#3,#4,#6); luu anh 1 lan / may de xem
+        log.info("Chien dich: khong thay nut Thach dau (man ke tiep chua mo) - bo qua")
+        ctx.save_debug("campaign_no_challenge")
+        return "skip"
     if not ctx.wait_for("campaign/btn_attack", timeout=4):
         return "error"
     auto_formation(ctx)
@@ -73,7 +77,8 @@ def battle(ctx, only_win=True):
         ctx.back_out(2)
         return "skip"
     if not ctx.tap_tpl("campaign/btn_fight", wait=0.5):
-        if not ctx.wait_for("campaign/btn_fight", timeout=5):
+        if not ctx.wait_for("campaign/btn_fight", timeout=12):    # man doi hinh tai cham tren may yeu (#0 2026-11-22: 'error' sau 9 s)
+            ctx.save_debug("campaign_no_fight")
             return "error"
         ctx.tap_tpl("campaign/btn_fight", wait=0.5, fresh=False)
     if ctx.cfg.get("battle", {}).get("steer", True):

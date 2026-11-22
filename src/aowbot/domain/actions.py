@@ -11,6 +11,8 @@ class ActionName(Enum):
     OBSERVE_MARCHES = "observe_marches"
     DISPATCH_GATHER = "dispatch_gather"
     LEGACY_BUILD = "legacy_build"
+    LEGACY_TRAIN = "legacy_train"
+    LEGACY_RESEARCH = "legacy_research"
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +45,12 @@ REGISTRY: tuple[ActionSpec, ...] = (
     ActionSpec(ActionName.LEGACY_BUILD, Goal.CONTINUOUS_CONSTRUCTION,
                "bat dau 1 nang cap (buoc mainquest/quests cu)", 180.0, 0.2, 0,
                "so tho dang xay tang", 1, "doc lai tho xay truoc khi chay", mutates_game=True),
+    ActionSpec(ActionName.LEGACY_TRAIN, Goal.TRAINING,
+               "nha linh ranh bat dau huan luyen (buoc train cu, gioi han T3)", 90.0, 0.15, 0,
+               "hang cho huan luyen tang", 1, "doc lai hang cho truoc khi chay", mutates_game=True),
+    ActionSpec(ActionName.LEGACY_RESEARCH, Goal.RESEARCH,
+               "bat dau 1 nghien cuu (nhanh phu / cho nha chinh)", 90.0, 0.15, 0,
+               "hang cho nghien cuu tang", 1, "so cong nghe dang nghien cuu thi khong bat dau", mutates_game=True),
 )
 
 

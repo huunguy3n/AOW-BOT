@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import pathlib
 import sqlite3
+import threading
 from collections.abc import Sequence
 from typing import Any
 
@@ -18,13 +19,17 @@ LEGACY_CONFIDENCE = 0.8
 class LegacyMemoryReader:
     def __init__(self, path: str | pathlib.Path) -> None:
         uri = pathlib.Path(path).resolve().as_uri() + "?mode=ro"
-        self._c = sqlite3.connect(uri, uri=True, timeout=10)
+        # tao o luong chinh (main.py) nhung runner goi tu luong nen -> cho phep khac luong, tuan tu hoa bang khoa
+        self._c = sqlite3.connect(uri, uri=True, timeout=10, check_same_thread=False)
+        self._lock = threading.Lock()
 
     def close(self) -> None:
-        self._c.close()
+        with self._lock:
+            self._c.close()
 
     def _rows(self, sql: str, args: tuple[Any, ...]) -> list[tuple[Any, ...]]:
-        return self._c.execute(sql, args).fetchall()
+        with self._lock:
+            return self._c.execute(sql, args).fetchall()
 
     def fact(self, account: int, key: str) -> Fact[Any] | None:
         if key == "resources":

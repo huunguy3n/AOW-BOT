@@ -59,6 +59,11 @@ def claim_chests(ctx, by_color=False):
 
 
 def claim_tab(ctx, claims, max_taps, by_color=False):
+    got = ctx.claim_buttons(max_taps=max_taps) if hasattr(ctx, "claim_buttons") else 0   # nut Nhan theo mau + chu
+    return got + _claim_tab(ctx, claims, max_taps, by_color)
+
+
+def _claim_tab(ctx, claims, max_taps, by_color=False):
     if not claims:
         return claim_chests(ctx, by_color)
     n = ctx.claim_loop([P + "chapter_claim"] + claims if ctx.v.has(P + "chapter_claim") else claims,

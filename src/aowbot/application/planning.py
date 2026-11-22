@@ -7,7 +7,15 @@ from types import MappingProxyType
 from aowbot.application.world_view import AccountState
 from aowbot.domain.actions import ActionName, ActionSpec, spec
 from aowbot.domain.freshness import Freshness
-from aowbot.domain.goals import AccountFacts, GoalStatus, continuous_construction, march_utilization
+from aowbot.domain.goals import (
+    QUEUE_PRIORITY,
+    AccountFacts,
+    Goal,
+    GoalStatus,
+    continuous_construction,
+    march_utilization,
+    queue_busy,
+)
 
 CONFIDENCE = MappingProxyType({Freshness.OBSERVED: 1.0, Freshness.INFERRED: 0.7, Freshness.STALE: 0.3,
                                Freshness.UNKNOWN: 0.0})
@@ -31,6 +39,12 @@ class Candidate:
 def _value(state: AccountState, key: str) -> object:
     lab = state.get(key)
     return None if lab.fact is None or lab.freshness in (Freshness.UNKNOWN,) else lab.fact.value
+
+
+def _reserve(state: AccountState) -> int:
+    """So quan doan de danh cho phan quan (bot cu ghi facts.rebels_reserve; thieu = 0)."""
+    v = _value(state, "rebels_reserve")
+    return v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else 0
 
 
 def account_facts(state: AccountState, s: PlanSettings) -> AccountFacts:
@@ -61,6 +75,8 @@ def candidates(state: AccountState, s: PlanSettings) -> list[Candidate]:
         dispatch_block = f"du lieu hanh quan {m.freshness.value} - quan sat lai truoc"
     elif m.availability is None or m.availability.free == 0:
         dispatch_block = "khong co doi ranh"
+    elif m.availability.free <= _reserve(state):
+        dispatch_block = "de quan doan cho phan quan"
     else:
         dispatch_block = None
     out.append(Candidate(spec(ActionName.DISPATCH_GATHER), mg, dispatch_block is None, dispatch_block,
@@ -76,4 +92,28 @@ def candidates(state: AccountState, s: PlanSettings) -> list[Candidate]:
         build_block = None
     out.append(Candidate(spec(ActionName.LEGACY_BUILD), cg, build_block is None, build_block,
                          CONFIDENCE[busy_lab.freshness]))
+    out += [_queue(state, "queue_train", Goal.TRAINING, ActionName.LEGACY_TRAIN),
+            _queue(state, "queue_research", Goal.RESEARCH, ActionName.LEGACY_RESEARCH)]
     return out
+
+
+def _pair(v: object) -> tuple[int, int] | None:
+    if isinstance(v, (list, tuple)) and len(v) == 2 and all(isinstance(x, int) for x in v):
+        return int(v[0]), int(v[1])
+    return None
+
+
+def _queue(state: AccountState, key: str, goal: Goal, action: ActionName) -> Candidate:
+    """Q4: hang cho nha linh / nghien cuu - chi lam khi doc duoc (OBSERVED) va con cho ranh."""
+    lab = state.get(key)
+    g = queue_busy(goal, _pair(_value(state, key)), QUEUE_PRIORITY[goal])
+    block: str | None
+    if lab.fact is None or lab.freshness is not Freshness.OBSERVED:
+        block = f"hang cho {key} {lab.freshness.value}"
+    elif g.satisfied:
+        block = "hang cho day"
+    elif goal is Goal.RESEARCH and _value(state, "research_wait_hq") is not None:
+        block = "nghien cuu cho nha chinh len cap"
+    else:
+        block = None
+    return Candidate(spec(action), g, block is None, block, CONFIDENCE[lab.freshness])
