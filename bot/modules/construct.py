@@ -130,6 +130,9 @@ def place(ctx, x, tries=12):
             if not ctx.wait_for("build/btn_construct", timeout=5, th=0.85, roi=(280, 870, 200, 90)):
                 ctx.save_debug("construct_no_confirm")
                 return False
+            from bot import build
+            bp = ctx.find("build/btn_construct", th=0.85, roi=(280, 870, 200, 90))
+            ctx.last_build_s = build.read_build_time(ctx.shot(), bp[:2]) if bp else None
             ctx.tap_tpl("build/btn_construct", wait=2.5, th=0.85, roi=(280, 870, 200, 90))   # nut PHAI, khong phai "ngay"
             if ctx.find("build/btn_construct", th=0.85, roi=(280, 870, 200, 90)):
                 log.info("Xay moi: bam 'Xay dung' nhung van o man xac nhan (thieu tai nguyen/tho?) - bo")

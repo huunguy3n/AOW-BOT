@@ -132,6 +132,22 @@ def free_instant_button(img, up):
     return None
 
 
+def read_build_time(img, btn):
+    """Thoi gian xay ghi duoi nut 'Tang cap' / 'Xay dung' (icon dong ho + 00:00:30) -> giay | None. btn = tam nut.
+    Doc 3 lan (Otsu + 2 nguong sang), chi tin khi >= 2 lan cung ra 1 gia tri (icon dong ho hay bi doc thanh so)."""
+    from collections import Counter
+    x, y = btn
+    votes = Counter()
+    for b in (None, 150, 170):
+        t = ocr.seconds(ocr.text(img, (x - 24, y + 7, 74, 26), "0123456789:", scale=4, psm=7, bright=b) or "")
+        if t is not None:
+            votes[t] += 1
+    for v, n in votes.most_common(1):
+        if n >= 2:
+            return v
+    return None
+
+
 def quick_wait(ctx):
     """Vua bat dau xay: cong trinh nho xay NHANH (thanh tien do tren thanh pho con <= build.quick_s giay) thi cho xong
     roi tra True de ben goi xay tiep ngay, thay vi bo di tho ranh (chu du an 2026-11-22: 'xay nhanh thi xay lien tuc').
@@ -145,8 +161,9 @@ def quick_wait(ctx):
     if used >= total_cap:
         return False
     ctx.ensure_city()
-    img = ctx.shot()
-    ts = sorted(t for _, _, t in progress_bars(img) if t)
+    known = getattr(ctx, "last_build_s", None)      # thoi gian xay doc duoc tren man Tang cap / Xay dung truoc khi bam
+    ctx.last_build_s = None
+    ts = [known] if known else sorted(t for _, _, t in progress_bars(ctx.shot()) if t)
     if not ts or ts[0] > quick or ts[0] + used > total_cap:
         log.info("Xay: %s - khong cho xay lien tuc", f"con {ts[0]} s > {quick} s" if ts else "khong doc duoc thoi gian xay")
         return False
@@ -215,6 +232,7 @@ def upgrade_here(ctx, depth=0, max_depth=4, late=False):
     if not ctx.cfg.get("build", {}).get("follow_quests", True):
         return "blocked"
     up = ctx.v.find(img, "build/btn_upgrade")
+    ctx.last_build_s = read_build_time(img, up) if up else None
     free = free_instant_button(img, up) if up else None
     if free:
         log.info("Tang cap ngay MIEN PHI (0 kim cuong) - bam")

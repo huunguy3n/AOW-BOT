@@ -52,3 +52,13 @@ def test_disabled_and_cap(monkeypatch):
     ctx2 = FakeCtx()
     ctx2._quick_waited = 500.0
     assert build.quick_wait(ctx2) is False
+
+
+def test_known_build_time_used(monkeypatch):
+    ctx = FakeCtx()
+    ctx.last_build_s = 30
+    _patch(monkeypatch, [], [(0, 1)])          # khong co thanh tien do tren man, van biet 30 s tu man Tang cap
+    assert build.quick_wait(ctx) is True
+    assert ctx.last_build_s is None
+    ctx.last_build_s = 900
+    assert build.quick_wait(ctx) is False
