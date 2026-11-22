@@ -341,6 +341,8 @@ class Runner:
                 scr, _ = screens.identify(ctx.dev.screencap(tries=1), ctx.v)
             except Exception:
                 scr = None
+            if getattr(ctx.dev, "dead", False):   # A-OPT-3: may treo -> khong cho het launch_wait
+                raise RuntimeError("May khong phan hoi luc mo game (khong chup duoc man hinh) - bo luot may nay")
             if scr in ("city", "world", "popup", "reward", "dialog", "exit_dialog"):
                 log.info("Game san sang sau %.0f s (%s)", time.time() - t0, scr)
                 return
@@ -433,7 +435,7 @@ class Runner:
                 launched = self.ld.launch(idx)
             if not launched:
                 raise RuntimeError("Khong bat duoc instance")
-            dev = Device(cfg["ldplayer"]["adb"], idx, _serial(cfg, idx))
+            dev = Device(cfg["ldplayer"]["adb"], idx, _serial(cfg, idx)).configure(cfg["ldplayer"])
             dev.perf = pf
             with span("_adb_ready"):
                 ready = dev.wait_ready(cfg["ldplayer"].get("boot_timeout", 120))
@@ -608,6 +610,12 @@ class Runner:
                     blind = 0
                 st.step_result(idx, name, res, time.time() - t0, shot, note)
                 self.mem.log_run(visit, idx, name, t0, time.time() - t0, res, note, ret if name != "observe" else None)
+                if getattr(ctx.dev, "dead", False):
+                    # A-OPT-3: ADB/screencap khong cuu duoc (da do lai dia chi) -> bo may NGAY, khong tinh loi cho buoc
+                    # (khong backoff), khong chay tiep cac buoc con lai (moi buoc se mat thoi gian cho vo ich)
+                    if pf:
+                        self.mem.log_perf(visit, idx, name, pf.drain())
+                    raise RuntimeError(f"May khong phan hoi o buoc {name} (khong chup duoc man hinh) - bo luot may nay")
                 if ctx.nav:
                     self.mem.log_nav(visit, idx, name, ctx.nav)
                 if name not in ("tutorial", "mainquest", "quests", "observe") and cfg.get("guide_follow", True):

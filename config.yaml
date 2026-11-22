@@ -8,6 +8,12 @@ ldplayer:
   launch_min_wait: 15      # cho toi thieu roi xem man hinh: thay thanh pho/popup la lam ngay
   max_running: 2           # toi da so may LDPlayer chay cung luc (ke ca may khong do bot bat)
   wait_slot_min: 60        # cho toi da N phut de co cho trong, qua thi bo qua may do
+  screencap:               # A-OPT-3 (P1): phat hien may treo som - truoc day 1 lan chup hong mat ~190 s
+    timeout_s: 8           # giay / 1 lenh screencap (binh thuong ~0,5 s)
+    tries: 3               # so lan thu mac dinh moi lan chup
+    budget_s: 30           # tong thoi gian toi da 1 lan chup (ke ca thu lai)
+    max_timeouts: 2        # timeout lien tiep = may treo -> thoi thu
+    reconnect_wait_s: 15   # do lai dia chi adb 1 lan; van hong -> bo luot may nay, sang may ke tiep
 
 # adb_serials: {0: '127.0.0.1:5555'}   # (tuy chon) dia chi adb rieng cho may; mac dinh emulator-(5554 + 2 x idx)
 guide_follow: true         # sau moi buoc: game dang hien huong dan (ban tay / V) -> lam theo ngay

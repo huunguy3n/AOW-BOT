@@ -5,6 +5,10 @@ import cv2, numpy as np
 log = logging.getLogger("aow")
 
 
+class ScreencapError(RuntimeError):
+    """Khong chup duoc man hinh. Thong diep luon chua 'Khong chup duoc man hinh' (runner dem buoc 'mu')."""
+
+
 class LDConsole:
     _slot = threading.Lock()   # 2 luong cung bat may: kiem tra so may + launch phai nguyen tu (khong vuot max_running)
 
@@ -115,7 +119,7 @@ class Device:
             for ser in dict.fromkeys([self.serial, f"emulator-{5554 + 2 * self.idx}", f"127.0.0.1:{5555 + 2 * self.idx}"]):
                 try:
                     r = subprocess.run([self.adb, "-s", ser, "shell", "getprop", "sys.boot_completed"],
-                                       capture_output=True, timeout=10)
+                                       capture_output=True, timeout=min(10, max(3, timeout / 3)))
                     if r.stdout.decode("utf-8", "ignore").strip() == "1":
                         if ser != self.serial:
                             log.info("ADB #%d: dung dia chi %s (thay %s)", self.idx, ser, self.serial)
@@ -126,28 +130,58 @@ class Device:
             # LDPlayer doi khi can 'adb connect'; luc may dang khoi dong lenh nay co the treo -> bo qua
             try:
                 subprocess.run([self.adb, "connect", f"127.0.0.1:{5555 + 2 * self.idx}"],
-                               capture_output=True, timeout=10)
+                               capture_output=True, timeout=min(10, max(3, timeout / 3)))
             except subprocess.TimeoutExpired:
                 pass
             time.sleep(3)
         return False
 
-    def screencap(self, tries=4, _reconnect=True):
+    # A-OPT-3 (P1, 2026-11-23): truoc day 1 lan chup hong treo toi ~190 s (4 lan x (raw 20 s + PNG 20 s) + nghi
+    # + do lai dia chi 30 s + 4 lan nua), roi save_debug chup them lan nua. Nay: timeout ngan, ngan sach tong,
+    # 2 lan timeout lien tiep = may treo (khong thu PNG sau khi raw timeout), do lai dia chi 1 lan ngan; khong cuu
+    # duoc -> dead = True: moi lan chup sau nem loi NGAY de runner bo may sang may ke tiep. Tham so: ldplayer.screencap.
+    shot_timeout = 8.0       # giay / 1 lenh screencap (binh thuong ~0,4-0,6 s)
+    shot_tries = 3           # so lan thu mac dinh
+    shot_budget = 30.0       # tong thoi gian toi da 1 lan screencap() (ke ca thu lai, chua tinh do lai dia chi)
+    shot_max_timeouts = 2    # timeout lien tiep -> coi nhu may treo, thoi thu
+    reconnect_wait = 15.0    # wait_ready khi het luot (doi dia chi adb)
+    dead = False             # may khong phan hoi: moi lan chup sau nem ScreencapError ngay
+
+    def configure(self, lc):
+        """Doc ldplayer.screencap (config.yaml) - thieu khoa thi giu mac dinh tren."""
+        sc = (lc or {}).get("screencap") or {}
+        self.shot_timeout = float(sc.get("timeout_s", self.shot_timeout))
+        self.shot_tries = int(sc.get("tries", self.shot_tries))
+        self.shot_budget = float(sc.get("budget_s", self.shot_budget))
+        self.shot_max_timeouts = int(sc.get("max_timeouts", self.shot_max_timeouts))
+        self.reconnect_wait = float(sc.get("reconnect_wait_s", self.reconnect_wait))
+        return self
+
+    def screencap(self, tries=None, _reconnect=True):
         """Chup man hinh; adb doi khi tra ve rong (may vua khoi dong / dang ban) -> thu lai.
         Het luot ma van hong: dia chi adb co the da doi (emulator-55xx <-> 127.0.0.1:55xx, #6/#3 2026-11-21
-        'error: device not found' ngay sau khi mo game) -> wait_ready do lai dia chi roi chup them 1 lan."""
+        'error: device not found' ngay sau khi mo game) -> wait_ready do lai dia chi roi chup them 1 lan.
+        Khong cuu duoc -> dead = True (runner bo may nay)."""
+        if self.dead:
+            raise ScreencapError("Khong chup duoc man hinh (may khong phan hoi)")
+        tries = self.shot_tries if tries is None else tries
         t0 = time.perf_counter()
         ok = False
         try:
             try:
                 img = self._screencap(tries)
-            except RuntimeError:
+            except ScreencapError as e:
                 if not _reconnect or tries < 3:
                     raise
-                log.warning("ADB #%d: khong chup duoc qua %s -> do lai dia chi", self.idx, self.serial)
-                if not self.wait_ready(30):
+                log.warning("ADB #%d: khong chup duoc qua %s (%s) -> do lai dia chi", self.idx, self.serial, e)
+                if not self.wait_ready(self.reconnect_wait):
+                    self.dead = True
+                    raise ScreencapError("Khong chup duoc man hinh (ADB khong tra loi sau do lai dia chi)") from e
+                try:
+                    img = self._screencap(min(tries, 2))
+                except ScreencapError:
+                    self.dead = True
                     raise
-                img = self._screencap(tries)
             ok = True
             return img
         finally:
@@ -155,24 +189,35 @@ class Device:
                 self.perf.add("screencap" if ok else "screencap_fail", time.perf_counter() - t0)
 
     def _screencap(self, tries):
+        t0 = time.monotonic()
+        timeouts = 0
         for k in range(tries):
+            img, timed_out = None, False
             try:
                 img = self._raw_shot() if self.raw else None
                 if img is None:
-                    data = self._cmd("exec-out", "screencap", "-p", binary=True, timeout=20)
+                    data = self._cmd("exec-out", "screencap", "-p", binary=True, timeout=self.shot_timeout)
                     img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR) if data else None
-            except (cv2.error, subprocess.TimeoutExpired):
+            except subprocess.TimeoutExpired:
+                timed_out = True
+            except cv2.error:
                 img = None
             if img is not None:
                 return img
-            time.sleep(1.5 * (k + 1))
-        raise RuntimeError("Khong chup duoc man hinh")
+            timeouts = timeouts + 1 if timed_out else 0
+            if timeouts >= self.shot_max_timeouts:
+                raise ScreencapError(f"Khong chup duoc man hinh ({timeouts} lan timeout {self.shot_timeout:.0f} s)")
+            if k + 1 >= tries or time.monotonic() - t0 >= self.shot_budget:
+                break
+            time.sleep(min(1.0 * (k + 1), max(0.0, self.shot_budget - (time.monotonic() - t0))))
+        raise ScreencapError("Khong chup duoc man hinh")
 
     raw = True   # screencap tho (khong nen PNG tren may): ~400 ms thay vi ~600 ms (do #4 2026-11-20)
 
     def _raw_shot(self):
-        """screencap khong -p: header (w, h, format[, colorspace]) + RGBA. Sai dinh dang -> None (dung PNG)."""
-        data = self._cmd("exec-out", "screencap", binary=True, timeout=20)
+        """screencap khong -p: header (w, h, format[, colorspace]) + RGBA. Sai dinh dang -> None (dung PNG).
+        Timeout -> nem TimeoutExpired (khong thu PNG: may treo thi PNG cung treo)."""
+        data = self._cmd("exec-out", "screencap", binary=True, timeout=self.shot_timeout)
         if not data or len(data) < 16:
             return None
         w, h, fmt = np.frombuffer(data[:12], "<u4")
