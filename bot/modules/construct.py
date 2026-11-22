@@ -196,6 +196,8 @@ def run(ctx):
             if place(ctx, x):
                 built += 1
                 done = True
+                from bot import build
+                build.quick_wait(ctx)     # xay nhanh -> cho xong, vong sau xay tiep (chu du an 2026-11-22)
                 log.info("Xay moi: da xay 1 cong trinh (nhom @%d,%d)", g[0], g[1])
             break
         if not done:

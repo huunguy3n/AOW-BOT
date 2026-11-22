@@ -170,6 +170,8 @@ def run(ctx):
             if res in ("started", "follow_build_started"):
                 started += 1
             ctx.back_out()
+            if res in ("started", "follow_build_started"):
+                build.quick_wait(ctx)    # xay nhanh -> cho xong, dong sau xay tiep (chu du an 2026-11-22)
             if res == "no_builder" and not q.get("follow", True):
                 ctx.ensure_city()
                 return started      # het tho: dong khac (tuong, phe tich...) van lam duoc neu bat follow

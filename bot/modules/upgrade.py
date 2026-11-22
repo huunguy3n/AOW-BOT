@@ -164,4 +164,6 @@ def run(ctx):
         m.set_fact(ctx.dev.idx, "hq_level", cap)
     ctx.back_out()
     ctx.ensure_city()
+    if res == "started":
+        build.quick_wait(ctx)      # xay nhanh -> cho xong; buoc xa viec (drain) chay lai 'upgrade' de xay tiep
     return 1 if res == "started" else 0

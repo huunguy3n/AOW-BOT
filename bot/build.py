@@ -132,6 +132,39 @@ def free_instant_button(img, up):
     return None
 
 
+def quick_wait(ctx):
+    """Vua bat dau xay: cong trinh nho xay NHANH (thanh tien do tren thanh pho con <= build.quick_s giay) thi cho xong
+    roi tra True de ben goi xay tiep ngay, thay vi bo di tho ranh (chu du an 2026-11-22: 'xay nhanh thi xay lien tuc').
+    Tran: build.quick_total_s giay cho / luot ghe. Khong doc duoc thoi gian xay -> False (xay lau hoac chua ro)."""
+    from bot.modules.observe import progress_bars
+    bc = ctx.cfg.get("build", {})
+    quick, total_cap = bc.get("quick_s", 180), bc.get("quick_total_s", 600)
+    if quick <= 0:
+        return False
+    used = getattr(ctx, "_quick_waited", 0.0)
+    if used >= total_cap:
+        return False
+    ctx.ensure_city()
+    img = ctx.shot()
+    ts = sorted(t for _, _, t in progress_bars(img) if t)
+    if not ts or ts[0] > quick or ts[0] + used > total_cap:
+        log.info("Xay: %s - khong cho xay lien tuc", f"con {ts[0]} s > {quick} s" if ts else "khong doc duoc thoi gian xay")
+        return False
+    t0 = time.time()
+    deadline = t0 + ts[0] + 6
+    maxb = bc.get("max_builders", 1)
+    log.info("Xay nhanh (con %d s <= %d s) - cho xong de xay tiep", ts[0], quick)
+    while time.time() < deadline:
+        time.sleep(4)
+        ctx.wd_reset(getattr(ctx, "step_limit", None))   # dang cho co chu dich: dem lai watchdog, giu gioi han buoc
+        b = builders(ctx)
+        if b is not None and b[0] < min(maxb, b[1]):
+            break
+    ctx._quick_waited = used + (time.time() - t0)
+    ctx.ensure_city()
+    return True
+
+
 def upgrade_here(ctx, depth=0, max_depth=4, late=False):
     """Dang o menu cong trinh (icon Tang cap) hoac man Tang cap. Tra ve: 'started' | 'hq_cap' |
     'blocked' (thieu dieu kien/tai nguyen/het tho) | 'none' (khong phai man nang cap)."""

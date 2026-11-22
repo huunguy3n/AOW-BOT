@@ -151,6 +151,8 @@ build:
   hq_max_level: 30     # khong nang nha chinh qua cap nay (chu du an 2026-11-21: xay o moi cap; HQ30 = toi da -> bo muc tieu xay)
   max_builders: 1      # so tho xay dung duoc (farm 1; TK chinh #1 = 2, dat rieng tren web/settings) - chu du an 2026-11-21
   follow_quests: true  # xay/nang nha theo nut "Den" cua nhiem vu
+  quick_s: 180         # xay xong trong <= N giay (thanh tien do tren thanh pho) -> cho xong roi xay tiep lien tuc; 0 = tat
+  quick_total_s: 600   # tong thoi gian cho xay nhanh moi luot ghe
 quests: {daily: true, main: true, alliance: true, story: true, max_go_per_run: 6,
          follow: true,      # dong Chuong khong phai xay (tuong, don phe tich...) -> lam theo huong dan game (tutorial.decide)
          follow_steps: 40,  # so buoc toi da moi dong

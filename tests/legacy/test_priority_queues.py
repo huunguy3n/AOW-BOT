@@ -118,6 +118,7 @@ def test_upgrade_starts_from_hq(monkeypatch):
     monkeypatch.setattr(upgrade.build, "builders", lambda ctx: ctx.b)
     monkeypatch.setattr(upgrade, "goto_hq", lambda ctx: (317, 557, 0.95))
     monkeypatch.setattr(upgrade.build, "upgrade_here", lambda ctx: "started")
+    monkeypatch.setattr(upgrade.build, "quick_wait", lambda ctx: False)
     assert upgrade.run(HqCtx()) == 1
 
 
