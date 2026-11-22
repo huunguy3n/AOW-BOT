@@ -47,6 +47,18 @@ def ocr_hq(img):
     return lv
 
 
+def note_hq(m, idx, prev, lv, targets=None):
+    """P4: lich su cap nha chinh (fact 'hq_history' [[ts, cap], ...]) de do tieu chi 'moi farm len >= 1 cap / ngay'."""
+    from aowbot.domain import hqplan as dom
+    hist = m.fact(idx, "hq_history") or []
+    if not hist or hist[-1][1] != lv:
+        hist = ([*hist, [time.time(), lv]])[-60:]
+        m.set_fact(idx, "hq_history", hist)
+        t = dom.next_target(lv, targets or dom.DEFAULT_TARGETS)
+        log.info("Nha chinh: cap %s -> %s (muc tieu ke tiep %s)", prev, lv, t or "da dat het")
+    return hist
+
+
 def read_hq(ctx, every_h=6):
     """Cap nha chinh (Xuong kien truc) cho gather/research/lich. Cham avatar goc trai tren -> OCR -> quay lai.
     Chi doc khi chua biet hoac da cu hon every_h gio (ton ~5 s)."""
@@ -73,7 +85,9 @@ def read_hq(ctx, every_h=6):
         if getattr(ctx, "store", None):
             ctx.store.update(idx, hq_level=lv)
         if m:
+            prev = m.fact(idx, "hq_level")
             m.set_fact(idx, "hq_level", lv)
+            note_hq(m, idx, prev, lv, ctx.cfg.get("build", {}).get("hq_targets"))
     else:
         log.info("Khong doc duoc cap nha chinh")
     return lv

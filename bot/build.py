@@ -182,6 +182,19 @@ def quick_wait(ctx):
     return True
 
 
+SUCCESS_ROI = (120, 300, 300, 44)   # chu "Tang cap thanh cong!" giua man Tang cap (anh build_blocked #2/#4 22/11)
+
+
+def upgraded_ok(img):
+    """Man Tang cap dang hien "Tang cap thanh cong!"? (OCR, chu trang tren nen mo). Ham thuan tren anh."""
+    from aowbot.domain.blockers import normalize
+    for b in (200, None):
+        s = normalize(ocr.text(img, SUCCESS_ROI, bright=b, psm=7) or "")
+        if "thanh cong" in s or ("tang cap" in s and "thanh c" in s):
+            return True
+    return False
+
+
 def upgrade_here(ctx, depth=0, max_depth=4, late=False):
     """Dang o menu cong trinh (icon Tang cap) hoac man Tang cap. Tra ve: 'started' | 'hq_cap' |
     'blocked' (thieu dieu kien/tai nguyen/het tho) | 'none' (khong phai man nang cap)."""
@@ -254,6 +267,12 @@ def upgrade_here(ctx, depth=0, max_depth=4, late=False):
         # nang cap xong NGAY (vd 'Tang cap ngay - Mien phi'): man van o trang nang cap cua cap ke tiep, cap hien tai
         # da tang -> la thanh cong, khong phai 'blocked' (do #4 2026-11-22: Radar 1 -> 2 'Tang cap thanh cong!')
         log.info("Da nang cap xong ngay (cap %s -> %s)", lv, lv2)
+        ctx.back_out()
+        return "started"
+    if upgraded_ok(img):
+        # P4: "Tang cap thanh cong!" (nang ngay mien phi / cong trinh nho) - man van mo trang cap ke tiep nen nut Tang cap
+        # con -> truoc bi tinh 'blocked' (7/7 anh build_blocked 22/11) -> ke hoach nha chinh lui 1 gio vo ly
+        log.info("Tang cap thanh cong (cap %s -> %s)", lv, lv2 if lv2 is not None else "?")
         ctx.back_out()
         return "started"
     if ctx.v.find(img, "build/btn_upgrade") or not ctx.is_home():
