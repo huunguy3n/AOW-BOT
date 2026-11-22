@@ -119,7 +119,8 @@ NAMES: Mapping[str, str] = MappingProxyType({
     # --- Tân thủ
     "tutorial/battle_flag": "Cờ trận chạy đường", "tutorial/battle_top": "Trận chạy đường: thanh trên",
     "tutorial/battle_top2": "Trận chạy đường: thanh trên (kiểu 2)", "tutorial/btn_attack_red": "Nút Tấn công đỏ",
-    "tutorial/btn_auto_formation": "Nút Đội hình tự động", "tutorial/btn_build": "Nút Xây dựng (tân thủ)",
+    "tutorial/btn_auto_formation": "Nút Đội hình tự động",
+    "tutorial/btn_suggest_formation": "Nút Đội hình đề xuất (xuất quân)", "tutorial/btn_build": "Nút Xây dựng (tân thủ)",
     "tutorial/btn_build_ok": "Nút Xây dựng ✓ (tân thủ)", "tutorial/btn_claim": "Nút Nhận (tân thủ)",
     "tutorial/btn_claim_all": "Nút Nhận tất cả (tân thủ)", "tutorial/btn_medkit": "Nút Hộp cứu thương",
     "tutorial/btn_start_game": "Nút Bắt đầu game", "tutorial/dialog_next": "Nút Tiếp (hội thoại)",

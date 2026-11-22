@@ -24,6 +24,35 @@ def claim_tab(ctx, claims, onces, max_taps):
     return n
 
 
+def vip_dots(ctx, max_taps=5):
+    """Man 'Dac quyen VIP' (chu du an 2026-11-22: anh 3 cham do - dau '+', ruong goc phai, nut dong ho duoi): bam tung
+    cham do tren trang VIP, CHI nhan nut 'Nhan' xanh (claim_buttons theo mau+chu) / dung vat pham VIP da co (nut 'Dung').
+    Khong bam nut co gia (khung 'VIP1 gioi han mua' co gia kim cuong, khong co cham do). Anh moi bang luu logs/shots."""
+    n, seen = 0, set()
+    for _ in range(max_taps):
+        img = ctx.shot()
+        dots = [d for d in red_dots(img, (0, 60, 540, 900)) if (d[0] // 30, d[1] // 30) not in seen]
+        if not dots:
+            break
+        x, y = sorted(dots, key=lambda d: (d[1] // 30, d[0]))[0]
+        seen.add((x // 30, y // 30))
+        tx, ty = (x - 80, y + 18) if y > 850 else (x - 25, y + 22)     # cham do o goc tren-phai; nut dong ho: tam nut o trai-duoi
+        ctx.tap(tx, ty, wait=2.0)
+        ctx.save_debug("vip_dot")
+        got = ctx.claim_buttons()
+        after = ctx.shot()
+        if (ctx.cfg.get("rewards") or {}).get("use_vip_items", True) and ctx.v.find(after, "rewards/vip/title_activate", th=0.9):
+            if ctx.tap_tpl("rewards/vip/btn_use", wait=1.5, th=0.9):
+                log.info("VIP: kich hoat bang vat pham (Dung)")
+                ctx.dismiss_reward()
+                got += 1
+        n += got
+        log.info("VIP: cham do @%d,%d -> nhan %d", x, y, got)
+        ctx.dismiss_reward()
+        ctx.tap_first(["common/btn_close"], wait=1.0)      # dong bang con mo (neu co) de ve trang VIP
+    return n
+
+
 def city_gifts(ctx, max_taps=10):
     """Bong bong HOP QUA noi tren cong trinh (nhan dien theo mau/hinh, khong dung anh mau - bong bong trong suot)."""
     ctx.ensure_city()
@@ -114,6 +143,8 @@ def run_route(ctx, prefix, max_taps=30):
                 total += claim_tab(ctx, claims, onces, max_taps)
     else:
         total += claim_tab(ctx, claims, onces, max_taps)
+    if route == "vip":
+        total += vip_dots(ctx)
     ctx.ensure_city()
     return total
 

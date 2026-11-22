@@ -38,6 +38,28 @@ def _f(v, img, name, roi=None):
     return v.find(img, name, th=TH.get(name), roi=roi or ROI.get(name))
 
 
+def _formation_btn(v, img):
+    """Nut xep doi hinh tu dong: 'Doi hinh tu dong' (tran tan thu) hoac 'Doi hinh de xuat' (xuat quan tu ban do,
+    chu du an 2026-11-22 gui anh: man Phien quan)."""
+    return _f(v, img, "tutorial/btn_auto_formation") or v.find(img, "tutorial/btn_suggest_formation", th=0.85)
+
+
+def find_green_chevron(img):
+    """Mui ten XANH chi xuong (dau V kep, ~22x31 px) tren ban do the gioi: huong dan game chi vao quan Phien quan o
+    ngay duoi no (anh chu du an 2026-11-22: mui ten y~96, quan y~200). -> (x, y_cham) | None. Ham thuan."""
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    m = ((hsv[..., 0] >= 50) & (hsv[..., 0] <= 80) & (hsv[..., 1] >= 120) & (hsv[..., 2] >= 170)).astype("uint8")
+    m[:110], m[800:] = 0, 0
+    m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    n, _, st, c = cv2.connectedComponentsWithStats(m)
+    best = None
+    for i in range(1, n):
+        x, y, w, h, a = st[i]
+        if 16 <= w <= 36 and 22 <= h <= 46 and 1.0 <= h / w <= 1.8 and a >= 0.4 * w * h and (best is None or a > best[2]):
+            best = (int(c[i][0]), int(y + h + 95), a)
+    return best[:2] if best else None
+
+
 BEAM_DY = 35       # cham duoi chan cot sang cam (linh dung tren o do) - do khung 021/025: chan cot ~445, linh ~465..480
 
 
@@ -593,12 +615,12 @@ def decide(v, img, idle=0, state=None):
         return ("tap", p[0], p[1], "tan cong")
     # 6a. CHE DO follow: man doi hinh ma KHONG du doan "Thang toan dien" -> khong danh (giong mainquest/campaign)
     #     Kiem tra SAU khi da bam "tu xep doi hinh" (du doan tinh theo doi hinh dang xep).
-    if state.get("follow") and state.get("formation") and _f(v, img, "tutorial/btn_auto_formation")             and not _pred_win(v, img):
+    if state.get("follow") and state.get("formation") and _formation_btn(v, img) and not _pred_win(v, img):
         return ("weak", 0, 0, "doi hinh khong du doan thang -> khong danh")
-    if _f(v, img, "tutorial/btn_auto_formation"):          # man doi hinh: tu xep 1 lan roi Chien dau
+    if _formation_btn(v, img):          # man doi hinh: tu xep 1 lan roi Chien dau
         if not state.get("formation"):
             state["formation"] = True
-            p = _f(v, img, "tutorial/btn_auto_formation")
+            p = _formation_btn(v, img)
             return ("tap", p[0], p[1], "tu xep doi hinh")
         state["formation"] = False
         p = v.find(img, "campaign/btn_fight", th=0.8)
@@ -626,6 +648,22 @@ def decide(v, img, idle=0, state=None):
     p = v.find(img, "common/btn_close", roi=ROI["common/btn_close@top"])
     if p:
         return ("tap", p[0], p[1], "dong the CONGRATULATIONS")
+    # 6b. bang nhiem vu dang o tab Chinh/Chuong, tab "Nhiem vu hang ngay" co CHAM DO -> game huong dan bam tab do
+    #     (anh chu du an 2026-11-22). Toi da 2 lan / phien (cham do khong mat khi chua nhan het).
+    t3 = v.find(img, "daily/tab_3_daily", th=0.85)
+    if t3 and v.find(img, "daily/tab_2_main", th=0.85) and state.get("daily_tab", 0) < 2:
+        from bot.badges import red_dots
+        if red_dots(img, (t3[0] + 40, t3[1] - 50, 60, 50)):
+            state["daily_tab"] = state.get("daily_tab", 0) + 1
+            return ("tap", t3[0], t3[1], "tab Nhiem vu hang ngay (cham do)")
+    # 6c. mui ten XANH chi xuong tren ban do -> cham quan/muc tieu ngay duoi (toi da 3 lan moi vi tri)
+    g = find_green_chevron(img)
+    if g:
+        key = (g[0] // 40, g[1] // 40)
+        seen = state.setdefault("chevron_taps", {})
+        if seen.get(key, 0) < 3:
+            seen[key] = seen.get(key, 0) + 1
+            return ("tap", g[0], g[1], "mui ten xanh chi xuong -> cham muc tieu")
     # 7. khong nhan ra
     home = v.find(img, "common/btn_to_world")
     if not home and idle >= 5:     # cham giua 3 lan khong qua -> phim Back (dong popup la an toan hon cham mu)
