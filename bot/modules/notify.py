@@ -742,17 +742,29 @@ def run(ctx):
 HEAL_BTN_ROI, HEAL_CNT_ROI = (380, 800, 160, 160), (400, 770, 90, 40)
 
 
-def heal_targets(img):
-    """Vong tron VANG (tam do) hien tren nguoi sau khi dung hop cuu thuong. Do #2 2026-11-21 (chu du an cham tay):
-    vong ~49x48 px, H 12-35, S >= 110, V >= 150. Bo vung nut duoi (y >= 760). -> [(x, y)]"""
+def _ring_candidates(img, smin, vmin, fill, box, zone=None):
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    m = ((hsv[..., 0] >= 12) & (hsv[..., 0] <= 35) & (hsv[..., 1] >= 110) & (hsv[..., 2] >= 150)).astype(np.uint8)
+    m = ((hsv[..., 0] >= 12) & (hsv[..., 0] <= 35) & (hsv[..., 1] >= smin) & (hsv[..., 2] >= vmin)).astype(np.uint8)
     m[760:] = 0
     m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
     n, _, st, c = cv2.connectedComponentsWithStats(m)
-    return [(int(c[i][0]), int(c[i][1])) for i in range(1, n)
-            if 26 <= st[i][2] <= 70 and 26 <= st[i][3] <= 70 and 0.75 <= st[i][2] / st[i][3] <= 1.33
-            and st[i][4] >= 0.45 * st[i][2] * st[i][3]]
+    out = []
+    for i in range(1, n):
+        w, h, a = st[i][2], st[i][3], st[i][4]
+        if box[0] <= w <= box[1] and box[0] <= h <= box[1] and 0.8 <= w / h <= 1.25 and a >= fill * w * h:
+            x, y = int(c[i][0]), int(c[i][1])
+            if zone is None or (zone[0] <= x <= zone[2] and zone[1] <= y <= zone[3]):
+                out.append((x, y))
+    return out
+
+
+def heal_targets(img):
+    """Vong tron VANG (tam do) hien tren nguoi sau khi dung hop cuu thuong. Do #2 2026-11-21 (chu du an cham tay):
+    vong ~49x48 px, H 12-35, S >= 110, V >= 150. Bo vung nut duoi (y >= 760). -> [(x, y)]
+    Du phong (chu du an 2026-11-22: 'chua bam duoc vao day', #4): vong mo tren anh nguoi sang mau, S chi ~90-110 ->
+    noi nguong S >= 70 nhung chi trong vung giua man (tranh HUD / thanh pho)."""
+    out = _ring_candidates(img, 110, 150, 0.45, (26, 70))
+    return out or _ring_candidates(img, 70, 150, 0.15, (36, 75), zone=(90, 120, 450, 700))
 
 
 def heal_event(ctx, max_uses=10):
