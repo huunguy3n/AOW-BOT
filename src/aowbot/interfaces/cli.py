@@ -3,12 +3,13 @@
   python -m aowbot world  <idx> [--db] [--config] [--settings] [--at 'YYYY-mm-dd HH:MM']   trang thai + do tuoi
   python -m aowbot plan   <idx> [...] [--log]       agent se lam gi bay gio, vi sao (--log: ghi bang decisions)
   python -m aowbot shadow <idx> [...] [--since 'YYYY-mm-dd HH:MM'] [--until ...]   phat lai so voi lich cu
+  python -m aowbot shadow all [...]                 P6-Q4: moi may trong config + phien agent that + rui ro
 """
 from __future__ import annotations
 
 import argparse
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from aowbot.application.decide import Decision
@@ -27,6 +28,7 @@ class Command:
     since: float | None = None
     until: float | None = None
     log: bool = False
+    all_accounts: bool = False   # shadow all
 
 
 def _t(s: str | None) -> float | None:
@@ -40,7 +42,7 @@ def parse(argv: Sequence[str]) -> Command:
                        ("plan", "quyet dinh dry-run cua agent kem giai thich"),
                        ("shadow", "phat lai lich su: agent so voi lich cu")):
         p = sub.add_parser(name, help=text)
-        p.add_argument("account", type=int)
+        p.add_argument("account", type=_account if name == "shadow" else int)
         p.add_argument("--db", default="data/memory.db")
         p.add_argument("--config", default="config.yaml")
         p.add_argument("--settings", default="data/settings.json")
@@ -51,8 +53,17 @@ def parse(argv: Sequence[str]) -> Command:
             p.add_argument("--since")
             p.add_argument("--until")
     a = ap.parse_args(list(argv))
-    return Command(a.cmd, a.account, a.db, a.config, a.settings, _t(a.at), _t(getattr(a, "since", None)),
-                   _t(getattr(a, "until", None)), bool(getattr(a, "log", False)))
+    every = a.account == ALL
+    return Command(a.cmd, -1 if every else a.account, a.db, a.config, a.settings, _t(a.at),
+                   _t(getattr(a, "since", None)), _t(getattr(a, "until", None)), bool(getattr(a, "log", False)),
+                   every)
+
+
+ALL = "all"
+
+
+def _account(s: str) -> int | str:
+    return ALL if s == ALL else int(s)
 
 
 def _clock(t: float) -> str:
@@ -91,10 +102,19 @@ def render_decision(d: Decision) -> str:
     return "\n".join(lines)
 
 
-def render_shadow(r: ShadowReport) -> str:
-    return "\n".join([
+def render_shadow(r: ShadowReport, live: Mapping[str, Mapping[str, int]] | None = None,
+                  risks: Sequence[str] = ()) -> str:
+    lines = [
         f"Shadow #{r.account}: {r.observations} lan quan sat",
         f"  agent thuc day {r.agent_wakes} lan: {dict(r.agent_actions)}",
         f"  lich cu: {r.legacy_gather_visits} lan ghe co gather; co gui {r.legacy_useful}, gui 0 {r.legacy_useless}",
         f"  lan ghe co gui duoc agent phu (+- gather_retry_min): {r.legacy_useful_covered}/{r.legacy_useful}",
-        "  (INFERRED: phat lai khong doi duoc qua khu; so lan thuc day la can tren)"])
+        f"  lich cu ghe {r.legacy_visits} lan / {r.span_days} ngay; agent gui quan khi lich cu khong ghe: "
+        f"{r.agent_dispatch_alone}",
+        "  (INFERRED: phat lai khong doi duoc qua khu; so lan thuc day la can tren)"]
+    if live:
+        lines.append("  phien agent that (bang decisions): " + "; ".join(
+            f"{a} ok {c['ok']} / loi {c['failed']} / khong lam {c['none']} / chua ghi {c['open']}"
+            for a, c in sorted(live.items())))
+    lines += [f"  RUI RO: {x}" for x in risks] or ["  rui ro: khong thay"]
+    return "\n".join(lines)

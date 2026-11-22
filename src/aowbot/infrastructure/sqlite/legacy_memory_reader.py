@@ -98,6 +98,15 @@ class LegacyMemoryReader:
             out.append(VisitRecord(float(started), why or "", sent))
         return out
 
+    def decisions(self, account: int, since: float, until: float,
+                  dry_run: bool = False) -> list[tuple[str | None, str | None]]:
+        """P6-Q4: (action, outcome) cac quyet dinh agent da ghi (bang decisions cua agent). Chua co bang -> []."""
+        if not self._rows("SELECT 1 FROM sqlite_master WHERE type='table' AND name='decisions'", ()):
+            return []
+        return [(a, o) for a, o in self._rows("SELECT action, outcome FROM decisions WHERE account=? AND at>=? "
+                                              "AND at<? AND dry_run=? ORDER BY at",
+                                              (account, since, until, 1 if dry_run else 0))]
+
     # ---------- MarchTimerSource (coordinator) ----------
     def march_timers(self, account: int) -> list[MarchTimer]:
         out = []
