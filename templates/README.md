@@ -90,6 +90,20 @@ Dung lai anh mau co san (khong can chup): `play/btn_arena_fight` + `play/btn_are
 cua Chien dich, khop 1,00 tren 8/8 anh `campaign_no_fight`), `gather/btn_recommended` + `gather/btn_march` (Xuat chinh danh
 phien quan), `daily/tab_2_main`/`tab_3_daily` + `common/btn_x_small` (bang nhiem vu kieu moi), `intel/title`, `common/btn_to_city`.
 
+## P5 (2026-11-23) - chien dau va tinh huong hiem (chua co thi code bo qua nhanh + log "thieu anh mau <ten>")
+| File | Man hinh / vung cat | Tinh huong can cho |
+|---|---|---|
+| rebels/rally_mech.png | Lien minh -> tab "Su vu" -> "Tin van chien tranh": dong tap ket dang mo -> CHI icon/ten "Phan quan Co giap" tren dong (khong cat ten nguoi mo, cap, dong ho) | Dong minh dang mo tap ket Phan quan Co giap. Chi dung khi chu du an bat `rebels.join_mech_rally` |
+| rebels/btn_join.png | Cung dong do: nut tham gia (+ / "Tham gia") o mep phai dong | Nhu tren |
+| defense/alert_attack.png | Thanh pho hoac ban do khi CO QUAN DICH DANG HANH QUAN TOI: bieu tuong/bang canh bao (thuong o mep tren hoac canh nut ban do), cat phan khong doi (icon), khong cat dong ho dem nguoc | Can cu bi tan cong / bi trinh sat that. Thieu anh -> chi dua vao mep do nhay (`defense.red_flash`) |
+| defense/row_8h.png | Thanh pho -> icon khien -> bang "Bao Ho Chien Tranh": dong khien 8 GIO - cat cung kieu/vung nhu `row_12h.png` (dai tieu de dong ~230x20 px, khong cat so luong / nut) | Mo bang khi co vat pham khien 8h (ngay chien tranh SVS dung 8h truoc 12h). Thieu -> warday/defense bao `missing_tpl`, KHONG mo bang |
+
+Khong phai anh mau (bot tu luu, 1 anh/ngay/may, de chu du an xem/cat tiep): `logs/inv/intel_unknown_attack/` (man sau
+"Tan cong" tinh bao ma bot khong nhan ra - 31 lan ngay 22/11), `logs/inv/intel_unknown_target/` (ban do sau "Di" khong
+cham duoc muc tieu), `logs/inv/intel_unknown_panel/`, `logs/inv/heal_panel/` (bang benh vien khong thay nut "Hoi phuc"),
+`logs/inv/heal_bubble_no_panel/`. Can them 1 anh chu du an chup tay: **bang chua tri cua Benh vien KHI CO thuong binh**
+(`python main.py --capture <may>`, luu `logs/`) de kiem nut "Hoi phuc" (tai nguyen) va nut "Hoi phuc ngay" (kim cuong, bot chan).
+
 ## qdigits/ (P2 - doc hang cho "x/y" cot icon trai thanh pho, bot/queues.py)
 `0.png`, `1.png`, `1b.png` (so 1 co chan), `2.png`, `3.png`, `slash.png`: anh XAM 14 px cao, cat tu anh that
 (`tests/fixtures/screen_loop/queues_0-2_0-1_0-3.png`, `logs/snap-city.png`). Them so 4-6 neu gap tong > 3

@@ -89,7 +89,7 @@ Không có số đo thì không biết sửa đúng chưa → làm trước.
 ## 5. Câu hỏi cần chủ dự án trả lời trước N1
 | # | Câu hỏi | Ảnh hưởng |
 |---|---|---|
-| 1 | "Trinh sát" và "do thám" cụ thể là thao tác nào trong game? (vd: trinh sát căn cứ người chơi khác / phản quân trên bản đồ; do thám = nhiệm vụ Tình báo/Radar?) | Phạm vi Pha 5 |
+| 1 | "Trinh sát" và "do thám" cụ thể là thao tác nào trong game? (vd: trinh sát căn cứ người chơi khác / phản quân trên bản đồ; do thám = nhiệm vụ Tình báo/Radar?) — **vẫn chưa trả lời (2026-11-23)**; câu hỏi chi tiết ở `docs/strategy/implementation-roadmap.md` mục 0f. Chưa viết code trinh sát | Phạm vi Pha 5 |
 | 2 | ✅ Đã trả lời 2026-11-18: chỉ còn **#0, #2–#6**. Đo bot trên #0 (farm, bản `.vn`), tân thủ trên #5 | Pha 0–1 |
 | 3 | Sau HQ 22 bot chỉ farm (thu thập + nhận quà) hay vẫn xây công trình khác / nghiên cứu nhánh khác? | Pha 3 |
 | 4 | Có tài khoản nào đang gần HQ 22 để đo Pha 3 nhanh hơn không? | N11 |

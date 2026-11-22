@@ -95,6 +95,38 @@ Mục tiêu (theo `logs/pm-audit-1.txt`): farm tự lên nhà chính 9 rồi 15.
 
 Kiểm chứng (chủ dự án bật máy, tối đa 2 máy): 1 lượt chạy thật đầy đủ trên 2 farm (vd #3, #4) + 1 lần chạy lại, rồi `python tools/report_ro.py --split "<giờ bắt đầu P4>"` (mục `follow`: ảnh kẹt/hết bước so với trước; bảng bước: `mainquest`, `campaign`, `quests` trả 0; mục `hq` sau ≥ 1 ngày) và `python tools/follow_stats.py --since <ngày>` (kết quả follow + loại màn còn kẹt).
 
+## 0f. Giai đoạn P5 "Chiến đấu và tình huống hiếm" (PM duyệt 2026-11-23, nhánh `p5-chien-dau` tách từ `p4-nhiem-vu`)
+
+Mục tiêu (theo `logs/pm-audit-1.txt`): phản quân, tình báo, bệnh viện, phòng thủ có kết quả. Tiêu chí: phản quân có kết quả ≥ 50 % khi đủ điều kiện; tình báo "unknown" dưới 10 %.
+
+**Phân tích (chỉ đọc log, ảnh, bảng `exp` trong `data/memory.db`):**
+- Tình báo 22/11: 92 ghim, **64 "unknown" (69,6 %)**; cả 20–22/11: 172/249 (69,1 %). Phân loại theo nhật ký chạm sau nút "Đi": **31** lần bấm "Tấn công" rồi không nhận ra màn kế (không có "Chiến đấu" / "Xuất chinh" kiểu cũ, phần lớn ở #1 nhà chính 30); **22** lần ảnh mẫu ghim mục tiêu `intel/marker_fight` (ngưỡng 0,55, tìm cả màn) khớp nhầm góc trái dưới → chạm (97,805), rồi 3 điểm cố định đều trượt; **3** lần không thấy ghim; **11/11** ảnh `intel_panel_unknown` là bảng "Chúc mừng nhận được" (ghim hộp quà) — ảnh mẫu `common/msg_reward` khớp 0,79–0,93 trên ảnh lưu sau đó, nhưng lúc kiểm tra bảng còn đang hiện (hiệu ứng tia sáng đè tiêu đề).
+- Phản quân: 33 lần chạy, 0 có kết quả. Chỉ #1 đủ nhà chính 15; Lv.10 dự đoán không thắng → cả lượt trả 0 (mỗi lượt chỉ thử 1 cấp, rồi chạm lại cùng mục tiêu 2 lần). `rebels.join_mech_rally` trong `config.yaml` đang là `true` nhưng không có tác dụng vì thiếu ảnh mẫu.
+- Bệnh viện: 59 lần chạy (13 + 15 phút), 0 có kết quả; P1 đã thêm cổng điều kiện, nhưng khi cổng cho chạy thì vẫn mở bệnh viện ra xem. **42 ảnh `heal_no_target` không thuộc bước `heal`** mà là sự kiện "chữa thương" (`notify.heal_event`); bộ dò vòng vàng hiện tại đã bắt được 35/42 ảnh (bản sửa ac6ef78 tối 22/11); thử nới rộng thì bắt thêm 1/7 nhưng báo nhầm 65/120 ảnh khác → giữ nguyên.
+- Phòng thủ: thiếu `defense/alert_attack`, `defense/row_8h`; `shield(hours=8)` (ngày chiến tranh) mở bảng rồi mới báo "Không thấy dòng khiên 8h".
+
+| Việc | Đã làm | File | Tham số (`config.yaml`) |
+|---|---|---|---|
+| P5-1 tình báo | `intel_rules.panel_kind()` + chờ tới 3 s bảng nhiệm vụ / bảng quà (thay vì xét 1 khung); ghim mục tiêu chỉ tìm giữa màn (`MARKER_ROI`, ngưỡng 0,6); sau "Tấn công" nhận thêm màn "Cài đặt Quân đoàn" kiểu mới (`rebels/btn_march_out`), **chỉ Xuất chinh khi dự đoán "Thắng toàn diện"** (không thì `lose_pred`, bỏ ghim); "unknown" tách lý do `unknown_panel` / `unknown_target` / `unknown_attack` + 1 ảnh/ngày/máy `logs/inv/intel_*`; chỉ `unknown_panel` mới thử 1 viên thuốc thể lực (trước: mọi unknown). `report_ro`: mục `intel` (% unknown từ log, đọc cả định dạng log cũ) + `combat` | `bot/intel_rules.py`, `bot/modules/notify.py`, `tools/report_ro.py` | — |
+| P5-2 phản quân | 1 lượt thử tối đa `search_tries` cấp (cấp kế tiếp rồi hạ dần, bỏ cấp vừa dự đoán thua); dự đoán thua → sang cấp thấp hơn ngay; ô tìm kiếm hỏng / không có tab Cơ giáp → dừng; `join` **mặc định TẮT**, thiếu `rally_mech`/`btn_join` → log "thieu anh mau", không mở bảng liên minh; ghim tình báo Phản quân Cơ giáp: `intel_rally_min_hq` (0 = như cũ) chờ chủ dự án quyết | `bot/modules/rebels.py`, `bot/modules/notify.py`, `web/options.py` | `rebels.join_mech_rally` (**false**), `rebels.search_tries` (3), `rebels.intel_rally_min_hq` (0) |
+| P5-3 bệnh viện | Không thấy bong bóng chữa trị (`build/heal_bubble`) và lượt ghé chưa có trận (rebels / bị tấn công) → trả 0 ngay, **không chạm bệnh viện**; runner ghi `done["defense"]` khi bị đánh để heal bắt buộc. Vẫn chỉ nút "Hồi phục" bằng tài nguyên | `bot/modules/heal.py`, `bot/runner.py` | `heal.open_without_bubble` (false) |
+| P5-4 phòng thủ | `shield()` kiểm ảnh mẫu icon khiên / tiêu đề / dòng khiên **trước khi mở bảng** → `missing_tpl`; `alert_attack` qua `tplneed` (log 1 lần/giờ), vẫn dùng mép đỏ nhấp nháy. Luật khiên giữ nguyên (A-SAFE-1, ADR-0008): ngày chiến tranh chỉ vật phẩm; mua bằng kim cương chỉ khi `defense.shield_buy_gems` và trong trần ngày | `bot/modules/defense.py` | — |
+| P5-5 trinh sát / do thám | **Không viết code** (chưa có câu trả lời §5.1). Câu hỏi ở dưới | — | — |
+
+**Phát lại offline:** 11/11 ảnh `intel_panel_unknown` → `reward` (test `test_replay_intel_panel_unknown_shots_are_reward`, chỉ chạy local). Ước tính tỉ lệ "unknown" sau sửa (22/11, 92 ghim): chắc chắn bớt 11 (bảng quà) → ≤ 57,6 %; nếu màn quân đoàn kiểu mới đúng là màn sau "Tấn công" (31) và ghim giữa màn tìm được mục tiêu (22) thì còn ~3–5 %. Hai giả thuyết này **chưa kiểm được offline** (không có ảnh) — bot sẽ tự lưu ảnh `logs/inv/intel_unknown_attack|target/` ở lượt chạy thật.
+
+**Câu hỏi cần chủ dự án quyết:**
+1. `rebels.join_mech_rally`: có cho bot **tham gia tập kết của người khác** (đồng minh mở) đánh Phản quân Cơ giáp không? (mặc định tắt; bật cần 2 ảnh mẫu ở trên; bot chỉ vào dòng có dấu hiệu Cơ giáp, không bao giờ tập kết đánh người chơi)
+2. Ghim tình báo "Phản quân Cơ giáp" trên **farm nhà chính < 15**: bot hiện vẫn tự mở tập kết (khi dự đoán thắng) như hướng dẫn 2026-11-22. Giữ (`rebels.intel_rally_min_hq: 0`) hay chỉ từ cấp 15 (đặt 15)?
+3. Phản quân: số cấp thử mỗi lượt (`search_tries` 3) và cấp bắt đầu (`start_level` 10) có ổn với #1 không? Quân đoàn mặc định `Odin` có đúng đội mạnh nhất?
+4. Trinh sát / do thám (§5.1 kế hoạch hoàn thiện, câu 1 — vẫn chưa trả lời): (a) "trinh sát" là trinh sát **căn cứ người chơi khác**, Phản quân/NPC, hay mỏ trên bản đồ? (b) "do thám" có phải nhiệm vụ Tình báo / Radar đã có (`intel`) không? (c) Nếu là người chơi: được trinh sát ai (chỉ khi bị đánh? chỉ ngoài liên minh? giới hạn lực chiến?) và để làm gì — bot **không tấn công người chơi** (CLAUDE.md), báo cáo trinh sát dùng vào việc gì? (d) Trinh sát tốn tài nguyên/vật phẩm gì, trần mỗi ngày? (e) Có cần nhận/đọc báo cáo trinh sát trong thư không? (f) Phòng thủ: khi bị **trinh sát** (không phải tấn công) có bật khiên không?
+5. Phòng thủ: `defense.shield_buy_gems` đang `true` (trần 2000 kim cương/ngày) — giữ nguyên ngoại lệ ADR-0008?
+6. Bệnh viện: `heal.open_without_bubble: false` — đồng ý chỉ mở bệnh viện khi thấy bong bóng chữa trị hoặc vừa có trận?
+
+Ảnh mẫu cần chụp: xem `templates/README.md` mục P5 (`rebels/rally_mech`, `rebels/btn_join`, `defense/alert_attack`, `defense/row_8h`) + ảnh tay bảng chữa trị khi có thương binh.
+
+Kiểm chứng (chủ dự án bật máy, tối đa 2 máy): 1 lượt chạy thật đầy đủ trên #1 (nhà chính 30: tình báo, phản quân) + 1 farm có tình báo (vd #0) + 1 lần chạy lại, rồi `python tools/report_ro.py --split "<giờ bắt đầu P5>"`: mục `tinh bao` (% unknown, mục tiêu < 10 %; xem lý do `unknown_*`), mục `chien dau` (rebels có kết quả ≥ 50 % số lần chạy; heal: số phút giảm), bảng bước (`heal` thời gian). Mở `logs/inv/intel_unknown_*` nếu còn unknown; grep log `thieu anh mau`.
+
 ## 1. Công thức ưu tiên
 `Ưu tiên ≈ Tác động nghiệp vụ × Giảm rủi ro × Giá trị phụ thuộc / Chi phí`. Đây là heuristic, không phải phép tính chính xác.
 
