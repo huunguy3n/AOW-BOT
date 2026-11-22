@@ -68,7 +68,7 @@ Thứ tự đề xuất: Q0 → Q1 → Q2 → Q3 → Q4, còn Q5 và Q6 chen và
 
 ### Trạng thái từng giai đoạn (2026-11-21)
 
-- **Q0:** đọc "x/y" thợ xây / nghiên cứu / huấn luyện ([bot/queues.py](../../bot/queues.py)). Hạn chế đã biết: "1/1" (chữ số 1 mảnh) Tesseract không đọc được → giá trị "không rõ", agent không hành động theo giá trị đó.
+- **Q0:** đọc "x/y" thợ xây / nghiên cứu / huấn luyện ([bot/queues.py](../../bot/queues.py)). ~~Hạn chế: "1/1" Tesseract không đọc được~~ → **P2 (2026-11-23)**: đọc bằng ảnh chữ số `templates/qdigits/` + chấm đỏ = rảnh, xem [implementation-roadmap.md mục 0c](implementation-roadmap.md).
 - **Q1:** thứ tự mới + chấm đỏ dẫn vào tiến trình phụ; nút "Nhận" theo màu + chữ ([bot/buttons.py](../../bot/buttons.py)).
 - **Q2:** bước `upgrade` ([bot/modules/upgrade.py](../../bot/modules/upgrade.py)).
 - **Q3:** bảng node nghiên cứu ([bot/modules/research.py](../../bot/modules/research.py) `node()`): nút "Nghiên cứu" theo màu + chữ (chặn "… ngay"); thiếu nhánh phụ → "Đến" sang node điều kiện (tối đa 4 bước); "Đến" dẫn tới màn nâng cấp nhà chính → ghi `research_wait_hq`, không thử lại tới khi HQ lên cấp. **Chưa có ảnh bảng node** (#1 đang nghiên cứu 13 ngày, farm HQ < 8) → lần đầu chạy thật lưu `logs/inv/research_node/` nếu chưa nhận ra.

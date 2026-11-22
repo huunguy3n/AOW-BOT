@@ -38,6 +38,23 @@ Nguồn: báo cáo rà soát `logs/pm-audit-1.txt` (21/11 23:00 → 22/11 23:39:
 
 Kiểm chứng (chủ dự án bật máy): 1 lượt chạy thật đầy đủ + 1 lần chạy lại, rồi `python tools/report_ro.py --split "<giờ bắt đầu P1>"`. Tiêu chí: lần ghé lỗi/bỏ dở < 5 %; `reddots` < 15 % thời gian máy; không còn lần chụp màn hình lỗi > 60 s; heal/campaign/warday/mainquest không còn chạy trả 0 ở mọi lần ghé.
 
+## 0c. Giai đoạn P2 "Hàng chờ luôn chạy" (PM duyệt 2026-11-23, nhánh `p2-hang-cho` tách từ `p1-on-dinh-nen`)
+
+Mục tiêu (theo `logs/pm-audit-1.txt`): thời gian bỏ trống xây < 25 % (đang 54 %), nghiên cứu < 30 % (đang 71 %), huấn luyện < 20 % (đang 37 %).
+
+| Việc | Đã làm | File | Tham số (`config.yaml`) |
+|---|---|---|---|
+| P2-1 đọc "1/1" | Đọc số "x/y" của cột icon trái bằng **ảnh chữ số** `templates/qdigits/` (0, 1, 1b, 2, 3, slash; cắt từ ảnh thật, khớp xám, ~1 ms) trước, OCR bỏ phiếu sau; **chấm đỏ** trên icon = còn chỗ rảnh → không đọc được số nhưng biết tổng (nghiên cứu luôn 1, hoặc tổng lần trước) thì coi là `(tổng−1)/tổng`; đọc "đầy" mà có chấm đỏ → bỏ (mâu thuẫn). Trên 291 ô icon trong `tests/fixtures` + `logs/` đọc đúng 290 (1 ô bị icon quà che → không rõ, đúng); OCR cũ hụt 62 ô (18 ô "1/1" nghiên cứu, 4 ô "3/3", 27 ô "0/1" huấn luyện) | `bot/queues.py`, `bot/modules/observe.py` (`known_totals`), `bot/runner.py` | – |
+| P2-2 `construct_no_spot` | Kéo thẻ hỏng (không chỗ / không tick / không xác nhận / thiếu tài nguyên) → hủy đặt bằng nút X (`build/btn_bar_close`), nhớ thẻ theo (nhóm, cột) và bỏ qua 2 giờ, hỏng lại gấp đôi (tối đa 24 giờ; thiếu tài nguyên chỉ 1 giờ); mở lại nhóm để thử **thẻ khác**, rồi nhóm khác; tối đa 2 lần hỏng / lượt; xem hết nhóm có chấm đỏ mà không còn thẻ hợp lệ → không mở bảng Xây dựng tới khi thẻ sớm nhất hết hạn (thợ để cho `upgrade`/`quests`). Nhà chính lên cấp → thử lại ngay | `bot/modules/construct.py` | `construct.max_fail_per_run`, `nospot_backoff_h`, `nospot_cap_h`, `empty_recheck_h` |
+| P2-3 chọn mục nghiên cứu | "Khuyến khích" trước, rồi nhánh theo `branch_order` (Phát triển > Đào tạo > Quân sự), trong nhánh trên → dưới; bỏ node vừa hỏng (`research_skip`, 6 giờ); tối đa 3 node / lượt, 150 s. Sau khi bấm "Nghiên cứu" **kiểm lại** (hộp thoại thiếu tài nguyên / nút còn nguyên / thanh tiến độ) thay vì tin 1 lần bấm. Thiếu tài nguyên → `research_nores` 60 phút, gấp đôi tới 6 giờ; lịch (`plan_research`) và agent (`legacy_research`) cùng tôn trọng. Hàng nghiên cứu đọc được "0/1" → lịch kéo máy sớm (giãn khi bấm mà không bắt đầu được). Thiếu ảnh mẫu bảng node → log `thieu anh mau research/...` (1 lần/giờ), dùng màu + chữ (chặn "… ngay") | `bot/modules/research.py`, `bot/tplneed.py`, `bot/scheduler.py`, `src/aowbot/application/planning.py` | `research.branch_order`, `pages_per_branch`, `max_nodes_per_run`, `node_skip_h`, `nores_backoff_min`, `nores_cap_h`, `max_s` |
+| P2-4 huấn luyện | `use_max_button` mặc định bật: có `train/btn_max` thì bấm, thiếu thì log `thieu anh mau train/btn_max` và giữ số mặc định (không bấm mò thanh trượt). Icon cột trái báo đầy (3/3, 1/1) → bỏ qua không mở bảng. Sau "Huấn luyện" kiểm nút còn không (2 lần) → thiếu tài nguyên → `train_nores` 30 phút, gấp đôi tới 4 giờ | `bot/modules/train.py` | `train.use_max_button`, `nores_backoff_min`, `nores_cap_h` |
+
+**Lưu ý đo:** `queue_obs` chỉ ghi lần quan sát **đọc được số**. Trước P2, "1/1" (nghiên cứu bận) và "3/3" thường không đọc được nên bị bỏ khỏi mẫu, còn "0/1" (rảnh) đọc được → tỉ lệ bỏ trống cũ (nghiên cứu 71 %, huấn luyện 37 %) **bị thổi phồng**. So trước/sau phải tính cả phần này.
+
+Ảnh mẫu chủ dự án cần chụp (trên #1, máy 540×960; `python tools/snap.py todo research` / `todo train` để xem lại): `research/btn_research`, `research/node_panel`, `research/msg_no_res`, `train/btn_max` (`common/msg_insufficient` dùng chung). Thiếu ảnh thì code vẫn chạy (đường màu + chữ / số mặc định).
+
+Kiểm chứng (chủ dự án bật máy): 1 lượt chạy thật đầy đủ + 1 lần chạy lại, rồi `python tools/report_ro.py --split "<giờ bắt đầu P2>"`, xem mục "hang cho (lan quan sat con cho ranh)".
+
 ## 1. Công thức ưu tiên
 `Ưu tiên ≈ Tác động nghiệp vụ × Giảm rủi ro × Giá trị phụ thuộc / Chi phí`. Đây là heuristic, không phải phép tính chính xác.
 

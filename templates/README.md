@@ -62,6 +62,20 @@ The cap I..IV o vi tri co dinh (`train.card_x`, `card_y` trong config). Cap bi k
 ## research/ - LUU Y
 Tai khoan MFarm00 (Xuong kien truc cap 4) chua co toa nha nghien cuu; cat anh mau tren tai khoan da co.
 
+## P2 (2026-11-23) - anh mau can chup tren #1 (chua co thi code van chay: log "thieu anh mau <ten>")
+| File | Man hinh / vung cat |
+|---|---|
+| research/btn_research.png | So Cong Nghe -> cham 1 node chua xong -> bang chi tiet node: CHI chu "Nghien cuu" o nut PHAI day bang (bot tim trong vung x 200-540, y 700-960). KHONG cat nut "Nghien cuu ngay" |
+| research/node_panel.png | Cung bang chi tiet node: dai tieu de / khung tren cung (phan khong doi giua cac node, khong cat ten node) |
+| research/msg_no_res.png | Bam "Nghien cuu" khi thieu tai nguyen -> hop thoai/thong bao thieu: cat dong tieu de (vd "Tai nguyen khong du"), KHONG cat nut mua/kim cuong |
+| train/btn_max.png | Man huan luyen nha linh (sau nut "Den") -> nut "Toi da"/MAX canh thanh so luong (bot tim trong vung y 560-890) |
+| common/msg_insufficient.png | (dung chung research + train) hop thoai thieu tai nguyen, cat tieu de |
+
+## qdigits/ (P2 - doc hang cho "x/y" cot icon trai thanh pho, bot/queues.py)
+`0.png`, `1.png`, `1b.png` (so 1 co chan), `2.png`, `3.png`, `slash.png`: anh XAM 14 px cao, cat tu anh that
+(`tests/fixtures/screen_loop/queues_0-2_0-1_0-3.png`, `logs/snap-city.png`). Them so 4-6 neu gap tong > 3
+(cung cach cat: vung so ben phai icon, 14 x 6-9 px). Khac `digits/` (chu "Hanh quan x/y" co co chu khac).
+
 ## city/ (thu tai nguyen noi tren cong trinh)
 `res_*.png` - moi loai bieu tuong noi (vd `res_food.png`, `res_fist.png`, `res_alloy.png`).
 

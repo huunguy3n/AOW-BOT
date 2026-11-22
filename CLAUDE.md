@@ -34,12 +34,12 @@ Thứ tự bước (`ORDER` trong [bot/runner.py](bot/runner.py)), chủ dự á
 | `collect_city` | [city.py](bot/modules/city.py) | Chạm biểu tượng tài nguyên nổi trên công trình |
 | `rewards` | [rewards.py](bot/modules/rewards.py) | Thư, điểm danh, VIP, rương miễn phí, quà nổi (theo `rewards.routes`). Rương ngày VIP cần VIP → dùng vật phẩm "Thời gian VIP" (nút "Dùng", `rewards.use_vip_items`, chủ dự án cho phép 2026-11-20); **không** bấm "Đến" mua thẻ tháng |
 | `alliance` | [alliance.py](bot/modules/alliance.py) | Quyên góp công nghệ liên minh bằng **vàng**, trợ giúp |
-| `construct` | [construct.py](bot/modules/construct.py) | Xây công trình **mới**: icon búa góc phải dưới có chấm đỏ → bảng "Xây dựng" → nhóm có chấm đỏ (bỏ "Con đường") → kéo thẻ chưa khóa ra bản đồ, tìm ô cỏ trống tới khi ô đặt xanh → tick → nút phải "Xây dựng" (**không** bấm "Xây dựng ngay") |
+| `construct` | [construct.py](bot/modules/construct.py) | Xây công trình **mới**: icon búa góc phải dưới có chấm đỏ → bảng "Xây dựng" → nhóm có chấm đỏ (bỏ "Con đường") → kéo thẻ chưa khóa ra bản đồ, tìm ô cỏ trống tới khi ô đặt xanh → tick → nút phải "Xây dựng" (**không** bấm "Xây dựng ngay"). Thẻ đặt hỏng (`construct_no_spot`…) → hủy bằng nút X, nhớ thẻ và bỏ qua 2 giờ (gấp đôi, tối đa 24 giờ), thử thẻ/nhóm khác; hết thẻ hợp lệ → không mở bảng tới khi hết hạn (P2) |
 | `quests` | [quests.py](bot/modules/quests.py) | Nhiệm vụ Chương/Chính: "Đến" → nâng cấp công trình (nhà chính ≤ `build.hq_max_level`) |
 | `campaign` | [campaign.py](bot/modules/campaign.py) | Đánh màn kế tiếp khi dự đoán "Thắng toàn diện" + nhận treo máy. Không dự đoán thắng → chỉ mở lại khi lực chiến tăng `campaign.power_gain_pct`% hoặc treo máy tích đủ `campaign.idle_claim_h` giờ |
 | `notify` | [notify.py](bot/modules/notify.py) | Chấm đỏ: phúc lợi, online, hoạt động, tình báo, chiêu mộ miễn phí, tăng cấp tướng |
-| `research` | [research.py](bot/modules/research.py) | Nghiên cứu nhánh thu thập tài nguyên, trợ giúp/miễn phí |
-| `train` | [train.py](bot/modules/train.py) | Huấn luyện lính T3 đến đủ `số đội × troops_per_march` |
+| `research` | [research.py](bot/modules/research.py) | "Khuyến khích" trước, rồi nhánh theo `research.branch_order` (Phát triển > Đào tạo > Quân sự), trên → dưới; bấm "Nghiên cứu" rồi **kiểm lại** đã bắt đầu; thiếu tài nguyên → `research_nores` giãn chu kỳ (lịch + agent); trợ giúp/miễn phí. Thiếu ảnh mẫu bảng node → log "thieu anh mau", dùng màu + chữ (P2) |
+| `train` | [train.py](bot/modules/train.py) | Huấn luyện lính T3 đến đủ `số đội × troops_per_march`; icon cột trái đầy → bỏ qua; nút "Tối đa" `train/btn_max` nếu có ảnh mẫu; không bắt đầu được (thiếu tài nguyên) → `train_nores` giãn chu kỳ (P2) |
 | `rebels` | [rebels.py](bot/modules/rebels.py) | Từ nhà chính cấp 15, 5 lượt/ngày: **tự mở tập kết** Phản quân Cơ giáp trên bản đồ (3 phút, quân đoàn `rebels.legion`, chỉ Xuất chinh khi dự đoán "Thắng toàn diện"); nhớ cấp cao nhất đã đánh → lần sau thử cấp +1, dự đoán thua thì lùi; sau đó tham gia tập kết liên minh |
 | `upgrade` | [upgrade.py](bot/modules/upgrade.py) | Thợ rảnh → về thành phố từ thế giới (camera giữa nhà chính) → chạm (270,440), kiểm nhãn "Xưởng kiến trúc" → nâng cấp; thiếu điều kiện → "Nhảy" sang công trình điều kiện. HQ = `build.hq_max_level` (30) thì bỏ |
 | `heal` | [heal.py](bot/modules/heal.py) | Bệnh viện (chữ thập đỏ trên mái) → "Hồi phục" bằng tài nguyên; không bao giờ "Hồi phục ngay". Chỉ chạy khi `observe` thấy bong bóng chữa trị hoặc trong lượt vừa có trận (`stepgate`) |
@@ -87,6 +87,8 @@ bot/build.py         Nâng cấp công trình (đi theo nút "Nhảy" tới đi�
 bot/learn.py         Học máy mini (giai đoạn E+F): nhật ký kinh nghiệm mỗi lần chạm (bảng `exp`), kNN màn hình, biến thể ảnh mẫu tự học (`templates/<tên>@auto<N>.png`), "chỗ chết"
 bot/steer.py         Lái quân theo màu; touch.py = Finger (sendevent); stream.py = FrameStream (screencap liên tục)
 bot/stepgate.py      P1: điều kiện trước khi chạy + giãn chu kỳ khi trả 0 (heal/campaign/warday/mainquest), hàm thuần trên trí nhớ
+bot/queues.py        Q0/P2: đọc hàng chờ "x/y" cột icon trái: ảnh chữ số templates/qdigits → OCR bỏ phiếu → chấm đỏ = rảnh
+bot/tplneed.py       P2: ảnh mẫu chưa có → bỏ qua nhanh + log "thieu anh mau <tên>" (1 lần/giờ)
 bot/state.py         Store: data/state.json (quan sát) + data/settings.json (tùy chọn web), ghi atomic
 bot/modules/*.py     Mỗi bước = module có run(ctx)
 web/                 Flask, chỉ nghe 127.0.0.1 (trang /agent: quyết định của agent, chỉ đọc)
