@@ -7,6 +7,8 @@ import time, logging
 import cv2
 import numpy as np
 
+from bot import quest_rules
+
 log = logging.getLogger("aow")
 
 V_DY = 51          # cham tam vong tron duoi chu V (do tren 14 khung: 37..61)
@@ -460,7 +462,8 @@ def decide(v, img, idle=0, state=None):
     #   c) dau chan da xanh -> de buoc chu V ben duoi bam nut V (dau tick)
     bx = v.find(img, "common/btn_close", th=0.9, roi=(440, 820, 100, 110))
     if not bx and state.get("in_build"):        # vua thoat che do xay -> xoa trang thai cho cong trinh sau
-        for k_ in ("in_build", "zone", "drags", "slots_mode", "slots_tried", "confirms", "drag_from", "ok_taps"):
+        for k_ in ("in_build", "zone", "drags", "slots_mode", "slots_tried", "confirms", "drag_from", "ok_taps",
+                   "build_waits"):
             state.pop(k_, None)
     if bx:
         state["in_build"] = True
@@ -504,6 +507,12 @@ def decide(v, img, idle=0, state=None):
         if zone and not card and zone_all_green(img, zone) and state.get("confirms", 0) < 3:
             state["confirms"] = state.get("confirms", 0) + 1
             return ("tap", zone[0] + 52, min(950, zone[1] + 134), "xac nhan xay (dau tick)")
+        # P4: follow het keo (56/78 anh follow_maxsteps 18-22/11 ket o day toi het 40 buoc) -> HUY bang nut X do
+        # (giong buoc construct: construct_no_spot -> X), de buoc construct dat lai voi luat tim o co trong cua no
+        if state.get("follow"):
+            state["build_waits"] = state.get("build_waits", 0) + 1
+            if quest_rules.build_give_up(state):
+                return ("build_fail", bx[0], bx[1], "che do xay: khong dat duoc -> huy (X)")
         return ("wait", 0, 0, "che do xay: cho")        # che do xay -> KHONG BAO GIO roi xuong luat bam X
     # 4b. bong bong "Free" tren cong trinh dang xay = hoan thanh mien phi (chu du an 2026-11-20). Khong ton kim cuong.
     from bot.badges import free_bubbles
@@ -664,6 +673,13 @@ def decide(v, img, idle=0, state=None):
         if seen.get(key, 0) < 3:
             seen[key] = seen.get(key, 0) + 1
             return ("tap", g[0], g[1], "mui ten xanh chi xuong -> cham muc tieu")
+    # 6d. P4 - CHE DO follow, man khong co huong dan cua game nhung biet chac (129 anh follow_stuck 18-22/11):
+    #     bang nhiem vu kieu moi (X do goc tren-phai) -> Nhan toan bo / Nhan / dong; ban do the gioi / Tinh bao -> ra
+    #     (viec do cua buoc rebels/intel/gather; KHONG cham giua ban do: chon o dat "Chuyen thanh / Chiem linh").
+    if state.get("follow"):
+        r = _follow_known(v, img, state, idle)
+        if r:
+            return r
     # 7. khong nhan ra
     home = v.find(img, "common/btn_to_world")
     if not home and idle >= 5:     # cham giua 3 lan khong qua -> phim Back (dong popup la an toan hon cham mu)
@@ -676,6 +692,45 @@ def decide(v, img, idle=0, state=None):
         qx, qy = QUEST_TAPS[k % len(QUEST_TAPS)]       # luan phien: icon nhiem vu (nguoi choi cham) / dong chu
         return ("tap", qx, qy, "dung yen -> cham thanh nhiem vu")
     return ("wait", 0, 0, "cho")
+
+
+def _follow_known(v, img, state, idle=0):
+    """Follow: man biet chac (quest_rules.follow_screen) -> hanh dong, hoac None (de luat 'khong nhan ra').
+    Nhan thuong lam ngay; ra / quay lai chi sau 1 nhip cho (idle >= 1): chu V / ban tay nhap nhay co the hien sau."""
+    kind = quest_rules.follow_screen(v, img)
+    if kind == "quest_board":
+        p = v.find(img, "tutorial/btn_claim_all", th=0.85)
+        if p and _colored(img, p[0], p[1]) and state.get("board_claims", 0) < 6:
+            state["board_claims"] = state.get("board_claims", 0) + 1
+            return ("tap", p[0], p[1], "bang nhiem vu -> Nhan toan bo")
+        claims = [c for c in v.find_all(img, "tutorial/btn_claim", th=0.9, roi=(380, 180, 160, 700))
+                  if _colored(img, c[0], c[1])]
+        if claims and state.get("board_claims", 0) < 6:
+            state["board_claims"] = state.get("board_claims", 0) + 1
+            c = min(claims, key=lambda c: c[1])
+            return ("tap", c[0], c[1], "bang nhiem vu -> Nhan")
+        if idle < 1:
+            return ("wait", 0, 0, "bang nhiem vu: cho huong dan")
+        x = quest_rules.board_close(v, img)
+        if x:
+            return ("exit", x[0], x[1], "bang nhiem vu: het viec -> dong (X)")
+        return ("exit", 0, 0, "bang nhiem vu: het viec")
+    if idle < 1:
+        return None
+    if kind == "intel":
+        b = v.find(img, "common/btn_back", th=0.85)
+        return ("exit", b[0] if b else 0, b[1] if b else 0, "ban do Tinh bao -> ra (viec cua buoc intel)")
+    if kind == "world":
+        return ("exit", 0, 0, "ban do the gioi khong co huong dan -> ra (viec cua rebels/gather)")
+    if not v.find(img, "common/btn_to_world"):
+        b = v.find(img, "common/btn_back", th=0.9)
+        if b:
+            return ("tap", b[0], b[1], "bang co nut quay lai -> quay lai")
+        for n, roi in quest_rules.BOARD_CLOSE:   # vd "Gia nhap lien minh!" (X 0,84) - KHONG bam "Gia nhap"/"Tao moi"
+            p = v.find(img, n, th=0.82, roi=roi)
+            if p:
+                return ("tap", p[0], p[1], "popup X goc tren -> dong")
+    return None
 
 
 def finish(ctx, step, why):
@@ -792,6 +847,15 @@ def run(ctx, max_steps=600, idle_limit=10, max_retry=5, follow=False, no_battle=
                                                                              "tu xep doi hinh")):
             log.info("Follow: dang cho tang luc chien - khong vao tran")
             act = "weak"
+        if act == "exit":   # P4 follow: man biet chac, het viec cua follow -> ra thanh pho, ket qua 'idle'
+            if x or y:
+                ctx.tap(x, y, wait=1.0)
+            ctx.ensure_city()
+            return "idle" if follow else False
+        if act == "build_fail":   # P4 follow: che do xay khong dat duoc -> huy bang X, de buoc construct lam
+            ctx.tap(x, y, wait=1.0)
+            ctx.ensure_city()
+            return "build_no_spot"
         if act == "weak":   # chi follow: de mainquest ghi nhan va doi luc chien tang
             ctx.back_out()
             return "weak"

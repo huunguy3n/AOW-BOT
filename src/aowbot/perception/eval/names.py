@@ -104,6 +104,7 @@ NAMES: Mapping[str, str] = MappingProxyType({
     "quest/banner_icon": "Biểu tượng nhiệm vụ", "quest/btn_go": "Nút Đến (nhiệm vụ)", "quest/duel_red": "Đối thủ lực chiến màu đỏ",
     # --- Phản quân
     "rebels/btn_march_out": "Nút Xuất chinh (phản quân)", "rebels/btn_rally": "Nút Tập kết",
+    "rebels/npc_attack": "Nút Tấn công (phiến quân NPC)",
     "rebels/btn_rally_confirm": "Nút Xác nhận tập kết", "rebels/btn_rally_start": "Nút Bắt đầu tập kết",
     "rebels/icon_rally": "Biểu tượng Tập kết", "rebels/label_mech": "Nhãn tên Phản quân Cơ giáp",
     "rebels/legion_title": "Tiêu đề Quân đoàn", "rebels/popup_title": "Tiêu đề bảng Phản quân",
