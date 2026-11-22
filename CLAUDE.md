@@ -30,13 +30,13 @@ Thứ tự bước (`ORDER` trong [bot/runner.py](bot/runner.py)), chủ dự á
 |---|---|---|
 | `warday` | [warday.py](bot/modules/warday.py) | Chạy đầu lượt. Ngày chiến tranh SVS (thấy bảng thông báo `warday/notice` hoặc khai tay `warday.dates`): bật khiên 8h lúc 22h UTC thứ 6, rồi 12h, chỉ dùng **vật phẩm** (`warday.buy_gems` mặc định false); cấm thu thập trong cửa sổ (phản quân được phép). Ghi nhận mốc thể lực 0h/8h/15h UTC (việc nhận do notify/rewards làm). Chỉ chạy khi tới mốc thể lực hoặc trong cửa sổ chiến tranh (`stepgate`) |
 | `tutorial` | [tutorial.py](bot/modules/tutorial.py) | Qua tân thủ: V-marker vàng, hội thoại, CONGRATULATIONS, bảng Chương, trận chạy đường (mặc định tắt, chỉ bật cho TK mới) |
-| `mainquest` | [mainquest.py](bot/modules/mainquest.py) | Ưu tiên: thanh nhiệm vụ chính → đánh/xây/chiến dịch; boss khó thì hoãn tới khi lực chiến tăng `power_gain_pct`% |
+| `mainquest` | [mainquest.py](bot/modules/mainquest.py) | OCR chữ thanh nhiệm vụ → loại ([quest_rules.py](bot/quest_rules.py)): xây/tướng/chiến dịch → chạm, làm (đánh chỉ khi dự đoán thắng; boss khó hoãn tới khi lực chiến tăng `power_gain_pct`%); "Kích sát phiến quân" → mục tiêu giữa màn → "Tấn công" → Xuất chinh (chỉ phiến quân NPC, P4); tập kết/huấn luyện/tình báo/đấu trường… → **không chạm** (việc của bước khác). Kiểm kết quả thật = chữ nhiệm vụ đổi; cùng nhiệm vụ thất bại ≥ 2 lần → chờ `same_retry_h`×2ⁿ giờ |
 | `collect_city` | [city.py](bot/modules/city.py) | Chạm biểu tượng tài nguyên nổi trên công trình |
 | `rewards` | [rewards.py](bot/modules/rewards.py) | Thư, điểm danh, VIP, rương miễn phí, quà nổi (theo `rewards.routes`). Rương ngày VIP cần VIP → dùng vật phẩm "Thời gian VIP" (nút "Dùng", `rewards.use_vip_items`, chủ dự án cho phép 2026-11-20); **không** bấm "Đến" mua thẻ tháng |
 | `alliance` | [alliance.py](bot/modules/alliance.py) | Quyên góp công nghệ liên minh bằng **vàng**, trợ giúp |
 | `construct` | [construct.py](bot/modules/construct.py) | Xây công trình **mới**: icon búa góc phải dưới có chấm đỏ → bảng "Xây dựng" → nhóm có chấm đỏ (bỏ "Con đường") → kéo thẻ chưa khóa ra bản đồ, tìm ô cỏ trống tới khi ô đặt xanh → tick → nút phải "Xây dựng" (**không** bấm "Xây dựng ngay"). Thẻ đặt hỏng (`construct_no_spot`…) → hủy bằng nút X, nhớ thẻ và bỏ qua 2 giờ (gấp đôi, tối đa 24 giờ), thử thẻ/nhóm khác; hết thẻ hợp lệ → không mở bảng tới khi hết hạn (P2) |
-| `quests` | [quests.py](bot/modules/quests.py) | Nhiệm vụ Chương/Chính: "Đến" → nâng cấp công trình (nhà chính ≤ `build.hq_max_level`) |
-| `campaign` | [campaign.py](bot/modules/campaign.py) | Đánh màn kế tiếp khi dự đoán "Thắng toàn diện" + nhận treo máy. Không dự đoán thắng → chỉ mở lại khi lực chiến tăng `campaign.power_gain_pct`% hoặc treo máy tích đủ `campaign.idle_claim_h` giờ |
+| `quests` | [quests.py](bot/modules/quests.py) | Nhiệm vụ Chương/Chính: tab có chấm đỏ → Nhận; OCR tên dòng, dòng của bước khác → không bấm "Đến" (P4); "Đến" → nâng cấp công trình (nhà chính ≤ `build.hq_max_level`); dưới `build.hq_targets` (9, 15) dòng "Xưởng kiến trúc" làm trước |
+| `campaign` | [campaign.py](bot/modules/campaign.py) | Đánh màn kế tiếp khi dự đoán "Thắng toàn diện" + nhận treo máy (tính là làm việc). Màn "Cài đặt quân đoàn" kiểu mới → "Đội hình đề xuất" rồi "Chiến đấu" (P4). Không dự đoán thắng → chỉ mở lại khi lực chiến tăng `campaign.power_gain_pct`% hoặc treo máy tích đủ `campaign.idle_claim_h` giờ |
 | `notify` | [notify.py](bot/modules/notify.py) | Chấm đỏ: phúc lợi, online, hoạt động, tình báo, chiêu mộ miễn phí, tăng cấp tướng |
 | `research` | [research.py](bot/modules/research.py) | "Khuyến khích" trước, rồi nhánh theo `research.branch_order` (Phát triển > Đào tạo > Quân sự), trên → dưới; bấm "Nghiên cứu" rồi **kiểm lại** đã bắt đầu; thiếu tài nguyên → `research_nores` giãn chu kỳ (lịch + agent); trợ giúp/miễn phí. Thiếu ảnh mẫu bảng node → log "thieu anh mau", dùng màu + chữ (P2) |
 | `train` | [train.py](bot/modules/train.py) | Huấn luyện lính T3 đến đủ `số đội × troops_per_march`; icon cột trái đầy → bỏ qua; nút "Tối đa" `train/btn_max` nếu có ảnh mẫu; không bắt đầu được (thiếu tài nguyên) → `train_nores` giãn chu kỳ (P2) |
@@ -90,6 +90,7 @@ bot/stepgate.py      P1: điều kiện trước khi chạy + giãn chu kỳ khi
 bot/queues.py        Q0/P2: đọc hàng chờ "x/y" cột icon trái: ảnh chữ số templates/qdigits → OCR bỏ phiếu → chấm đỏ = rảnh
 bot/march_count.py   P3: đọc "Hành quân x/y" bằng ảnh chữ số templates/mdigits; khung "Hành quân" vắng trên bản đồ = 0 đội
 bot/gather_rules.py  P3: luật thuần thu thập (dung tích mỏ đầy, mỏ đội mình đang tới, phân loại thông báo OCR, tạm bỏ)
+bot/quest_rules.py   P4: luật thuần nhiệm vụ (phân loại chữ OCR → bước phụ trách, phiến quân NPC, thử lại cùng nhiệm vụ) + màn follow
 bot/tplneed.py       P2: ảnh mẫu chưa có → bỏ qua nhanh + log "thieu anh mau <tên>" (1 lần/giờ)
 bot/state.py         Store: data/state.json (quan sát) + data/settings.json (tùy chọn web), ghi atomic
 bot/modules/*.py     Mỗi bước = module có run(ctx)
@@ -131,7 +132,8 @@ python tools/learn.py report           # (hoặc web http://localhost:8080/#hoc,
 python tools/learn.py train / eval     # nạp mẫu kNN từ ảnh cũ / đo độ chính xác
 python tools/imitate_eval.py --idx 3   # đo offline bộ "làm theo mẫu" (bot/imitate.py) trên thao tác tay đã ghi của máy #3
 python main.py --web                   # web quản lý (launch config: .claude/launch.json "aow-web")
-python tools/report_ro.py [--split "YYYY-mm-dd HH:MM"]   # số đo chỉ-đọc trước/sau (lần ghé vô ích, perf ADB/ảnh/OCR)
+python tools/report_ro.py [--split "YYYY-mm-dd HH:MM"]   # số đo chỉ-đọc trước/sau (lần ghé vô ích, perf ADB/ảnh/OCR, follow kẹt, cấp nhà chính/ngày)
+python tools/follow_stats.py [--replay] [--human] [--since YYYY-mm-dd]   # P4: follow kẹt theo loại màn, phát lại decide() trên ảnh kẹt, thao tác tay
 python -m aowbot world|plan|shadow <idx>                 # agent dry-run: trạng thái + độ tươi / quyết định + lý do / phát lại
 ```
 Công cụ dev (từ F0, 2026-11-21): `pip install -e .[dev]` → `python -m pytest`, `python -m ruff check .` (luật nghiêm cho mã mới), `python -m ruff check bot web tools main.py --select E9,F63,F7,F82` (mã cũ). Cấu hình trong `pyproject.toml`. Test tự động mới bắt đầu có; ảnh fixture không có trong git (hồi quy ảnh chỉ chạy local). Kiểm chứng chính vẫn là chạy thật trên instance + đọc `logs/` và ảnh `logs/shots/`. Kế hoạch tổng: [docs/strategy/MASTER-IMPLEMENTATION-PLAN.md](docs/strategy/MASTER-IMPLEMENTATION-PLAN.md).

@@ -81,6 +81,15 @@ Tai khoan MFarm00 (Xuong kien truc cap 4) chua co toa nha nghien cuu; cat anh ma
 | train/btn_max.png | Man huan luyen nha linh (sau nut "Den") -> nut "Toi da"/MAX canh thanh so luong (bot tim trong vung y 560-890) |
 | common/msg_insufficient.png | (dung chung research + train) hop thoai thieu tai nguyen, cat tieu de |
 
+## P4 (2026-11-23) - nhiem vu chinh / follow
+| File | Trang thai | Man hinh / vung cat |
+|---|---|---|
+| rebels/npc_attack.png | DA CO (cat tu thao tac tay `logs/human/20261121/002012-i3-mainquest-091_before.png`, vung x 200-334, y 720-757) - chu du an kiem lai tren 1 phien quan cap khac | Cham thanh nhiem vu "Kich sat N lan phan quan Lv.X" -> ban do, cham muc tieu giua man -> bang "Phien quan Lv.N" (De xuat: luc chien) -> CHI chu "Tan cong" trong nut xanh duoi bang |
+
+Dung lai anh mau co san (khong can chup): `play/btn_arena_fight` + `play/btn_arena_recommend` (man "Cai dat quan doan" kieu moi
+cua Chien dich, khop 1,00 tren 8/8 anh `campaign_no_fight`), `gather/btn_recommended` + `gather/btn_march` (Xuat chinh danh
+phien quan), `daily/tab_2_main`/`tab_3_daily` + `common/btn_x_small` (bang nhiem vu kieu moi), `intel/title`, `common/btn_to_city`.
+
 ## qdigits/ (P2 - doc hang cho "x/y" cot icon trai thanh pho, bot/queues.py)
 `0.png`, `1.png`, `1b.png` (so 1 co chan), `2.png`, `3.png`, `slash.png`: anh XAM 14 px cao, cat tu anh that
 (`tests/fixtures/screen_loop/queues_0-2_0-1_0-3.png`, `logs/snap-city.png`). Them so 4-6 neu gap tong > 3
