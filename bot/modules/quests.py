@@ -9,7 +9,7 @@ import logging
 import time
 
 from aowbot.domain import blockers
-from bot import build, game_msg, screens
+from bot import build, game_msg, ocr, quest_rules, screens
 from bot.modules import tutorial
 
 log = logging.getLogger("aow")
@@ -59,6 +59,32 @@ def _block_battle(ctx):
 
 
 ROW_MAX_DIST = 12   # bit lech toi da cung 1 dong (do tren anh bang nhiem vu: cung dong 0-3, khac dong >= 28)
+
+
+def row_title(img, p):
+    """P4: chu tieu de dong nhiem vu (vung tren nut Den, cung vung voi row_key) - '' neu khong doc duoc."""
+    y = int(p[1])
+    roi = (110, max(0, y - 52), 280, 32)
+    return " ".join(t for t in (ocr.text(img, roi, psm=7, bright=b) or "" for b in (None, 170)) if t)
+
+
+def row_plan(title):
+    """-> (bam Den?, loai, buoc phu trach). Ham thuan. Dong la viec cua buoc khac (huan luyen, phan quan, tinh bao,
+    dau truong...) -> KHONG bam (do 21-22/11: 472 lan 'Den' tab Chinh -> none, deu la dong kieu nay)."""
+    kind, module = quest_rules.classify(title)
+    return not quest_rules.delegated(kind), kind, module
+
+
+def is_hq_row(title):
+    """Dong nhiem vu nang nha chinh ("Tang Xuong kien truc den cap N")."""
+    return quest_rules.has_phrase(title, "kien truc")
+
+
+def _hq_rush(ctx):
+    from aowbot.domain import hqplan as dom
+    m = getattr(ctx, "mem", None)
+    lv = m.fact(ctx.dev.idx, "hq_level") if m else None
+    return dom.hq_rush(lv, ctx.cfg.get("build", {}).get("hq_targets", dom.DEFAULT_TARGETS))
 
 
 def row_key(img, p):
@@ -149,6 +175,7 @@ def run(ctx):
     max_go = q.get("max_go_per_run", 6)
     started = tries = 0
     no_battle = _battle_blocked(ctx)
+    rush = _hq_rush(ctx)
     now = time.time()
     blocks = _blocks(ctx, now)
     for tab in tabs:
@@ -179,6 +206,20 @@ def run(ctx):
                     log.info("Nhiem vu %s dong %d: bo qua (%s, con %.0f phut)", (tab or "chuong").split("/")[-1],
                              k + 1, b.reason.value, (b.until - now) / 60)
             todo = [(k, p) for k, p in enumerate(gos) if k not in tried]
+            if q.get("read_rows", True):   # P4: doc tieu de dong, bo dong la viec cua buoc khac (khong bam Den)
+                keep, titles = [], {}
+                for k, p in todo:
+                    titles[k] = row_title(img, p)
+                    go, kind, module = row_plan(titles[k])
+                    if go:
+                        keep.append((k, p))
+                    else:
+                        tried.add(k)
+                        log.info("Nhiem vu %s dong %d: %s -> viec cua buoc %s, khong bam Den",
+                                 (tab or "chuong").split("/")[-1], k + 1, kind, module)
+                todo = keep
+                if rush:   # P4 muc 5: dang day nha chinh (build.hq_targets) -> dong "Xuong kien truc" lam truoc
+                    todo.sort(key=lambda kp: 0 if is_hq_row(titles.get(kp[0], "")) else 1)
             if not todo:
                 break
             k, p = todo[0]

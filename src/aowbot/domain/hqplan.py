@@ -107,3 +107,22 @@ def after_construct(plan: HqPlan, now: float) -> HqPlan:
         return plan
     return HqPlan(Status.CHAIN, now, wake_at=now, none_streak=0, last_level=plan.last_level,
                   last_note="after_construct")
+
+
+# ---------- P4 (PM 2026-11-23): muc tieu nha chinh cho farm (len 9 roi 15) ----------
+DEFAULT_TARGETS = (9, 15)
+
+
+def next_target(level: int | None, targets=DEFAULT_TARGETS) -> int | None:
+    """Muc tieu nha chinh ke tiep (> cap hien tai), None neu da qua het muc tieu / chua biet cap."""
+    if level is None:
+        return None
+    for t in sorted(int(x) for x in targets or ()):
+        if level < t:
+            return t
+    return None
+
+
+def hq_rush(level: int | None, targets=DEFAULT_TARGETS) -> bool:
+    """Dang 'day nha chinh' (cap < muc tieu cuoi): nhiem vu xay nha chinh duoc lam truoc, cong trinh khac sau."""
+    return next_target(level, targets) is not None

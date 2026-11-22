@@ -38,6 +38,10 @@ GROUPS = [
         dict(key="mainquest.max_steps", label="Số bước nhiệm vụ chính mỗi lượt", type="int", min=0, max=30, ready=True),
         dict(key="mainquest.fight_unpredicted", label="Đánh cả khi không dự đoán thắng", type="bool", ready=True),
         dict(key="mainquest.power_gain_pct", label="Gặp boss khó: thử lại khi lực chiến tăng (%)", type="int", min=1, max=100, ready=True),
+        dict(key="mainquest.npc_rebels", label="NV chính 'Kích sát phiến quân': tự đánh phiến quân NPC (không đánh người chơi)", type="bool", ready=True),
+        dict(key="mainquest.npc_max_level", label="Cấp phiến quân NPC tối đa được đánh theo NV", type="int", min=1, max=30, ready=True),
+        dict(key="mainquest.same_retry_h", label="Cùng NV chính thất bại 2 lần: chờ (giờ, gấp đôi mỗi lần)", type="int", min=0, max=24, ready=True),
+        dict(key="quests.read_rows", label="Đọc tên dòng NV, bỏ dòng là việc của bước khác (không bấm Đến)", type="bool", ready=True),
         dict(key="battle.steer", label="Lái đội quân trong trận (nhặt buff, né nerf/tấn công)", type="bool", ready=True),
     ]),
     ("Chiến dịch", [

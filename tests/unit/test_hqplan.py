@@ -1,4 +1,5 @@
 """aowbot.domain.hqplan (G1): ke hoach nha chinh + luat nhuong tho."""
+from aowbot.domain import hqplan
 from aowbot.domain.hqplan import (
     CHAIN_GRACE_S,
     NONE_CAP_S,
@@ -79,3 +80,13 @@ def test_after_construct_clears_none_backoff_only():
     assert should_attempt(q, NOW + 5)[0] and q.none_streak == 0
     busy = record(None, "busy", NOW, busy_s=H)
     assert after_construct(busy, NOW) is busy
+
+
+def test_next_target_and_rush():
+    assert hqplan.DEFAULT_TARGETS == (9, 15)
+    assert hqplan.next_target(4) == 9
+    assert hqplan.next_target(9) == 15
+    assert hqplan.next_target(15) is None
+    assert hqplan.next_target(None) is None
+    assert hqplan.next_target(3, [15, 9]) == 9
+    assert hqplan.hq_rush(7) and not hqplan.hq_rush(20) and not hqplan.hq_rush(None)
