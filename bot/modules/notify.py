@@ -315,10 +315,14 @@ def rebels_pin(ctx):
         log.info("Tinh bao: het quan doan ranh -> khong tap ket phan quan")
         ctx.back_out()
         return "no_march"
+    rc = ctx.cfg.get("rebels", {})
+    if not rebels.intel_rally_ok(getattr(ctx, "mem", None), ctx.dev.idx, rc):
+        log.info("Tinh bao: ghim Phan quan - nha chinh < rebels.intel_rally_min_hq (%s) -> bo", rc.get("intel_rally_min_hq"))
+        ctx.back_out()
+        return "skipped"
     img = ctx.shot()
     title = ctx.v.find(img, "rebels/popup_title", th=0.8)
     lv = rebels.popup_level(img, title) if title else None
-    rc = ctx.cfg.get("rebels", {})
     _, rec = rebels._mem(ctx)
     if lv is None or not rebels.target_ok({"fail": rec.get("fail", {})}, lv, rc.get("fail_h", 12)):
         log.info("Tinh bao: ghim Phan quan Lv.%s - bo (doc cap khong ra / vua du doan thua)", lv)

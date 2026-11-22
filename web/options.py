@@ -75,7 +75,9 @@ GROUPS = [
         dict(key="notify.hero", label="Tăng cấp tướng (EXP)", type="bool", ready=True),
     ]),
     ("Phản quân", [
-        dict(key="rebels.join_mech_rally", label="Tham gia tập kết Phản quân Cơ giáp (cần ảnh mẫu khi có tập kết)", type="bool", ready=True),
+        dict(key="rebels.join_mech_rally", label="Tham gia tập kết Phản quân Cơ giáp của liên minh (mặc định tắt, chờ chủ dự án quyết; cần ảnh mẫu)", type="bool", ready=True),
+        dict(key="rebels.search_tries", label="Số cấp Phản quân thử mỗi lượt (hạ dần khi dự đoán thua)", type="int", min=1, max=6, ready=True),
+        dict(key="rebels.intel_rally_min_hq", label="Ghim tình báo Phản quân: chỉ mở tập kết từ nhà chính cấp (0 = mọi cấp)", type="int", min=0, max=40, ready=True),
         dict(key="rebels.min_stamina", label="Thể lực tối thiểu giữ lại", type="int", min=0, max=1000, ready=True),
         dict(key="rebels.min_hq_level", label="Đánh Phản quân tập kích từ nhà chính cấp", type="int", min=1, max=40, ready=True),
         dict(key="rebels.daily_target", label="Số lượt mỗi ngày (đủ thì thôi, tính lại từ 0h UTC)", type="int", min=0, max=50, ready=True),

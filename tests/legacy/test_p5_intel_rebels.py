@@ -1,4 +1,4 @@
-"""P5 muc 1 (PM 2026-11-23): tinh bao (phan loai bang, ly do unknown, thong ke log)."""
+"""P5 muc 1-2 (PM 2026-11-23): tinh bao (phan loai bang, ly do unknown, thong ke log) + phan quan (thu nhieu cap)."""
 import glob
 import os
 import time
@@ -6,6 +6,7 @@ import types
 
 import cv2
 import pytest
+import yaml
 
 from bot import intel_rules as IR
 from bot.modules import notify, rebels
@@ -159,6 +160,42 @@ def test_marker_search_uses_center_roi(monkeypatch):
             return super().find(img, name, th=th, roi=roi)
     notify.intel_mission(Ctx(V2({"intel/btn_go"})))
     assert calls == [(IR.MARKER_TH, IR.MARKER_ROI)]
+
+
+def test_rebels_pin_hq_gate():
+    mem = types.SimpleNamespace(fact=lambda idx, k: 9 if k == "hq_level" else None)
+    assert rebels.intel_rally_ok(mem, 0, {})                                   # 0 = moi cap (nhu cu)
+    assert not rebels.intel_rally_ok(mem, 0, {"intel_rally_min_hq": 15})
+    assert rebels.intel_rally_ok(types.SimpleNamespace(fact=lambda i, k: 15), 0, {"intel_rally_min_hq": 15})
+    assert not rebels.intel_rally_ok(None, 0, {"intel_rally_min_hq": 15})       # chua biet cap -> khong
+
+
+# ---------- phan quan ----------
+def test_search_levels_steps_down_and_skips_failed():
+    now = 1_000_000
+    assert rebels.search_levels({"best": None, "fail": {}}, 10, 12, 3, now) == [10, 9, 8]
+    rec = {"best": None, "fail": {"10": now - 60}}
+    assert rebels.search_levels(rec, 10, 12, 3, now) == [9, 8, 7]
+    assert rebels.search_levels({"best": 7, "fail": {}}, 10, 12, 2, now) == [8, 7]
+    assert rebels.search_levels({"best": None, "fail": {}}, 2, 12, 5, now) == [2, 1]
+
+
+def test_join_off_by_default_and_missing_templates(caplog):
+    c = Ctx(V(have=set()))
+    c.cfg = {"rebels": {}}
+    assert rebels.join(c) == 0 and c.taps == []
+    c.cfg = {"rebels": {"join_mech_rally": True}}
+    with caplog.at_level("INFO", logger="aow"):
+        assert rebels.join(c) == 0
+    assert c.taps == []
+    assert "thieu anh mau rebels/rally_mech" in caplog.text
+
+
+def test_config_keeps_join_off():
+    with open("config.yaml", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    assert cfg["rebels"]["join_mech_rally"] is False
+    assert cfg["rebels"]["intel_rally_min_hq"] == 0
 
 
 # ---------- phat lai offline tren anh that (chi local, anh khong co trong git) ----------

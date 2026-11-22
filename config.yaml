@@ -310,7 +310,8 @@ arena:                    # Dau truong (Loi choi) - chu du an 2026-11-21
   lost_days: 7            # nho doi thu da thua (theo luc chien +-3%) N ngay -> khong danh lai
 rebels:
   start_level: 10        # Q6: chua thang cap nao -> tim Co giap cap nay qua o tim kiem; thang N -> lan sau N+1, du doan thua -> lui
-  join_mech_rally: true   # tham gia tan cong Phan quan Co giap khi con the luc
+  join_mech_rally: false  # THAM GIA tap ket Co giap cua lien minh - TAT mac dinh (PM 2026-11-23: chu du an chua quyet);
+                          # bat cung can anh mau rebels/rally_mech + rebels/btn_join (thieu -> bo qua, log 'thieu anh mau')
   min_stamina: 0
   min_hq_level: 15        # chu du an 2026-11-21: tu nha chinh cap 15 moi danh Phan quan tap kich
   daily_target: 5         # hoan thanh 5 luot moi ngay (reset 0h UTC) -> du thi bo buoc
@@ -318,6 +319,8 @@ rebels:
   attack: true            # TU MO tap ket danh Phan quan Co giap (3 phut, quan doan -> Xuat chinh khi du doan thang)
   legion: Odin            # quan doan mac dinh (Odin/Thor/Loki/Hawk/Hulk); bot nho quan doan da thang
   fail_h: 12              # cap du doan khong thang -> khong thu lai cap do trong N gio (lui ve cap da thang)
+  search_tries: 3         # P5-2: so cap thu trong 1 luot (cap ke tiep roi ha dan khi du doan thua / khong tim thay)
+  intel_rally_min_hq: 0   # P5-2: ghim tinh bao Phan quan Co giap tu mo tap ket chi khi nha chinh >= N (0 = moi cap, nhu cu)
 warday:
   enabled: true
   stamina: true             # dang nhap dung moc 0h, 8h, 15h UTC de nhan the luc
