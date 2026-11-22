@@ -591,6 +591,7 @@ class Runner:
                     if attacked:  # kiem tra canh bao truoc moi buoc
                         st.update(idx, step="phong thu")
                         defense.run(ctx)
+                        done["defense"] = 1   # P5-3: lan ghe co bi danh -> heal bat buoc (stepgate.FIGHT_STEPS)
                         st.update(idx, step=name)
                     ret = mod.run(ctx)
                     done[name] = ret

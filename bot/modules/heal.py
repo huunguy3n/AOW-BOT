@@ -7,13 +7,20 @@ Luong (anh chu du an gui): cong trinh "Benh Vien" tren thanh pho -> cham -> vong
 Tim benh vien: CHU THAP DO tren mai = khoi do 46x24 px, phu ~46 % khung (hinh chu thap nhin nghieng) - do tren 2 anh
 chu du an + anh that #0; cham do / nut do khac co kich thuoc / do phu khac. Ve thanh pho tu the gioi (camera dat nha
 chinh giua man); benh vien khong nam trong khung nhin -> bo qua (ghi log), khong keo ban do mo.
+
+P5-3 (PM 2026-11-23): 21-22/11 heal chay 45 lan, ca 45 tra 0 (moi lan mo benh vien ra xem). Dau hieu co thuong binh
+= BONG BONG chua tri (build/heal_bubble). Khong thay bong bong va lan ghe nay chua co tran (rebels / phong thu)
+-> tra 0 ngay, KHONG cham benh vien (heal.open_without_bubble: false). Thieu anh mau bong bong -> cach cu.
+(42 anh heal_no_target KHONG phai cua buoc nay: la su kien "chua thuong" trong notify.heal_event.)
 """
 import logging
 
 import cv2
 import numpy as np
 
-from bot import build, buttons
+from bot import build, buttons, tplneed
+from bot.stepgate import FIGHT_STEPS
+from aowbot.domain import drain
 from aowbot.domain.blockers import normalize
 
 log = logging.getLogger("aow")
@@ -40,6 +47,19 @@ def is_hospital_label(text):
     return "benh vi" in s or "vien" in s and "benh" in s
 
 
+def fought(done):
+    """Lan ghe nay co tran (phan quan xuat chinh / bi tan cong) -> co the co thuong binh."""
+    return any(drain.worked((done or {}).get(s)) for s in FIGHT_STEPS)
+
+
+def should_open(has_bubble_tpl, bubble, fought_now, open_without_bubble=False):
+    """Ham thuan P5-3: co mo benh vien (theo chu thap do) khi KHONG cham duoc bong bong chua tri?
+    Chi khi: chua co anh mau bong bong (khong biet) / vua co tran / cau hinh cho phep. Thay bong bong -> luong bong bong."""
+    if bubble:
+        return True
+    return (not has_bubble_tpl) or fought_now or bool(open_without_bubble)
+
+
 def run(ctx):
     if ctx.world_ready():
         ctx.ensure_world()
@@ -60,6 +80,11 @@ def run(ctx):
         ctx.back_out()
         ctx.ensure_city()
         img = ctx.settle()
+    hc = ctx.cfg.get("heal", {}) or {}
+    has_tpl = tplneed.has(ctx.v, "build/heal_bubble", "bong bong chua tri tren benh vien")
+    if not should_open(has_tpl, bool(bub), fought(getattr(ctx, "visit_done", None)), hc.get("open_without_bubble", False)):
+        log.info("Benh vien: khong thay bong bong chua tri, lan ghe chua co tran -> khong mo benh vien")
+        return 0
     cs = crosses(img)
     if not cs:
         log.info("Benh vien: khong thay trong khung nhin thanh pho - bo qua")

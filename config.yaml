@@ -203,6 +203,8 @@ notify:
   recruit: true
   hero: true
   events: true            # o su kien cot phai (nhan qua an toan)
+heal:                      # buoc benh vien (bot/modules/heal.py) - chi nut "Hoi phuc" bang tai nguyen, KHONG BAO GIO "Hoi phuc ngay"
+  open_without_bubble: false  # P5-3: khong thay bong bong chua tri + lan ghe chua co tran -> khong mo benh vien (true = mo kiem nhu cu)
 stepgate:                  # P1 "On dinh nen" (bot/stepgate.py): dieu kien truoc khi chay + gian chu ky khi tra 0
   enabled: true
   steps: [heal, campaign, warday, mainquest]   # buoc duoc kiem dieu kien / gian chu ky
