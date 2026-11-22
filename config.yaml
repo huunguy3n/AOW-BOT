@@ -38,6 +38,13 @@ modules:
   reddots: true      # cuoi luot: quet lai cot icon phai con cham do -> mo, chi nhan nut "Nhan" xanh (bo icon Qua $)
   daily: true        # nhan thuong nhiem vu + ruong nang dong (cuoi cung, sau khi cac buoc khac da tang tien do)
 
+# G2 (docs/strategy/session-drain-proposal.md): sau luot ORDER, buoc lam duoc viec (nhan qua, xay moi...) mo khoa buoc da chay truoc
+# no -> chay lai truoc observe thay vi doi lan ghe sau
+drain:
+  enabled: true
+  max_extra: 8          # toi da so buoc chay lai moi lan ghe
+  max_visit_min: 30     # qua thoi gian nay thi khong chay lai
+
 rewards:
   # moi ten = 1 thu muc templates/rewards/<ten>/ (open_*, tab_*, claim_*) - xem templates/README.md
   # 'city' khong co open_*: nhan qua noi ngay tren thanh pho
@@ -105,6 +112,7 @@ cycle:
 # false = cach cu (back_out + nut chuyen ban do). Man la luu vao logs/unknown/ de dan nhan.
 nav:
   smart: true
+  skip_recheck_s: 3.0   # G3: ensure_city ngay sau 1 lan da xac nhan thanh pho (khong thao tac o giua) thi bo qua; 0 = tat
 
 # Lap lich theo tri nho (bot/scheduler.py, docs/product/ke-hoach-A-tri-nho-lap-lich.md)
 # fixed = nhu cu (chay het may, het buoc, nghi pause_between_cycles_min); smart = chi bat may khi can

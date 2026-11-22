@@ -203,14 +203,17 @@ class Device:
 
     # ghi TRUOC khi gui lenh: 'input tap' tren LDPlayer mat ~1 s moi tra ve, su kien cham da toi bot/human.py truoc do
     def tap(self, x, y):
+        self.act_seq = getattr(self, "act_seq", 0) + 1     # G3: ctx.ensure_city biet co thao tac nao tu lan kiem truoc
         self._mine(x, y, time.time())
         self._cmd("shell", "input", "tap", int(x), int(y))
 
     def swipe(self, x1, y1, x2, y2, ms=300):
+        self.act_seq = getattr(self, "act_seq", 0) + 1
         self._mine(x1, y1, time.time())
         self._cmd("shell", "input", "swipe", int(x1), int(y1), int(x2), int(y2), int(ms))
 
     def back(self):
+        self.act_seq = getattr(self, "act_seq", 0) + 1
         self.backs = getattr(self, "backs", 0) + 1       # bot/human.py: phim Back cua bot, khong phai cua nguoi
         self.back_t = time.time()
         self._cmd("shell", "input", "keyevent", "4")

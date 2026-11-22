@@ -401,14 +401,35 @@ class Ctx:
         return act, arg, None
 
     def ensure_city(self):
+        # G3: kiem lai thanh pho ngay sau 1 lan kiem truoc (khong co thao tac nao o giua, < nav.skip_recheck_s giay) la thua:
+        # 8155/15806 ban ghi nav cu la 'done' ngay sau 'done' (reddots 4090, quests 1881) - moi lan ~1 s chup + quet popup
+        win = float(self.cfg.get("nav", {}).get("skip_recheck_s", 3.0))
+        seq = getattr(self.dev, "act_seq", None)
+        ok = getattr(self, "_city_ok", None)
+        if win > 0 and seq is not None and ok and ok[0] == seq and time.time() - ok[1] < win:
+            self.nav.append(("city", "done", None))      # giu 'lost' (runner) dem dung: buoc nay van o thanh pho
+            self.city_skips = getattr(self, "city_skips", 0) + 1
+            return
+        t0 = time.time()
+        verified = self._ensure_city()
+        self.city_checks = getattr(self, "city_checks", 0) + 1
+        self.city_check_s = getattr(self, "city_check_s", 0.0) + (time.time() - t0)
+        if verified and getattr(self.dev, "act_seq", None) is not None:
+            self._city_ok = (self.dev.act_seq, time.time())      # chi nho khi goto xac nhan DUNG la thanh pho
+
+    def _ensure_city(self):
+        """-> True neu goto xac nhan o thanh pho (khong tap gi them sau close_popups)."""
         if self.cfg.get("nav", {}).get("smart", True):
-            if self.goto("city") or getattr(self, "_nav_last", None) in ("city", "world"):
+            ok = self.goto("city")
+            if ok or getattr(self, "_nav_last", None) in ("city", "world"):
+                seq = getattr(self.dev, "act_seq", None)
                 self.close_popups()
-                return
+                return bool(ok) and getattr(self.dev, "act_seq", None) == seq
         self.back_out()  # cach cu (du phong)
         if self.find("common/btn_to_city"):  # dang o ban do the gioi
             self.tap_tpl("common/btn_to_city", wait=2.5, fresh=False)
         self.close_popups()
+        return False
 
     def ensure_world(self):
         if self.cfg.get("nav", {}).get("smart", True):

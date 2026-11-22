@@ -10,6 +10,7 @@ from bot.ctx import Ctx, Stuck
 from bot import ocr
 from bot.memory import Memory
 from bot import perf, scheduler
+from aowbot.domain import drain
 from bot.modules import tutorial, mainquest, construct, city, rewards, alliance, quests, campaign, notify, research, train, rebels, gather, daily, observe, defense, intel, reddots, play, upgrade, heal, warday
 
 log = logging.getLogger("aow")
@@ -499,7 +500,24 @@ class Runner:
             restarts = 0
             blind = 0  # so buoc lien tiep khong chup duoc man hinh (may treo du adb van 'device')
             lost = 0   # so buoc lien tiep goto() khong ve duoc thanh pho/ban do (vd canh tan thu toi den, #4 2026-11-19)
-            for name, mod in ORDER + [("observe", observe)]:
+            queue = list(ORDER) + [("observe", observe)]
+            qi, done, rerun = 0, {}, collections.Counter()
+            dcfg = cfg.get("drain") or {}
+            t_visit = time.time()
+            while qi < len(queue):
+                name, mod = queue[qi]
+                qi += 1
+                if name == "observe" and dcfg.get("enabled", True) and not forced:
+                    # G2: buoc lam duoc viec co the mo khoa buoc da chay truoc no -> chay lai truoc observe
+                    if time.time() - t_visit < dcfg.get("max_visit_min", 30) * 60:
+                        extra = drain.followups([n for n, _ in ORDER], done, enabled, dict(rerun), dcfg.get("max_extra", 8))
+                        if extra:
+                            log.info("Xa viec: chay lai %s (do %s vua lam duoc viec)", ",".join(extra),
+                                     ",".join(k for k, v in done.items() if drain.worked(v)))
+                            rerun.update(extra)
+                            by = dict(ORDER)
+                            queue[qi - 1:qi - 1] = [(n, by[n]) for n in extra]
+                            name, mod = queue[qi - 1]
                 if name != "observe" and not enabled.get(name):
                     continue
                 hq_ = self.mem.fact(idx, "hq_level")
@@ -541,6 +559,7 @@ class Runner:
                         defense.run(ctx)
                         st.update(idx, step=name)
                     ret = mod.run(ctx)
+                    done[name] = ret
                     if len(ctx.debug_shots) > n0:  # module tu luu anh = co cho khong on (ket, khong thay...)
                         res, shot = "warn", ctx.debug_shots[-1]
                     elif self.vision.miss_hits > m0:  # chay xong nhung co cho bo qua vi thieu anh mau
@@ -595,6 +614,10 @@ class Runner:
                                        % (ctx.nav[-1][0] if ctx.nav else "?"))
                 if blind >= 2:  # lan dau thay o #2 2026-11-19: moi buoc mat ~3 phut roi loi, ca luot ~40 phut vo ich
                     raise RuntimeError("May khong phan hoi (2 buoc lien tiep khong chup duoc man hinh) - bo luot may nay")
+            sk, ck = getattr(ctx, "city_skips", 0), getattr(ctx, "city_checks", 0)
+            if sk or ck:   # G3: do hieu qua bo kiem tra thanh pho
+                avg = getattr(ctx, "city_check_s", 0.0) / ck if ck else 0.0
+                log.info("G3: kiem tra thanh pho %d lan (TB %.2fs), bo qua %d lan -> tiet kiem ~%.0fs", ck, avg, sk, sk * avg)
             st.update(idx, status="idle", step=None, last_run=time.time())
             vres = "ok"
         except Stuck as e:  # watchdog luc mo game / phong thu ep (ngoai vong buoc)

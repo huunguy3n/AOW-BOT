@@ -27,8 +27,8 @@ Bot chưa bao giờ xong hết việc trong 1 lần login; ra vào thành phố 
 ## 4. Lộ trình (duyệt từng giai đoạn)
 - **G0 – Đo (chỉ đọc)**: `python tools/measure_g0.py [--since H] [--json]`. Xong, kết quả ở §5.
 - **G1 – Kế hoạch nhà chính + phân xử thợ xây.** Đã cài đặt (2026-11-22), CHƯA chạy thật trên máy: xem §6.
-- **G2 – Vòng xả việc, gom theo vị trí, hậu điều kiện.**
-- **G3 – Điều hướng theo đồ thị màn hình, bỏ `ensure_city` thừa.**
+- **G2 – Vòng xả việc.** Đã cài đặt (2026-11-22): xem §7. Chưa làm: gom theo vị trí, hậu điều kiện kiểm chứng.
+- **G3 – Bỏ `ensure_city` thừa.** Đã cài đặt (2026-11-22): xem §7. (Đồ thị màn hình đã có sẵn trong `bot/screens.py` + `ctx.goto`; G3 chỉ cắt kiểm tra lặp.) Không có G4 trong tài liệu.
 
 Số đo thành công: % rảnh của thợ xây/nghiên cứu/huấn luyện; thao tác điều hướng trên mỗi tác vụ xong; tác vụ xong trên mỗi phiên; tốc độ nhà chính theo giờ thực.
 
@@ -65,3 +65,12 @@ Cách đọc / hạn chế: ô rảnh là **cận trên** (chỉ quan sát đư�
 - **Chưa làm** so với đề xuất: cây phụ thuộc đầy đủ (công trình nào, cấp nào) — cần đọc danh sách điều kiện trên màn "Nhảy" bằng OCR, phải kiểm trên máy thật; mainquest chưa bị chặn thợ (còn đánh chiến dịch).
 - Chưa kiểm chứng trên máy: cần chạy 1 lượt + kiểm lại (xem log "Ke hoach nha chinh:" và "Bo buoc quests/construct").
 - Ghi chú test: `tests/legacy/test_priority_queues.py::test_research_waits_for_hq_and_scheduler_skips` pass khi chạy riêng, fail khi chạy cả bộ (ảnh giả là chuỗi 'hq' đưa vào OCR trong `research.py`); không do G1, chưa sửa.
+
+## 7. G2 + G3 đã làm (2026-11-22)
+**G2 – xả việc** ([drain.py](../../src/aowbot/domain/drain.py), 6 test; nối vào vòng bước ở `bot/runner.py`, cấu hình `drain:` trong `config.yaml`):
+- Sau lượt ORDER, trước `observe`, nếu một bước làm được việc (`ret` > 0) thì chạy lại các bước đã chạy TRƯỚC nó mà việc đó có thể mở khóa (tài nguyên/quà vừa nhận → `upgrade/construct/train/research/heal/quests/mainquest`; `construct` → `upgrade`). Mỗi bước chạy lại tối đa 1 lần, riêng `upgrade` lặp tới 6 lần miễn là còn trả > 0 (nâng cấp tức thì miễn phí dồn chuỗi điều kiện nhà chính vào 1 lần ghé). Tối đa 8 lần chạy lại và 30 phút mỗi lần ghé; tắt bằng `drain.enabled: false`.
+- Chạy thật trên #4 (bước rewards, train, upgrade, construct, daily): `daily` xong → chạy lại `train, upgrade, construct`; `upgrade` chạy lại bắt đầu thêm 1 nút điều kiện nhà chính trong cùng lần ghé; lần sau dừng đúng khi thợ bận.
+
+**G3 – kiểm tra thành phố thừa** (`Ctx.ensure_city`, `Device.act_seq`, 4 test): 8155/15806 bản ghi `nav` là `done` liền sau `done` (reddots 4090, quests 1881, notify 632…) → mỗi lần ~1 giây chụp + quét popup. Nay `ensure_city` bỏ qua nếu lần kiểm trước xác nhận đúng thành phố, không có thao tác (tap/swipe/Back) nào ở giữa, và chưa quá `nav.skip_recheck_s` (3 giây; 0 = tắt). Ước lượng tiết kiệm ~4–5% thời gian ghé (136 phút/2922 phút trong dữ liệu 3 ngày); 
+
+**Đo G3 trên #4 (2026-11-22, notify + reddots + rewards, 9,9 phút):** `ensure_city` được gọi 74 lần: kiểm tra thật 22 lần (trung bình 1,36 s), **bỏ qua 52 lần (70%) → tiết kiệm ~71 s trên ~594 s chạy (~12%)**. Con số này cao hơn ước lượng 4–5% vì lượt đo toàn bước nặng chấm đỏ. Dòng log `G3: kiem tra thanh pho ...` in cuối mỗi lần ghé. Lượt đầy đủ 17 bước (19:19–19:36, 18,6 phút) xong trọn trong 1 lần đăng nhập; `reddots` vẫn là điểm nghẽn (709 s ở lượt đầu, 404 s ở lượt sau) — cần xử lý riêng.
