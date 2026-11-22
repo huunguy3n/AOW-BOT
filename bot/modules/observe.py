@@ -119,6 +119,23 @@ def note_heal(ctx, cimg):
         log.debug("heal_bubble: %s", e)
 
 
+def known_totals(ctx):
+    """P2: tong cua tung hang cho tu lan doc truoc (fact queue_<loai> = [dang chay, tong]) -> lop cham do cua
+    queues.read dung khi khong doc duoc so."""
+    m = getattr(ctx, "mem", None)
+    out = {}
+    if m is None:
+        return out
+    for k in queues.ICONS:
+        try:
+            v = m.fact(ctx.dev.idx, f"queue_{k}")
+            if v and len(v) == 2 and int(v[1]) >= 1:
+                out[k] = int(v[1])
+        except Exception:
+            pass
+    return out
+
+
 def run(ctx):
     if ctx.cfg.get("observe", {}).get("read_hq", True):
         try:
@@ -127,7 +144,7 @@ def run(ctx):
             log.warning("Doc cap nha chinh loi: %s", e)
     ctx.ensure_city()
     cimg = ctx.shot()
-    qs = queues.read(ctx.v, cimg)         # Q0: tho xay / nghien cuu / huan luyen tu cot icon trai
+    qs = queues.read(ctx.v, cimg, known_totals(ctx))   # Q0/P2: tho xay / nghien cuu / huan luyen tu cot icon trai
     b = qs.get("build") or read_builders(ctx.v, cimg)
     if qs:
         log.info("Hang cho: %s", ", ".join(f"{k} {v[0]}/{v[1]}" if v else f"{k} ?" for k, v in qs.items()))

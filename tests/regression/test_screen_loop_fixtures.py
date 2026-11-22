@@ -60,6 +60,13 @@ def test_row_keys_stable_across_frames_and_distinct_between_rows():
     ("queues_0-2_0-1_0-3.png", {"build": (0, 2), "research": (0, 1), "train": (0, 3)}),
     ("queues_1-2_0-1_0-3.png", {"build": (1, 2), "research": (0, 1), "train": (0, 3)}),
     ("queues_0-2_hard.png", {"build": (0, 2)}),               # so tren nen cong trinh xanh (#4)
+    # P2: Tesseract khong doc duoc cac o duoi -> anh chu so templates/qdigits
+    ("queues2_city_main_i1.png", {"build": (1, 2), "research": (1, 1), "train": (3, 3)}),
+    ("queues2_reddots_i1.png", {"build": (2, 2), "research": (1, 1), "train": (3, 3)}),
+    ("queues2_covered_i1.png", {"build": None, "research": (1, 1), "train": (3, 3)}),   # so tho xay bi icon qua che
+    ("queues2_snap_city.png", {"build": (0, 2), "train": (0, 1)}),
+    ("queues2_train11_i3.png", {"build": (0, 2), "train": (1, 1)}),
+    ("queues2_dim_i3.png", {"train": (0, 2)}),                 # man bi phu toi
 ])
 def test_queue_counters(name, want):
     ocr.init(TESS)

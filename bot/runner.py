@@ -520,7 +520,7 @@ class Runner:
             if (cfg.get("priority") or {}).get("idle_first", True) and not forced:
                 try:   # o rong (tho 0/2, nghien cuu 0/1, huan luyen x/3) -> lam truoc (chu du an 2026-11-22)
                     ctx.ensure_city()
-                    qs0 = queues.read(self.vision, ctx.shot())
+                    qs0 = queues.read(self.vision, ctx.shot(), observe.known_totals(ctx))
                     idle0 = drain.idle_slots(qs0, cfg.get("build", {}).get("max_builders", 1))
                     if idle0:
                         names = drain.prioritize([n for n, _ in ORDER], idle0, enabled)

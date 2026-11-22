@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-
 from bot import build
 from bot.modules import observe
 
