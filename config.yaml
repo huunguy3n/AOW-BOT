@@ -197,6 +197,11 @@ recruit:
   use_tickets: false   # chi chieu mo mien phi; true = dung ca phieu (KHONG BAO GIO kim cuong)
 construct:            # xay cong trinh MOI qua icon bua (bot/modules/construct.py)
   max_per_run: 6      # toi da so lan xay moi moi luot
+  # P2 (PM 2026-11-23): the khong dat duoc (construct_no_spot / khong tick / thieu tai nguyen) -> nho, sang the/nhom khac
+  max_fail_per_run: 2   # toi da so lan keo the that bai trong 1 luot (moi lan ~30 s), sau do nhuong tho cho nang cap
+  nospot_backoff_h: 2   # the hong bi bo qua 2 gio, hong lai thi gap doi (thieu tai nguyen/tho: 1 gio)
+  nospot_cap_h: 24      # toi da 24 gio; nha chinh len cap -> thu lai ngay (thanh pho co the rong them)
+  empty_recheck_h: 1    # bua co cham do ma khong co the nao mo -> N gio sau moi mo lai bang Xay dung
 mainquest:
   max_steps: 6
   fight_unpredicted: false # boss qua kho: khong danh khi man doi hinh khong ghi 'Thang toan dien'
