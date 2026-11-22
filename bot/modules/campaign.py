@@ -11,11 +11,40 @@ log = logging.getLogger("aow")
 
 
 def claim_idle(ctx):
+    """-> True neu da nhan Loi ich treo may (P4: tinh la lam duoc viec, truoc chi dem tran thang -> 14/14 lan tra 0)."""
+    got = False
     if ctx.tap_tpl("campaign/btn_idle_claim", wait=1.5, dy=-60):  # chu "Nhan" duoi ruong treo may
         if ctx.tap_tpl("campaign/btn_idle_get", wait=1.5):
             ctx.dismiss_reward()
             log.info("Da nhan Loi ich treo may")
+            got = True
         ctx.tap_first(ctx.POPUP_CLOSERS, wait=0.8)
+    return got
+
+
+# P4 (anh logs/shots/*campaign_no_fight* 22/11: 8/8 anh): sau "Tan cong" game mo man "Cai dat quan doan" kieu moi -
+# nut xanh "Doi hinh de xuat" (166,921) + nut do "Chien dau" (373,921), giong Dau truong/Cuop boc. Anh mau cu
+# campaign/btn_fight chi khop 0,77 -> bot cho 12 s roi 'error'. Dung lai anh mau cua play (khop 1,00 tren ca 8 anh).
+LEGION_FIGHT = "play/btn_arena_fight"
+LEGION_RECOMMEND = "play/btn_arena_recommend"
+LEGION_ROI = (0, 860, 540, 100)
+
+
+def legion_screen(v, img):
+    """Man "Cai dat quan doan" (Doi hinh de xuat + Chien dau do)? -> toa do nut Chien dau hoac None. Ham thuan."""
+    return v.find(img, LEGION_FIGHT, th=0.85, roi=LEGION_ROI)
+
+
+def legion_fight(ctx):
+    """Man quan doan kieu moi: LUON bam "Doi hinh de xuat" truoc roi "Chien dau". -> True neu da bam Chien dau."""
+    from bot import tplneed
+    if not tplneed.has(ctx.v, LEGION_FIGHT, "man Cai dat quan doan cua Chien dich"):
+        return False
+    if not legion_screen(ctx.v, ctx.shot()):
+        return False
+    if ctx.tap_tpl(LEGION_RECOMMEND, wait=1.5, th=0.85, roi=LEGION_ROI, fresh=False):
+        log.info("Doi hinh: bam Doi hinh de xuat")
+    return bool(ctx.tap_tpl(LEGION_FIGHT, wait=0.5, th=0.85, roi=LEGION_ROI))
 
 
 def predicted_win(v, img):
@@ -55,7 +84,7 @@ def fight_one(ctx, only_win):
         ctx.tap_first(ctx.POPUP_CLOSERS, wait=0.8)
         return "skip"
     ctx.tap_tpl("campaign/btn_attack", wait=2.0, fresh=False)
-    return battle(ctx)
+    return battle(ctx, pre_checked=only_win)
 
 
 def close_result(ctx):
@@ -67,8 +96,10 @@ def close_result(ctx):
     ctx.dismiss_reward()
 
 
-def battle(ctx, only_win=True):
-    """Tu man doi hinh (nut "Chien dau") -> danh -> dong man ket qua. Dung chung cho Tinh bao."""
+def battle(ctx, only_win=True, pre_checked=False):
+    """Tu man doi hinh (nut "Chien dau") -> danh -> dong man ket qua. Dung chung cho Tinh bao.
+    pre_checked: nguoi goi DA thay du doan "Thang toan dien" o bang man (fight_one) -> man quan doan kieu moi (khong
+    hien du doan) duoc danh. Khong pre_checked + only_win + man kieu moi -> khong danh (khong biet du doan)."""
     # nut "Tu xep doi hinh" (goc duoi phai) LUON bam truoc khi danh (chu du an 2026-11-21 #1: "chua bam toi uu!!!",
     # doi hinh chi 3 tuong, 1 tuong Lv.1) -> du doan thang/thua tinh theo doi hinh da toi uu
     auto_formation(ctx)
@@ -77,10 +108,21 @@ def battle(ctx, only_win=True):
         ctx.back_out(2)
         return "skip"
     if not ctx.tap_tpl("campaign/btn_fight", wait=0.5):
-        if not ctx.wait_for("campaign/btn_fight", timeout=12):    # man doi hinh tai cham tren may yeu (#0 2026-11-22: 'error' sau 9 s)
-            ctx.save_debug("campaign_no_fight")
-            return "error"
-        ctx.tap_tpl("campaign/btn_fight", wait=0.5, fresh=False)
+        if legion_screen(ctx.v, ctx._img) and only_win and not pre_checked:
+            log.info("Man quan doan khong hien du doan - khong danh")
+            ctx.back_out(2)
+            return "skip"
+        if not legion_fight(ctx):
+            t0, ok = time.time(), False
+            while time.time() - t0 < 12 and not ok:   # man doi hinh tai cham tren may yeu (#0 2026-11-22: 'error' sau 9 s)
+                time.sleep(1.5)
+                if ctx.tap_tpl("campaign/btn_fight", wait=0.5):
+                    ok = True
+                elif legion_screen(ctx.v, ctx._img) and (pre_checked or not only_win):
+                    ok = legion_fight(ctx)
+            if not ok:
+                ctx.save_debug("campaign_no_fight")
+                return "error"
     if ctx.cfg.get("battle", {}).get("steer", True):
         # tran kieu chay duong: giu ngon tay tren doi quan, nhat buff / ne nerf / ne vung tan cong
         from bot import steer
@@ -112,7 +154,7 @@ def run(ctx):
     if not ctx.tap_tpl("campaign/btn_open", wait=2.5) or not ctx.wait_for("campaign/title", timeout=4):
         log.info("Khong mo duoc Chien dich")
         return 0
-    claim_idle(ctx)
+    claimed = 1 if claim_idle(ctx) else 0
     m, idx = getattr(ctx, "mem", None), ctx.dev.idx
     if m:
         m.set_fact(idx, "campaign_idle_at", time.time())
@@ -127,7 +169,7 @@ def run(ctx):
         note_power(m, idx, cc, wins, r)
     ctx.back_out()
     ctx.ensure_city()
-    return wins
+    return wins + claimed
 
 
 def note_power(m, idx, cc, wins, last):
