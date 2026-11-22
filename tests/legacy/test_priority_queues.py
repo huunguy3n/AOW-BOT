@@ -167,6 +167,7 @@ def fake_buttons(monkeypatch, table):
     B = buttons.Button
     monkeypatch.setattr(buttons, "with_text", lambda img, pat, roi=None, kinds=None:
                         [B(400, 800, 120, 40, "claim", 86, t) for t in table.get((img, "ngh" in pat), [])])
+    monkeypatch.setattr(research, "verify_start", lambda ctx: "started")   # P2: kiem sau khi bam - test rieng
 
 
 def test_research_node_starts(monkeypatch):

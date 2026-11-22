@@ -14,7 +14,7 @@ CFG = load_agent_config({})
 EV = Event(1, EventType.OBSERVE_DUE, "bootstrap", NOW, "t")
 
 
-def state(used=5, train=(3, 3), research=(1, 1), wait_hq=None, age=60):
+def state(used=5, train=(3, 3), research=(1, 1), wait_hq=None, age=60, nores=None):
     s = InMemoryStateSource()
     for k, v in (("hq_level", 30), ("builders_busy", 2), ("march_total", 5), ("world_open", True)):
         s.facts[(1, k)] = Fact(v, "t", NOW - 60)
@@ -24,6 +24,8 @@ def state(used=5, train=(3, 3), research=(1, 1), wait_hq=None, age=60):
         s.facts[(1, "queue_research")] = Fact(list(research), "t", NOW - age)
     if wait_hq is not None:
         s.facts[(1, "research_wait_hq")] = Fact(wait_hq, "t", NOW - 60)
+    if nores is not None:
+        s.facts[(1, "research_nores")] = Fact({"until": nores, "n": 1}, "t", NOW - 60)
     s.march_obs[1] = MarchObservation(5, used, NOW - 60, [(NOW + 3600, 0.9)] * used)
     return build_account_state(1, s, FakeClock(NOW), CFG.world)
 
@@ -57,3 +59,12 @@ def test_gather_first_when_marches_free():
 def test_unknown_or_stale_queue_is_not_acted_on():
     d = decide(EV, state(train=None, research=(0, 1), age=10 * 3600), CFG.decide)
     assert d.action not in (ActionName.LEGACY_TRAIN, ActionName.LEGACY_RESEARCH)
+
+
+def test_research_out_of_resources_waits_backoff():
+    """P2: lan truoc thieu tai nguyen (research_nores) -> agent khong chon nghien cuu toi het moc."""
+    d = decide(EV, state(research=(0, 1), nores=NOW + 600), CFG.decide)
+    assert d.action is not ActionName.LEGACY_RESEARCH
+    r = next(o for o in d.options if o.action == "legacy_research")
+    assert "tai nguyen" in r.blocker
+    assert decide(EV, state(research=(0, 1), nores=NOW - 1), CFG.decide).action is ActionName.LEGACY_RESEARCH

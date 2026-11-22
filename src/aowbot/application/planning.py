@@ -103,6 +103,15 @@ def _pair(v: object) -> tuple[int, int] | None:
     return None
 
 
+def _nores_until(v: object) -> float:
+    """P2: fact research_nores {"until": epoch, "n": k} -> epoch (0 neu khong co / sai dang)."""
+    if isinstance(v, dict):
+        u = v.get("until")
+        if isinstance(u, (int, float)):
+            return float(u)
+    return 0.0
+
+
 def _queue(state: AccountState, key: str, goal: Goal, action: ActionName) -> Candidate:
     """Q4: hang cho nha linh / nghien cuu - chi lam khi doc duoc (OBSERVED) va con cho ranh."""
     lab = state.get(key)
@@ -114,6 +123,8 @@ def _queue(state: AccountState, key: str, goal: Goal, action: ActionName) -> Can
         block = "hang cho day"
     elif goal is Goal.RESEARCH and _value(state, "research_wait_hq") is not None:
         block = "nghien cuu cho nha chinh len cap"
+    elif goal is Goal.RESEARCH and _nores_until(_value(state, "research_nores")) > state.at:
+        block = "nghien cuu thieu tai nguyen (cho gian chu ky)"
     else:
         block = None
     return Candidate(spec(action), g, block is None, block, CONFIDENCE[lab.freshness])

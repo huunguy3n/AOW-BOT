@@ -197,10 +197,34 @@ def plan_research(mem, idx, sc, now):
         lab = None
     if lab and lab > now:
         return Plan(False, lab, f"cho nang cap Vien nghien cuu xong {_hhmm(lab)}")
+    nores = mem.fact(idx, "research_nores")              # P2: lan truoc thieu tai nguyen -> gian chu ky (research.py)
+    try:
+        nores = float((nores or {}).get("until") or 0)
+    except (TypeError, ValueError, AttributeError):
+        nores = 0
+    if nores > now:
+        return Plan(False, nores, f"nghien cuu thieu tai nguyen, thu lai {_hhmm(nores)}")
     tm = mem.timers(idx, "research")
     if tm:
         return Plan(tm[0][1] <= now, tm[0][1], f"nghien cuu xong {_hhmm(tm[0][1])}")
     t, _, _ = _last(mem, idx, "research")
+    q = mem.fact(idx, "queue_research")                  # P2: observe doc duoc "0/1" (anh chu so) -> hang ranh, lam som
+    if isinstance(q, (list, tuple)) and len(q) == 2 and q[0] < q[1]:
+        # lan ghe truoc khong bat dau duoc (tra 0) -> gian: min_gap x2 moi 2 lan, toi da research_every_min
+        rows = mem.query("SELECT ret FROM runs WHERE inst=? AND step='research' ORDER BY started DESC LIMIT 12", (idx,))
+        streak = 0
+        for (ret,) in rows:
+            try:
+                if float(ret or 0) > 0:
+                    break
+            except (TypeError, ValueError):
+                pass
+            streak += 1
+        base = sc["min_gap_min"] * 60
+        gap = min(base * 2 ** (streak // 2), max(base, sc["research_every_min"] * 60))
+        at = max((t or 0) + gap, now - 1)
+        return Plan(at <= now, at, f"hang nghien cuu ranh ({q[0]}/{q[1]})"
+                    + (f", {gap // 60:.0f} phut/lan sau {streak} lan khong bat dau duoc" if streak >= 2 else ""))
     at = (t or 0) + sc["research_every_min"] * 60
     return Plan(at <= now, at, "kiem tra nghien cuu (chu ky)", confident=False)
 

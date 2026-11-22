@@ -180,24 +180,82 @@ def wait_hq(ctx):
     return True
 
 
+# ---- P2 muc 3 (PM 2026-11-23): anh mau bang node (chu du an chup tren #1 sau). Thieu -> dung MAU + CHU (khong bam mo),
+# log "thieu anh mau <ten>" (bot/tplneed.py).
+TPL_BTN = "research/btn_research"      # nut PHAI "Nghien cuu" o day bang chi tiet node (KHONG phai "Nghien cuu ngay")
+TPL_PANEL = "research/node_panel"      # tieu de / khung bang chi tiet node (xac nhan da mo dung bang)
+TPL_NORES = "research/msg_no_res"      # hop thoai / thong bao thieu tai nguyen sau khi bam "Nghien cuu"
+BTN_ROI = (200, 700, 340, 260)         # vung tim nut "Nghien cuu" (nua phai, day bang)
+NORES_FACT = "research_nores"          # {"until": epoch, "n": so lan lien tiep}: het tai nguyen -> khong mo lai toi moc
+SKIP_FACT = "research_skip"            # {khoa node: epoch}: node bam vao khong lam duoc gi -> bo qua toi moc
+
+
+def start_buttons(ctx, img):
+    """Nut "Nghien cuu" tren bang node -> [(x, y, nhan)] (duoi cung truoc). Anh mau neu co, khong thi MAU + CHU
+    (buttons.with_text tu chan '... ngay' / kim cuong)."""
+    from bot import buttons, tplneed
+    if tplneed.has(ctx.v, TPL_BTN, "dung mau + chu thay the"):
+        p = ctx.v.find(img, TPL_BTN, th=0.85, roi=BTN_ROI)
+        return [(p[0], p[1], "tpl")] if p else []
+    return [(b.x, b.y, b.text) for b in reversed(buttons.with_text(img, RESEARCH_TXT))]
+
+
+def no_res_shown(ctx, img):
+    """Sau khi bam "Nghien cuu": co hop thoai thieu tai nguyen? (anh mau neu co; common/msg_insufficient du phong)."""
+    from bot import tplneed
+    for name in (TPL_NORES, "common/msg_insufficient"):
+        why = "khong nhan ra thieu tai nguyen bang anh - kiem bang trang thai dang nghien cuu"
+        if tplneed.has(ctx.v, name, why) and ctx.v.find(img, name, th=0.8):
+            return True
+    return False
+
+
+def verify_start(ctx):
+    """Sau khi bam "Nghien cuu" -> 'started' | 'no_res'. Khong tin 1 lan bam: kiem lai bang (1) hop thoai thieu tai
+    nguyen, (2) nut "Nghien cuu" con nguyen cho (game chua nhan), (3) cay cong nghe hien thanh tien do + "Chi tiet"."""
+    time.sleep(0.8)
+    img = ctx.shot()
+    if no_res_shown(ctx, img):
+        log.info("Nghien cuu: thieu tai nguyen (hop thoai)")
+        ctx.close_popups(2)          # chi nut X/Dong - KHONG bam 'Dung vat pham' / mua bang kim cuong
+        return "no_res"
+    if start_buttons(ctx, img):
+        log.info("Nghien cuu: bam 'Nghien cuu' nhung nut van con -> coi nhu thieu tai nguyen/dieu kien")
+        ctx.close_popups(2)
+        return "no_res"
+    for _ in range(3):               # bang node tu dong hoac hien popup che -> dong tung lop, nhin day cay cong nghe
+        img = ctx.shot()
+        b = busy(ctx.v, img)
+        if b:
+            record(ctx, *b)
+            return "started"
+        if ctx.v.find(img, "research/title", th=0.8):
+            break
+        ctx.close_popups(1)
+    log.info("Nghien cuu: khong thay thanh tien do sau khi bam -> coi nhu chua bat dau (thieu tai nguyen?)")
+    return "no_res"
+
+
 def node(ctx, depth=0, max_depth=4):
     """Q3 - bang chi tiet 1 node (chu du an 2026-11-21): co nut "Nghien cuu" -> bam (KHONG BAO GIO "Nghien cuu ngay",
     kim cuong); thieu nhanh phu -> nut "Den" o dong dieu kien -> sang node do, lam tiep (toi max_depth); "Den" dan toi
     man nang cap NHA CHINH -> ghi 'cho nha chinh' (khong thu lai toi khi HQ len cap).
-    Nut nhan theo MAU + CHU (bot/buttons.py) vi chua co anh mau bang node.
+    Nut nhan bang anh mau research/btn_research neu co, khong thi MAU + CHU (bot/buttons.py).
     -> 'started' | 'no_res' | 'wait_hq' | 'chain_long' | 'unknown'."""
-    from bot import buttons
+    from bot import buttons, tplneed
     img = ctx.settle()
-    go = buttons.with_text(img, RESEARCH_TXT)
+    if tplneed.has(ctx.v, TPL_PANEL, "khong xac nhan duoc bang node bang anh") and not ctx.v.find(img, TPL_PANEL, th=0.8):
+        if not start_buttons(ctx, img):          # co anh mau ma khong thay bang node va khong co nut -> khong bam gi
+            build_inv(ctx)
+            return "unknown"
+    go = start_buttons(ctx, img)
     if go:
-        b = go[-1]                                   # nut hanh dong o day bang
-        ctx.tap(b.x, b.y, wait=1.5, tpl="btn:nghien_cuu")
-        if ctx.find("common/msg_insufficient"):
-            log.info("Thieu tai nguyen de nghien cuu")
-            ctx.close_popups()
-            return "no_res"
-        log.info("Bat dau nghien cuu (nut '%s')", b.text)
-        return "started"
+        x, y, text = go[0]                           # nut hanh dong o day bang
+        ctx.tap(x, y, wait=1.5, tpl="btn:nghien_cuu")
+        res = verify_start(ctx)
+        if res == "started":
+            log.info("Bat dau nghien cuu (nut '%s')", text)
+        return res
     req = buttons.with_text(img, GO_TXT, kinds=(buttons.GO,))
     if req:
         if depth >= max_depth:
@@ -228,6 +286,112 @@ def build_inv(ctx):
     build.inv_capture(ctx, "research_node")            # chua nhan ra bang node -> 1 anh/ngay de bo sung
 
 
+def nores_until(entry, now):
+    """Fact research_nores -> epoch con chan | None (ham thuan)."""
+    try:
+        t = float((entry or {}).get("until") or 0)
+    except (TypeError, ValueError, AttributeError):
+        return None
+    return t if t > now else None
+
+
+def note_nores(entry, now, base_min=60, cap_h=6):
+    """Them 1 lan het tai nguyen (ham thuan): chan base_min * 2^(n-1) phut, toi da cap_h gio."""
+    n = int((entry or {}).get("n") or 0) + 1
+    return {"until": now + min(cap_h * 3600, base_min * 60 * 2 ** (n - 1)), "n": n}
+
+
+def node_key(tab, page, x, y):
+    """Khoa node theo nhanh / trang cuon / vi tri (lam tron 30px)."""
+    return f"{tab}:{page}:{int(round(x / 30.0))}:{int(round(y / 30.0))}"
+
+
+def live_skips(entries, now):
+    return {k: v for k, v in (entries or {}).items() if isinstance(v, (int, float)) and v > now}
+
+
+def pick_node(cands, skips, tab, page, now):
+    """Node con nghien cuu duoc (a < b) theo uu tien tren -> duoi, trai -> phai, bo node dang bi bo qua (ham thuan).
+    cands = [(x, y, a, b)] -> (x, y, a, b) | None."""
+    for p in sorted((p for p in cands if p[2] < p[3]), key=lambda p: (p[1], p[0])):
+        if (skips or {}).get(node_key(tab, page, p[0], p[1]), 0) <= now:
+            return p
+    return None
+
+
+def set_nores(ctx, rc):
+    m = getattr(ctx, "mem", None)
+    if not m:
+        return
+    e = note_nores(m.fact(ctx.dev.idx, NORES_FACT), time.time(), rc.get("nores_backoff_min", 60), rc.get("nores_cap_h", 6))
+    m.set_fact(ctx.dev.idx, NORES_FACT, e)
+    log.info("Nghien cuu: thieu tai nguyen lan %d lien tiep -> thu lai luc %s", e["n"],
+             time.strftime("%H:%M", time.localtime(e["until"])))
+
+
+def clear_nores(ctx):
+    m = getattr(ctx, "mem", None)
+    if m and m.fact(ctx.dev.idx, NORES_FACT):
+        m.set_fact(ctx.dev.idx, NORES_FACT, None)
+
+
+def on_tree(ctx):
+    """Dang o cay cong nghe (So Cong Nghe)? - truoc moi lan cham tab / node (khong bam mo)."""
+    return bool(ctx.v.find(ctx.shot(), "research/title", th=0.8))
+
+
+def pick_and_start(ctx, rc):
+    """P2 muc 3: chon node hop le theo uu tien (nhanh theo research.branch_order: 0 Phat trien, 1 Dao tao, 2 Quan su;
+    trong nhanh tren -> duoi), bo node vua hong (research_skip), toi da research.max_nodes_per_run node / luot.
+    Thieu tai nguyen -> ghi research_nores (gian chu ky) va dung. -> so nghien cuu da bat dau (0/1)."""
+    m = getattr(ctx, "mem", None)
+    now = time.time()
+    skips = live_skips(m.fact(ctx.dev.idx, SKIP_FACT) if m else None, now)
+    tries, t0 = 0, now
+    try:
+        for i, tab in enumerate(rc.get("branch_order", [0, 1, 2])):
+            if not on_tree(ctx):
+                log.info("Nghien cuu: khong con o cay cong nghe - dung (khong bam mo)")
+                return 0
+            if i or tab:
+                ctx.tap(95 + 175 * int(tab), 82, wait=1.5)
+            page = 0
+            while page < rc.get("pages_per_branch", 4):
+                if time.time() - t0 > rc.get("max_s", 150):
+                    log.info("Nghien cuu: het %ss cho luot nay", rc.get("max_s", 150))
+                    return 0
+                img = ctx.shot()
+                p = pick_node(badges(img), skips, tab, page, time.time())
+                if p:
+                    x, y, a, bb = p
+                    log.info("Nghien cuu: nhanh %s trang %d node %d/%d @%d,%d", tab, page, a, bb, x, y)
+                    ctx.tap(x - 55, y - 45, wait=1.5)            # tam node (huy hieu o goc phai duoi)
+                    res = node(ctx)
+                    log.info("Nghien cuu node %d/%d -> %s", a, bb, res)
+                    if res == "started":
+                        clear_nores(ctx)
+                        return 1
+                    if res in ("no_res", "wait_hq") or res.startswith("lab_"):
+                        if res == "no_res":
+                            set_nores(ctx, rc)
+                        return 0
+                    # 'unknown' / 'chain_long': node nay khong lam duoc -> bo qua research.node_skip_h gio, thu node khac
+                    skips[node_key(tab, page, x, y)] = time.time() + rc.get("node_skip_h", 6) * 3600
+                    tries += 1
+                    ctx.back_out(1)
+                    if tries >= rc.get("max_nodes_per_run", 3) or not on_tree(ctx):
+                        return 0
+                    continue                                       # chon lai tren cung trang (node vua hong da bo qua)
+                ctx.dev.swipe(270, 650, 270, 300, 500)            # cuon cay cong nghe xuong
+                time.sleep(1.0)
+                page += 1
+        log.info("Nghien cuu: khong con node x<y nao (khong ghi 'dang ranh' vi co the doc sai)")
+        return 0
+    finally:
+        if m:
+            m.set_fact(ctx.dev.idx, SKIP_FACT, skips)
+
+
 def run(ctx):
     rc = ctx.cfg.get("research", {})
     if wait_hq(ctx):
@@ -235,6 +399,11 @@ def run(ctx):
         return 0
     if lab_wait_until(ctx):
         log.info("Nghien cuu: dang cho nang cap Vien nghien cuu xong - bo qua")
+        return 0
+    m = getattr(ctx, "mem", None)
+    nr = nores_until(m.fact(ctx.dev.idx, NORES_FACT) if m else None, time.time())
+    if nr:
+        log.info("Nghien cuu: lan truoc thieu tai nguyen - bo toi %s", time.strftime("%H:%M", time.localtime(nr)))
         return 0
     st = ctx.store.inst(ctx.dev.idx) if getattr(ctx, "store", None) else {}
     hq = st.get("hq_level")
@@ -260,30 +429,14 @@ def run(ctx):
         ctx.save_debug("research_screen")     # khong thay nut "Chi tiet" -> luu anh doi chieu (#1 dang nghien cuu 13 ngay)
         rec = recommended(ctx)                # truoc het: lam theo "Khuyen khich" (chu du an 2026-11-22)
         if rec == "started":
+            clear_nores(ctx)
             return 1
+        if rec == "no_res":
+            set_nores(ctx, rc)
+            return 0
         if rec is not None and rec != "unknown":
             return started
-        idle_seen = False
-        for tab in range(3):                                     # Phat trien / Dao tao / Quan su
-            if tab:
-                ctx.tap(95 + 175 * tab, 82, wait=1.5)
-            for _ in range(4):
-                img = ctx.shot()
-                todo = sorted((p for p in badges(img) if p[2] < p[3]), key=lambda p: (p[1], p[0]))
-                if todo:
-                    x, y, a, bb = todo[0]
-                    log.info("Nghien cuu: node con mo duoc %d/%d @%d,%d", a, bb, x, y)
-                    ctx.tap(x - 55, y - 45, wait=1.5)            # tam node (huy hieu o goc phai duoi)
-                    res = node(ctx)
-                    log.info("Nghien cuu node %d/%d -> %s", a, bb, res)
-                    if res == "started":
-                        started += 1
-                    ctx.back_out(1)
-                    return started
-                ctx.dev.swipe(270, 650, 270, 300, 500)            # cuon cay cong nghe xuong
-                time.sleep(1.0)
-        log.info("Nghien cuu: khong con node x<y nao (khong ghi 'dang ranh' vi co the doc sai)")
-        return started
+        return started + pick_and_start(ctx, rc)
     finally:
         ctx.ensure_city()
         rc = ctx.cfg.get("research", {})

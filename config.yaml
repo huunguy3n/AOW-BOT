@@ -98,6 +98,14 @@ research:
   use_help: true
   use_free_speedup: true
   max_starts: 2           # CHUA DUNG: research.py chua doc khoa nay (2026-11-21, A-CFG-1)
+  # P2 (PM 2026-11-23): chon node theo uu tien + xu ly het tai nguyen (bot/modules/research.py pick_and_start)
+  branch_order: [0, 1, 2] # thu tu nhanh: 0 Phat trien, 1 Dao tao, 2 Quan su (trong nhanh: tren -> duoi)
+  pages_per_branch: 4     # so lan cuon xuong moi nhanh
+  max_nodes_per_run: 3    # toi da so node bam thu ma khong bat dau duoc trong 1 luot
+  node_skip_h: 6          # node bam vao khong lam duoc gi (khong nhan ra bang / chuoi qua dai) -> bo qua N gio
+  nores_backoff_min: 60   # thieu tai nguyen -> khong mo lai 60 phut, lap lai thi gap doi
+  nores_cap_h: 6          # ... toi da 6 gio
+  max_s: 150              # toi da N giay cho phan chon node moi luot
 
 train:
   # vao nha linh qua bang "Doi ngu huan luyen" (nut Den) -> tu dong ca 1..3 nha linh dang ranh
