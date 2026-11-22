@@ -136,7 +136,7 @@ def read_build_time(img, btn):
     """Thoi gian xay ghi duoi nut 'Tang cap' / 'Xay dung' (icon dong ho + 00:00:30) -> giay | None. btn = tam nut.
     Doc 3 lan (Otsu + 2 nguong sang), chi tin khi >= 2 lan cung ra 1 gia tri (icon dong ho hay bi doc thanh so)."""
     from collections import Counter
-    x, y = btn
+    x, y = btn[0], btn[1]
     votes = Counter()
     for b in (None, 150, 170):
         t = ocr.seconds(ocr.text(img, (x - 24, y + 7, 74, 26), "0123456789:", scale=4, psm=7, bright=b) or "")
