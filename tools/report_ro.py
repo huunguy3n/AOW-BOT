@@ -172,10 +172,9 @@ def follow_metrics(t0, t1, insts=None, shots_dir=os.path.join("logs", "shots")):
 def hq_metrics(q, t0, t1, insts=None):
     """P4: {may: {dau, cuoi, tang, ngay, cap_ngay}} tu fact hq_history [[ts, cap], ...] (observe ghi khi cap doi)."""
     out = {}
-    try:
-        rows = q("SELECT inst, value FROM facts WHERE key='hq_history'")
-    except SystemExit:
+    if not _has_table(q, "facts"):     # DB cu / DB test khong co bang facts
         return out
+    rows = q("SELECT inst, value FROM facts WHERE key='hq_history'")
     for inst, val in rows:
         if insts and inst not in insts:
             continue
