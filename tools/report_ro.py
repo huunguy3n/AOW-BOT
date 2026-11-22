@@ -13,6 +13,8 @@ Chi so (cung cach tinh o moi lan chay de so sanh duoc):
   steps                        theo buoc: lan, phut, so lan tra 0, phut tra 0
   march                        P3: % lan quan sat 'Hanh quan x/y' day (march_obs; DB cu: bang observations)
   gather_ev                    P3: su kien thu thap theo loai (own_dialog = Huy oan, contested, occupied...)
+  follow                       P4: so anh logs/shots follow_stuck / follow_maxsteps / follow_lose trong khoang
+  hq                           P4: cap nha chinh tung may (fact hq_history): dau / cuoi khoang, so cap tang, cap/ngay
 """
 import argparse, json, os, re, sqlite3, statistics, sys, time
 
@@ -93,6 +95,8 @@ def metrics(q, t0=None, t1=None, insts=None):
     out["queues"] = queue_metrics(q, cond.replace("started", "at"), args)
     out["march"] = march_metrics(q, cond.replace("started", "at"), args)
     out["gather_ev"] = gather_events(q, cond.replace("started", "at"), args)
+    out["follow"] = follow_metrics(t0, t1, insts)
+    out["hq"] = hq_metrics(q, t0, t1, insts)
     out["vm_h"], out["useless_h"] = round(out["vm_h"], 2), round(out["useless_h"], 2)
     for s in out["steps"].values():
         s["min"], s["zero_min"] = round(s["min"], 1), round(s["zero_min"], 1)
@@ -147,6 +151,51 @@ def gather_events(q, cond, args):
     return {k: n for k, n in q(f"SELECT kind, COUNT(*) FROM gather_ev WHERE {cond} GROUP BY kind ORDER BY 2 DESC", args)}
 
 
+SHOT_RX = re.compile(r"^(\d{8}-\d{6})-i(\d+)-follow_(stuck|maxsteps|lose)\.png$")
+
+
+def follow_metrics(t0, t1, insts=None, shots_dir=os.path.join("logs", "shots")):
+    """P4: dem anh follow_* (ten file = gio chup) trong [t0, t1). Thu muc khong co -> {}."""
+    out = {}
+    if not os.path.isdir(shots_dir):
+        return out
+    for f in os.listdir(shots_dir):
+        m = SHOT_RX.match(f)
+        if not m or (insts and int(m.group(2)) not in insts):
+            continue
+        at = time.mktime(time.strptime(m.group(1), "%Y%m%d-%H%M%S"))
+        if t0 <= at < t1:
+            out[m.group(3)] = out.get(m.group(3), 0) + 1
+    return out
+
+
+def hq_metrics(q, t0, t1, insts=None):
+    """P4: {may: {dau, cuoi, tang, ngay, cap_ngay}} tu fact hq_history [[ts, cap], ...] (observe ghi khi cap doi)."""
+    out = {}
+    try:
+        rows = q("SELECT inst, value FROM facts WHERE key='hq_history'")
+    except SystemExit:
+        return out
+    for inst, val in rows:
+        if insts and inst not in insts:
+            continue
+        try:
+            hist = [(float(t), int(lv)) for t, lv in json.loads(val)]
+        except (TypeError, ValueError):
+            continue
+        before = [lv for t, lv in hist if t < t0]
+        inside = [(t, lv) for t, lv in hist if t0 <= t < t1]
+        if not inside and not before:
+            continue
+        start = before[-1] if before else inside[0][1]
+        end = inside[-1][1] if inside else start
+        lo = max(t0, hist[0][0])
+        days = max((min(t1, time.time()) - lo) / 86400, 1 / 24)
+        out[inst] = {"dau": start, "cuoi": end, "tang": end - start, "ngay": round(days, 2),
+                     "cap_ngay": round((end - start) / days, 2)}
+    return out
+
+
 def perf_metrics(q, cond, args):
     """Bang perf (A-MEAS-1): theo loai thao tac va theo buoc. Chua co bang (DB cu) -> {}."""
     if not q("SELECT 1 FROM sqlite_master WHERE type='table' AND name='perf'"):
@@ -191,6 +240,14 @@ def show(title, m):
               f"{ev.get('dialog_unknown', 0)}, tranh chap {ev.get('contested', 0)}, bo qua mo minh dang toi "
               f"{ev.get('own_skip', 0) + ev.get('own', 0)}, khong doc tru luong {ev.get('unread', 0)}")
         print("     " + ", ".join(f"{k} {n}" for k, n in ev.items()))
+    if m.get("follow") is not None:
+        f = m["follow"]
+        print(f"   follow (P4, anh logs/shots): ket {f.get('stuck', 0)}, het buoc {f.get('maxsteps', 0)}, "
+              f"thua {f.get('lose', 0)}")
+    if m.get("hq"):
+        print("   nha chinh (P4, hq_history): " + ", ".join(
+            f"#{i} {h['dau']}->{h['cuoi']} (+{h['tang']} / {h['ngay']} ngay = {h['cap_ngay']}/ngay)"
+            for i, h in sorted(m["hq"].items())))
     if m.get("perf"):
         print("   hieu nang (bang perf):")
         for k, v in list(m["perf"]["kinds"].items())[:15]:
