@@ -405,7 +405,9 @@ def recruit_gift(ctx, img):
     dots = [d for d in red_dots(img) if 450 < d[0] < 535 and 330 < d[1] < 410]
     if not dots:
         return 0
-    ctx.tap(dots[0][0] + 15, dots[0][1] + 17, wait=2.0)   # cham do o goc tren-trai icon -> tam icon o phai-duoi
+    # cham do o goc TREN-PHAI icon (anh #4 2026-11-22: cham do 510,370, icon 470-518) -> tam icon o trai-duoi.
+    # Truoc day +15 chạm ra ngoai mep phai icon nen bang qua khong bao gio mo (nhan 0).
+    ctx.tap(dots[0][0] - 17, dots[0][1] + 15, wait=2.0)
     ctx.save_debug("recruit_gift")          # anh bang qua de doi chieu / cat mau nut Nhan neu can
     got = (claim_content(ctx) or 0) + ctx.claim_buttons()   # claim_buttons: nut "Mien phi" xanh (khong bam nut co gia kim cuong)
     log.info("Chieu mo: Qua Chieu Mo - nhan %s", got)
