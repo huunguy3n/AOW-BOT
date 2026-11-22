@@ -15,8 +15,10 @@ Chi so (cung cach tinh o moi lan chay de so sanh duoc):
   gather_ev                    P3: su kien thu thap theo loai (own_dialog = Huy oan, contested, occupied...)
   follow                       P4: so anh logs/shots follow_stuck / follow_maxsteps / follow_lose trong khoang
   hq                           P4: cap nha chinh tung may (fact hq_history): dau / cuoi khoang, so cap tang, cap/ngay
+  intel                        P5: ket qua moi ghim tinh bao (log 'Tinh bao: <kq>' trong logs/bot-*.log), % unknown
+  combat                       P5: rebels / heal / defense - lan chay, lan co ket qua (> 0), % co ket qua, phut
 """
-import argparse, json, os, re, sqlite3, statistics, sys, time
+import argparse, glob, json, os, re, sqlite3, statistics, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from bot.memory import DB, Memory  # noqa: E402
@@ -97,6 +99,8 @@ def metrics(q, t0=None, t1=None, insts=None):
     out["gather_ev"] = gather_events(q, cond.replace("started", "at"), args)
     out["follow"] = follow_metrics(t0, t1, insts)
     out["hq"] = hq_metrics(q, t0, t1, insts)
+    out["intel"] = intel_metrics(t0, t1, insts)
+    out["combat"] = combat_metrics(out["steps"])
     out["vm_h"], out["useless_h"] = round(out["vm_h"], 2), round(out["useless_h"], 2)
     for s in out["steps"].values():
         s["min"], s["zero_min"] = round(s["min"], 1), round(s["zero_min"], 1)
@@ -166,6 +170,47 @@ def follow_metrics(t0, t1, insts=None, shots_dir=os.path.join("logs", "shots")):
         at = time.mktime(time.strptime(m.group(1), "%Y%m%d-%H%M%S"))
         if t0 <= at < t1:
             out[m.group(3)] = out.get(m.group(3), 0) + 1
+    return out
+
+
+LOG_INST_RX = re.compile(r"\[#(\d+)\]")
+
+
+def intel_metrics(t0, t1, insts=None, log_dir="logs"):
+    """P5-1: {kq: n, '_unknown': n, '_total': n, '_pct': %} tu log 'Tinh bao: <kq>' trong [t0, t1). --inst: chi dong
+    co the [#N] (dong [MainThread] khong biet may -> bo khi loc may). Khong co log -> {}."""
+    from bot import intel_rules as IR
+    lines = []
+    for f in sorted(glob.glob(os.path.join(log_dir, "bot-*.log"))):
+        try:
+            with open(f, encoding="utf-8", errors="replace") as fh:
+                for ln in fh:
+                    if "Tinh bao: " not in ln:
+                        continue
+                    if insts:
+                        m = LOG_INST_RX.search(ln)
+                        if not m or int(m.group(1)) not in insts:
+                            continue
+                    lines.append(ln)
+        except OSError:
+            continue
+    c = IR.parse_log(lines, t0, t1)
+    if not c:
+        return {}
+    unk, tot, pct = IR.unknown_rate(c)
+    return {**c, "_unknown": unk, "_total": tot, "_pct": pct}
+
+
+def combat_metrics(steps):
+    """P5: buoc chien dau - lan chay, lan tra > 0 (co ket qua), % co ket qua, phut."""
+    out = {}
+    for step in ("rebels", "heal", "defense"):
+        s = steps.get(step)
+        if not s:
+            continue
+        ok = s["n"] - s["zero"]
+        out[step] = {"n": s["n"], "ok": ok, "ok_pct": round(100.0 * ok / s["n"], 1) if s["n"] else None,
+                     "min": round(s["min"], 1)}
     return out
 
 
@@ -247,6 +292,13 @@ def show(title, m):
         print("   nha chinh (P4, hq_history): " + ", ".join(
             f"#{i} {h['dau']}->{h['cuoi']} (+{h['tang']} / {h['ngay']} ngay = {h['cap_ngay']}/ngay)"
             for i, h in sorted(m["hq"].items())))
+    if m.get("intel"):
+        it = m["intel"]
+        print(f"   tinh bao (P5, log): unknown {it['_unknown']}/{it['_total']} ghim = {it['_pct']} %; "
+              + ", ".join(f"{k} {n}" for k, n in sorted(it.items()) if not k.startswith("_")))
+    if m.get("combat"):
+        print("   chien dau (P5): " + ", ".join(f"{k} {v['ok']}/{v['n']} co ket qua ({v['ok_pct']} %, {v['min']} phut)"
+                                             for k, v in m["combat"].items()))
     if m.get("perf"):
         print("   hieu nang (bang perf):")
         for k, v in list(m["perf"]["kinds"].items())[:15]:

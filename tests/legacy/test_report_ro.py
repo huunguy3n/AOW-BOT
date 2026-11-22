@@ -81,3 +81,22 @@ def test_trigger_steps(why, expected):
 
 def test_reason_key_strips_times_and_numbers():
     assert report_ro.reason_key(" gather: doi ve 11:31 ") == "gather: doi ve HH:MM"
+
+
+def test_intel_metrics_from_logs(tmp_path):
+    """P5-1: % 'unknown' tinh bao tu log; loc may chi lay dong [#N]."""
+    (tmp_path / "bot-20261122.log").write_text(
+        "2026-11-22 00:09:25 INFO [#3] Tinh bao: unknown\n"
+        "2026-11-22 00:09:54 INFO [#3] Tinh bao: 0 nhiem vu\n"
+        "2026-11-22 01:00:00 INFO [MainThread] Tinh bao: picked\n"
+        "2026-11-22 02:00:00 INFO [#1] Tinh bao: win\n", encoding="utf-8")
+    m = report_ro.intel_metrics(0, 1e12, log_dir=str(tmp_path))
+    assert (m["_unknown"], m["_total"], m["_pct"]) == (1, 3, 33.3)
+    assert report_ro.intel_metrics(0, 1e12, [1], log_dir=str(tmp_path)) == {"win": 1, "_unknown": 0, "_total": 1,
+                                                                            "_pct": 0.0}
+    assert report_ro.intel_metrics(0, 1e12, log_dir=str(tmp_path / "khong_co")) == {}
+
+
+def test_combat_metrics():
+    steps = {"rebels": {"n": 4, "zero": 2, "min": 3.0}, "gather": {"n": 1, "zero": 0, "min": 1.0}}
+    assert report_ro.combat_metrics(steps) == {"rebels": {"n": 4, "ok": 2, "ok_pct": 50.0, "min": 3.0}}

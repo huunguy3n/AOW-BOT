@@ -12,7 +12,7 @@ Bo qua: chat, co lien minh (chi R4). Thu/chien dich/lien minh do cac buoc rieng 
 import time, logging
 import cv2
 import numpy as np
-from bot import ocr, screens
+from bot import intel_rules as IR, ocr, screens
 from bot.badges import red_dots, glow_tiles, nhan_tiles
 from bot.modules import campaign
 
@@ -290,15 +290,17 @@ def intel(ctx, max_n):
         ctx.tap(x, y - 35, wait=1.5)               # ghim (hinh giot nuoc) nam tren vong tron
         r = intel_mission(ctx)
         log.info("Tinh bao: %s", r)
-        if r in ("win", "marched", "picked"):
+        if r in IR.DONE:
             done += 1
-        if r in ("no_march", "lose"):
+        if r in IR.STOP:
             break
-        if r == "skipped":
+        if r in IR.SKIP:
             if not ctx.find("intel/title"):
                 ctx.ensure_city()
             continue
-        if r == "unknown" and energy(ctx) is None and not refill_energy(ctx, force=True):
+        # P5-1: chi khi BANG NHIEM VU khong hien (co the la bang thieu nang luong) moi thu 1 vien thuoc; truoc day moi
+        # 'unknown' (ke ca nhan nham muc tieu tren ban do) deu ep dung thuoc
+        if r == IR.UNKNOWN_PANEL and energy(ctx) is None and not refill_energy(ctx, force=True):
             break       # co the thieu nang luong ma khong doc duoc so -> thu 1 vien, het thuoc thi dung
         if not ctx.find("intel/title"):
             ctx.ensure_city()
@@ -326,32 +328,69 @@ def rebels_pin(ctx):
     return "marched" if r == 1 else "skipped"
 
 
+def _intel_unknown(ctx, why):
+    """P5-1: 'unknown' co ly do + 1 anh/ngay/may (logs/inv/intel_<ly do>/) - khong qua save_debug (khong doi ket qua
+    buoc, khong lam ngap logs/shots)."""
+    from bot import build
+    build.inv_capture(ctx, "intel_" + why)
+    return why
+
+
+def wait_panel(ctx, timeout=IR.INTEL_PANEL_WAIT_S, interval=0.5):
+    """Cho bang sau khi cham ghim: 'go' | 'reward' | None (het gio). Bang qua hien kem hieu ung -> 1 khung la khong du."""
+    t0 = time.time()
+    while True:
+        k = IR.panel_kind(ctx.shot(), ctx.v)
+        if k or time.time() - t0 >= timeout:
+            return k
+        time.sleep(interval)
+
+
+def legion_march(ctx):
+    """P5-1: man "Cai dat Quan doan" kieu moi (nut Xuat chinh co dong ho, rebels/btn_march_out - may #1) sau "Tan cong".
+    Chi Xuat chinh khi du doan "Thang toan dien" (chu xanh, rebels.pred_win) - cung luat phan quan; khong thi bo ghim."""
+    from bot.modules import rebels
+    if ctx.march_full():
+        log.info("Tinh bao: het quan doan ranh -> khong hanh quan")
+        ctx.back_out()
+        return "no_march"
+    if not rebels.pred_win(ctx.shot()):
+        log.info("Tinh bao: man quan doan khong du doan thang -> bo ghim")
+        ctx.back_out()
+        return "lose_pred"
+    if not ctx.tap_tpl("rebels/btn_march_out", wait=2.0):
+        ctx.back_out()
+        return _intel_unknown(ctx, IR.UNKNOWN_AFTER)
+    ctx.march_sent()
+    return "marched"
+
+
 def intel_mission(ctx):
-    """Dang mo bang nhiem vu tinh bao -> 'win'|'lose'|'marched'|'no_march'|'unknown'."""
-    if not ctx.tap_tpl("intel/btn_go", wait=3.0):
-        # ghim HOP QUA: cham la hien ngay bang "Chuc mung nhan duoc" (khong co nut "Di") - 2 anh debug 2026-11-22 (#0
-        # 13:31, 16:34) deu la bang nay, truoc day bi tinh 'unknown' va de bang che man hinh -> ghim sau bi cham xuyen
-        if ctx.find("common/msg_reward", th=0.75, fresh=False):
-            ctx.dismiss_reward()
-            return "picked"
-        # 2026-11-22: 'Tinh bao: unknown' tren moi may (ghim hop xanh duoc nhan ra nhung khong co nut "Di") -> luu
-        # anh bang nhiem vu de cat mau nut / biet loai ghim (tiep te? ruong?)
-        ctx.save_debug("intel_panel_unknown")
+    """Dang mo bang nhiem vu tinh bao -> 'win'|'lose'|'marched'|'picked'|'no_march'|'skipped'|'lose_pred'|'unknown_*'."""
+    kind = wait_panel(ctx)
+    if kind == "reward":
+        # ghim HOP QUA: cham la hien ngay bang "Chuc mung nhan duoc" (khong co nut "Di"). P5-1: 11/11 anh
+        # intel_panel_unknown 22/11 la bang nay - truoc day chi xet 1 khung luc bang con dang hien -> 'unknown'
+        ctx.dismiss_reward()
+        return "picked"
+    if kind != "go" or not ctx.tap_tpl("intel/btn_go", wait=3.0):
         ctx.tap_first(ctx.POPUP_CLOSERS, wait=0.8)
-        return "unknown"
-    if not (ctx.wait_for("intel/btn_attack", timeout=2) or ctx.find("intel/btn_pickup", fresh=False)):
+        return _intel_unknown(ctx, IR.UNKNOWN_PANEL)
+    if not (ctx.wait_for("intel/btn_attack", timeout=2) or ctx.find("intel/btn_pickup", fresh=False)
+            or ctx.find("rebels/btn_rally", fresh=False)):
         # muc tieu tren ban do the gioi: ghim xanh (dau sung cheo) giua man, muc tieu ngay duoi ghim.
-        # Anh chu du an 2026-11-20: ghim ~263,363 (truoc do do ~267,388) -> tim ghim theo anh mau, cham muc tieu
-        # duoi ghim; khong thay thi thu cac diem co dinh (log cu: 5 lan 'unknown' khi chi cham 268,438)
+        # Anh chu du an 2026-11-20: ghim ~263,363 (truoc do do ~267,388). P5-1: chi tim ghim GIUA MAN (MARKER_ROI) -
+        # tim ca man voi nguong 0,55 khop nham goc trai duoi (cham 97,805, nhat ky cham 22/11)
         time.sleep(1.5)                                   # ban do con dang truot toi muc tieu
         img = ctx.shot()
-        m = ctx.v.find(img, "intel/marker_fight", th=0.55)
+        m = ctx.v.find(img, "intel/marker_fight", th=IR.MARKER_TH, roi=IR.MARKER_ROI)
         # ghim tim/vang dau lau tren ban do (#1 2026-11-21) -> muc tieu ngay duoi ghim; lay ghim gan giua man nhat
         sp = sorted(special_pins(img), key=lambda p: abs(p[0] - 270) + abs(p[1] - 400))[:1]
         spots = ([(m[0] + 5, m[1] + 45), (m[0], m[1])] if m else []) + [(x, y + 45) for x, y in sp]             + [(268, 405), (268, 438), (265, 365)]
         for x, y in spots:
             ctx.tap(x, y, wait=1.5)
-            if ctx.find("intel/btn_attack") or ctx.find("intel/btn_pickup", fresh=False):
+            img = ctx.shot()
+            if any(ctx.v.find(img, n) for n in ("intel/btn_attack", "intel/btn_pickup", "rebels/btn_rally")):
                 break
     if ctx.tap_tpl("intel/btn_pickup", wait=2.0):     # Tiep te vat tu: don vi tinh bao rieng, khong ton doi
         return "picked"
@@ -359,15 +398,15 @@ def intel_mission(ctx):
         if ctx.find("rebels/btn_rally", fresh=False):   # ghim Phan quan Co giap: chi co "Tap ket tan cong" (chu du an 2026-11-22)
             return rebels_pin(ctx)
         ctx.back_out()
-        return "unknown"
+        return _intel_unknown(ctx, IR.UNKNOWN_TARGET)
     # man doi hinh / bang hanh quan len cham: #0 2026-11-22 (anh 0015 -> 0016) mat ~4 s sau khi bam "Tan cong"; wait_scale 0,55
     # rut cho con ~1,4 s -> khong thay nut Chien dau -> back_out -> 'unknown' (moi ghim kiem deu 'unknown')
     for _ in range(14):
         img = ctx.shot()
-        if ctx.v.find(img, "campaign/btn_fight") or ctx.v.find(img, "gather/btn_march"):
+        if any(ctx.v.find(img, n) for n in ("campaign/btn_fight", "gather/btn_march", "rebels/btn_march_out")):
             break
         time.sleep(0.7)
-    if ctx.find("campaign/btn_fight"):              # Chien dich Tuong: tran tu danh
+    if ctx.find("campaign/btn_fight", fresh=False):  # Chien dich Tuong: tran tu danh
         return campaign.battle(ctx)
     if ctx.find("gather/btn_march", fresh=False):   # Quet sach phan quan: hanh quan that tren ban do
         if ctx.march_full():
@@ -381,8 +420,10 @@ def intel_mission(ctx):
             return "no_march"
         ctx.march_sent()
         return "marched"
+    if ctx.find("rebels/btn_march_out", fresh=False):   # P5-1: man quan doan kieu moi (#1)
+        return legion_march(ctx)
     ctx.back_out()
-    return "unknown"
+    return _intel_unknown(ctx, IR.UNKNOWN_AFTER)
 
 
 # ---------- chieu mo ----------
