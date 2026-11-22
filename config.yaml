@@ -188,7 +188,10 @@ stepgate:                  # P1 "On dinh nen" (bot/stepgate.py): dieu kien truoc
 reddots:
   max_rounds: 6        # lap toi khi het cham do; dung som neu 1 vong khong nhan them duoc gi
   skip_idle_steps: true  # cham do cua icon ma buoc rieng vua chay trong lan ghe nay va tra 0 -> khong mo lai
-  dead_h: 2            # cham do mo ra khong nhan duoc gi -> bo qua vi tri do N gio
+  dead_h: 2            # cham do mo ra khong nhan duoc gi -> bo qua vi tri do N gio (lap lai thi gap doi...)
+  dead_cap_h: 24       # ... toi da N gio (lam duoc viec o vi tri do -> dem lai tu dau)
+  max_s: 90            # A-OPT-1 (PM 2026-11-23): toi da N giay moi lan quet (0 = khong gioi han)
+  min_interval_min: 30 # moi may toi da 1 lan / N phut, tru khi notify vua nhan duoc qua hoac co cham do MOI
   chat_clear: true      # mo roi thoat bang Tro chuyen de mat huy hieu tin nhan chua doc (chi doc, khong gui) - chu du an 2026-11-22
 recruit:
   use_tickets: false   # chi chieu mo mien phi; true = dung ca phieu (KHONG BAO GIO kim cuong)

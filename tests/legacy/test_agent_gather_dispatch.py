@@ -1,5 +1,6 @@
-"""Hoi quy: agent dispatch_gather -> gather.run(limit=1) tung loi "'tuple' object has no attribute 'fact'" (#1, 21-22/11)
-vi bien tri nho `m` bi ghi de boi ket qua read_marches() (tuple x/y). Kiem: bo nho (ctx.mem) va x/y (tuple) khong lan nhau."""
+"""Hoi quy: agent dispatch_gather -> gather.run(limit=1) tung loi
+"'tuple' object has no attribute 'fact'" (#1, 21-22/11): bien tri nho `m` bi ghi de boi read_marches() (tuple x/y).
+Kiem: bo nho (ctx.mem) va x/y (tuple) khong lan nhau."""
 from types import SimpleNamespace
 
 from aowbot.application.execute import Status

@@ -10,11 +10,11 @@ lai lam hien cham do moi. Buoc nay chay ngay truoc 'observe':
   - lap lai nhieu vong toi khi het cham do; vong nao khong nhan them duoc gi thi dung (tranh vong vo han voi
     cham do khong xu ly an toan duoc) -> luu anh logs/shots/*reddots_left.png de bo sung xu ly.
 """
-import logging, os
+import logging, os, time
 import cv2
 from bot.badges import red_dots
 from aowbot.domain import drain
-from bot import scheduler, screens
+from bot import scheduler, screens, stepgate
 from bot.modules import notify, rewards, intel, campaign, daily, alliance, play, rebels, research, train, upgrade, chat
 
 log = logging.getLogger("aow")
@@ -240,72 +240,155 @@ def _open_dot(ctx, x, y):
     return n
 
 
-def run(ctx):
+def rcfg(cfg):
+    """A-OPT-1 (PM 2026-11-23): reddots khong chay moi lan ghe - gioi han thoi gian / tan suat, nho icon vo ich."""
+    return {"max_rounds": 6, "skip_idle_steps": True, "dead_h": 2, "dead_cap_h": 24, "max_s": 90,
+            "min_interval_min": 30, **(cfg.get("reddots") or {})}
+
+
+def due(last_at, now, interval_min, notify_worked, new_dots):
+    """Co nen quet cham do lan nay khong -> (bool, ly do). Ham thuan (test offline)."""
+    if last_at is None or now - last_at >= interval_min * 60:
+        return True, "toi han"
+    if notify_worked:
+        return True, "notify vua nhan duoc qua (co cham do moi)"
+    if new_dots:
+        return True, f"{len(new_dots)} cham do moi"
+    return False, f"da quet luc {time.strftime('%H:%M', time.localtime(last_at))}, khong co cham do moi"
+
+
+def dead_until(n, now, dead_h, cap_h):
+    """Vi tri mo ra vo ich lan thu n (lien tiep qua cac lan ghe) -> bo qua dead_h x 2^(n-1) gio, toi da cap_h."""
+    return now + min(dead_h * 2 ** max(0, n - 1), cap_h) * 3600
+
+
+def _k2s(k):
+    return f"{k[0]},{k[1]}"
+
+
+def _s2k(s):
+    return tuple(int(v) for v in s.split(","))
+
+
+def remember(m, idx, rc, old, dead_n, dead, useless, worked_at, now):
+    """Ghi tri nho sau 1 lan quet: vi tri vo ich -> bo qua lau dan (gap doi), vi tri lam duoc viec -> xoa dem."""
+    keep = dict(old)
+    olds = {_s2k(s) for s in old}
+    for k in dead - olds:
+        if k in useless:
+            n_ = int(dead_n.get(_k2s(k), 0)) + 1
+            dead_n[_k2s(k)] = n_
+            keep[_k2s(k)] = dead_until(n_, now, rc["dead_h"], rc["dead_cap_h"])
+        else:
+            keep[_k2s(k)] = now + rc["dead_h"] * 3600
+    for k in worked_at:
+        dead_n.pop(_k2s(k), None)
+    m.set_fact(idx, "reddots_dead", keep)
+    m.set_fact(idx, "reddots_dead_n", {k: v for k, v in dead_n.items() if k in keep})
+    m.set_fact(idx, "reddots_last_at", now)
+    return keep
+
+
+def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
     """Lam toi khi HET cham do (chu du an 2026-11-20: "con reddots thi phai lam tiep toi khi het").
     Moi vong: notify (icon biet ten) -> moi cham do con lai tren thanh pho -> mo, nhan. Lap lai den khi khong con
     cham do, hoac 1 vong tron khong nhan them duoc gi (cham do khong xu ly duoc an toan, vd chieu mo can kim cuong,
-    Tuong thieu EXP) -> dung, luu anh 'reddots_left' (buoc ghi 'co anh loi', khong tinh la xong sach)."""
-    rc = ctx.cfg.get("reddots", {})
-    max_rounds = rc.get("max_rounds", 6)
+    Tuong thieu EXP) -> dung, luu anh 'reddots_left' (buoc ghi 'co anh loi', khong tinh la xong sach).
+    A-OPT-1 (PM 2026-11-23; do 21-22/11: 51 lan, 198 phut, ~30 % thoi gian may): moi may toi da 1 lan /
+    reddots.min_interval_min tru khi notify vua nhan duoc qua hoac co cham do MOI; toi da reddots.max_s giay / lan;
+    vi tri mo ra vo ich -> bo qua dead_h gio, lap lai thi gap doi (toi da dead_cap_h)."""
+    rc = rcfg(ctx.cfg)
+    max_rounds = rc["max_rounds"]
+    t_start = time.time()
+    deadline = t_start + rc["max_s"] if rc["max_s"] else None
+    m, idx = getattr(ctx, "mem", None), ctx.dev.idx
+    old = {k: u for k, u in ((m.fact(idx, "reddots_dead") or {}) if m else {}).items() if u > t_start}
+    dead_n = dict((m.fact(idx, "reddots_dead_n") or {}) if m else {})
     ctx.ensure_city()
+    if m:
+        vd = getattr(ctx, "visit_done", None) or {}
+        seen = {_s2k(k) for k in (m.fact(idx, "reddots_seen") or [])}
+        new = [d for d in _left(ctx.shot(), ctx.v) if _key(d) not in seen and _k2s(_key(d)) not in old]
+        ok_, why_ = due(m.fact(idx, "reddots_last_at"), t_start, rc["min_interval_min"],
+                        drain.worked(vd.get("notify")), new)
+        if not ok_:
+            log.info("Cham do: bo qua lan nay (%s)", why_)
+            return 0
+        log.info("Cham do: quet (%s), toi da %s s", why_, rc["max_s"] or "-")
     try:
         chat.clear(ctx)            # chu du an 2026-11-22: mo roi thoat chat de mat huy hieu (chi doc, khong gui)
     except Exception as e:         # loi o day khong duoc lam hong ca buoc cham do
         log.warning("Chat: loi khi xoa huy hieu: %s", e)
         ctx.ensure_city()
     total, dead = 0, set()          # dead: vi tri da mo ma khong nhan duoc gi -> khong mo lai trong buoc nay
-    # G3: tri nho cham do vo ich giua cac lan ghe (het han reddots.dead_h gio) -> khong mo lai moi lan ghe
-    m = getattr(ctx, "mem", None)
-    import time as _t
-    old = {k: u for k, u in ((m.fact(ctx.dev.idx, "reddots_dead") or {}) if m else {}).items() if u > _t.time()}
-    dead |= {tuple(int(v) for v in k.split(",")) for k in old}
+    useless, worked_at = set(), set()   # vo ich -> nho lau dan; lam duoc viec -> xoa dem vo ich
+    # G3: tri nho cham do vo ich giua cac lan ghe (het han) -> khong mo lai moi lan ghe
+    dead |= {_s2k(k) for k in old}
     if old:
         log.info("Cham do: bo qua %d vi tri da biet la vo ich (tri nho)", len(old))
     handled = {}                    # vi tri -> so lan da xu ly trong buoc nay
     ignored = set()                 # cham do CO Y bo qua (tap hop phan quan, qua lien minh het luot) -> khong tinh 'con sot'
     use_notify = ctx.cfg.get("modules", {}).get("notify", True)
-    left = []
+    left, timed_out, img = [], False, None
+
+    def over():
+        return deadline is not None and time.time() >= deadline
+
     for rnd in range(1, max_rounds + 1):
         got = 0
         # icon notify quan ly (phuc loi, hoat dong, chieu mo mien phi, tuong...) - chay ca khi lich khong xep 'notify'
-        if use_notify and notify.badged(ctx):
+        if use_notify and not over() and notify.badged(ctx):
             r = notify.run(ctx)
             got += sum(v for v in (r or {}).values() if isinstance(v, int))
             ctx.ensure_city()
         # cac cham do con lai (cot phai truoc, roi tren xuong): mo tung cai 1 lan / vong
         for _ in range(12):
+            if over():
+                timed_out = True
+                break
             img = ctx.shot()
             todo = _order([d for d in _left(img, ctx.v) if _key(d) not in dead])
             if not todo:
                 break
             x, y = todo[0]
+            k = _key((x, y))
             kind = _kind(ctx, img, (x, y))
             ok, gate = allowed(kind, ctx.cfg)
             if not ok:
-                dead.add(_key((x, y)))
-                ignored.add(_key((x, y)))      # co y bo qua -> khong tinh la 'con sot'
+                dead.add(k)
+                ignored.add(k)      # co y bo qua -> khong tinh la 'con sot'
                 log.info("Cham do %s @%d,%d: dang tat trong tuy chon (%s) - bo qua", kind, x, y, gate)
                 continue
-            if rc.get("skip_idle_steps", True) and already_idle(ctx, kind):
-                dead.add(_key((x, y)))
-                ignored.add(_key((x, y)))
+            if rc["skip_idle_steps"] and already_idle(ctx, kind):
+                dead.add(k)
+                ignored.add(k)
                 log.info("Cham do %s @%d,%d: buoc rieng vua chay xong khong lam duoc gi - bo qua", kind, x, y)
                 continue
+            step = KIND_STEP.get(kind)
+            if m and step:
+                g = stepgate.check(m, idx, step, ctx.cfg, time.time(), getattr(ctx, "visit_done", None))
+                if not g.run:   # P1: buoc rieng dang gian chu ky / chua du dieu kien -> mo icon cung vo ich
+                    dead.add(k)
+                    ignored.add(k)
+                    log.info("Cham do %s @%d,%d: %s - bo qua", kind, x, y, g.why)
+                    continue
             n = _handle(ctx, kind, x, y)
             n = n if isinstance(n, int) else 0
-            handled[_key((x, y))] = handled.get(_key((x, y)), 0) + 1
+            handled[k] = handled.get(k, 0) + 1
             # cham do khong bao gio mat (so "66" o nut Lien minh = tin nhan / thong bao) -> moi vi tri toi da
             # 2 lan / buoc, Lien minh 1 lan (chu du an 2026-11-21: "khong co hoat dong ma he thong lien tuc bam")
-            if kind == "alliance" or handled[_key((x, y))] >= 2:
-                dead.add(_key((x, y)))
+            if kind == "alliance" or handled[k] >= 2:
+                dead.add(k)
                 if n:
-                    ignored.add(_key((x, y)))
+                    ignored.add(k)
             if n:
+                worked_at.add(k)
                 log.info("Cham do %s @%d,%d: lam %d (vong %d)", kind, x, y, n, rnd)
             else:
-                dead.add(_key((x, y)))
+                dead.add(k)
+                useless.add(k)
                 if kind == "ally_gift":
-                    ignored.add(_key((x, y)))       # qua thuong het luot nhan hom nay: cham do van hien
+                    ignored.add(k)       # qua thuong het luot nhan hom nay: cham do van hien
                 log.info("Cham do %s @%d,%d: mo ra khong lam duoc gi", kind, x, y)
             got += n
         total += got
@@ -315,16 +398,21 @@ def run(ctx):
         if not left:
             log.info("Het cham do sau %d vong", rnd)
             break
+        if timed_out or over():
+            timed_out = True
+            log.info("Cham do: het %s s - dung (con %s)", rc["max_s"], left)
+            break
         if not got:
             log.info("Vong %d khong nhan them duoc gi - dung (con %s)", rnd, left)
             break
+    if img is None:                 # max_rounds = 0
+        img = ctx.shot()
     if m:
-        until = _t.time() + rc.get("dead_h", 2) * 3600
-        keep = {**old, **{f"{k[0]},{k[1]}": until for k in dead if f"{k[0]},{k[1]}" not in old}}
-        m.set_fact(ctx.dev.idx, "reddots_dead", keep)
-    _keep_last(ctx, ctx.shot())
-    if left:
+        remember(m, idx, rc, old, dead_n, dead, useless, worked_at, time.time())
+        m.set_fact(idx, "reddots_seen", sorted({_k2s(_key(d)) for d in _left(img, ctx.v)}))
+    _keep_last(ctx, img)
+    if left and not timed_out:
         ctx.save_debug("reddots_left")      # -> buoc ghi "co anh loi" (khong tinh la xong sach)
         log.info("Cham do con sot sau quet: %s", left)
-    log.info("Quet cham do cuoi luot: nhan %d, con %d cham do", total, len(left))
+    log.info("Quet cham do cuoi luot: nhan %d, con %d cham do, %.0f s", total, len(left), time.time() - t_start)
     return total

@@ -41,6 +41,18 @@ GROUPS = [
     ("Chiến dịch", [
         dict(key="campaign.max_fights", label="Số màn tối đa mỗi lượt", type="int", min=0, max=50, ready=True),
         dict(key="campaign.only_predicted_win", label="Chỉ đánh khi dự đoán \"Thắng toàn diện\"", type="bool", ready=True),
+        dict(key="campaign.power_gain_pct", label="Không dự đoán thắng: mở lại khi lực chiến tăng (%)", type="int", min=1, max=100, ready=True),
+        dict(key="campaign.idle_claim_h", label="… hoặc khi lợi ích treo máy tích đủ (giờ)", type="int", min=1, max=48, ready=True),
+    ]),
+    ("Giãn chu kỳ bước không làm được gì (P1)", [
+        dict(key="stepgate.enabled", label="Kiểm điều kiện trước khi chạy + giãn chu kỳ khi trả 0", type="bool", ready=True),
+        dict(key="stepgate.after", label="Trả 0 liên tiếp bao nhiêu lần thì bắt đầu giãn", type="int", min=1, max=20, ready=True),
+        dict(key="stepgate.base_min", label="Tạm bỏ lần đầu (phút, gấp đôi mỗi lần)", type="int", min=5, max=600, ready=True),
+        dict(key="stepgate.cap_h", label="Tạm bỏ tối đa (giờ)", type="int", min=1, max=48, ready=True),
+        dict(key="stepgate.max_skip_h", label="Bỏ vì điều kiện quá N giờ thì vẫn kiểm tra 1 lần", type="int", min=1, max=48, ready=True),
+        dict(key="reddots.max_s", label="Quét chấm đỏ: tối đa (giây / lần)", type="int", min=0, max=1200, ready=True),
+        dict(key="reddots.min_interval_min", label="Quét chấm đỏ: tối đa 1 lần / N phút (trừ khi có chấm đỏ mới)", type="int", min=0, max=600, ready=True),
+        dict(key="reddots.dead_h", label="Chấm đỏ mở ra vô ích: bỏ qua (giờ, gấp đôi nếu lặp lại)", type="int", min=1, max=48, ready=True),
     ]),
     ("Chấm đỏ thông báo", [
         dict(key="notify.welfare", label="TT phúc lợi (Nhận miễn phí)", type="bool", ready=True),
