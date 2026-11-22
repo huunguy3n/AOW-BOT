@@ -783,6 +783,11 @@ def heal_event(ctx, max_uses=10):
             return n
         ctx.tap(btn[0], btn[1], wait=1.2)
         tg = heal_targets(ctx.shot())
+        for _ in range(5):            # vong vang hien tre sau hoat anh canh (chu du an 2026-11-22 #4: chup som thi khong thay)
+            if tg:
+                break
+            time.sleep(1.0)
+            tg = heal_targets(ctx.shot())
         if not tg:
             log.info("Su kien chua thuong: dung hop nhung khong thay vong vang - dung")
             ctx.save_debug("heal_no_target")
