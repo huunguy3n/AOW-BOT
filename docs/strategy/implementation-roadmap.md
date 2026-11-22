@@ -20,10 +20,23 @@ Ngày: 2026-11-21 · Trạng thái: **chờ duyệt** · Thuộc [MASTER-IMPLEME
 | Độ tin cậy / đo | A-REL-1..4, A-MEAS-1, A-INV-1, A-CFG-1, A-DUP-2, A-DEAD-1 | Cần **1 lượt chạy thật** (chủ dự án bật máy) để bảng `perf` và `logs/inv/` có dữ liệu |
 | Lập lịch | A-FIX-1a/1b, A-FIX-2, A-FIX-3 | Đo trước/sau bằng `tools/report_ro.py --split` sau 24 h chạy thật |
 | Tối ưu A-OPT-2..7 | – | **Chưa làm có chủ đích**: luật "không tối ưu khi chưa đo"; chờ dữ liệu `perf` |
-| A-OPT-1, `rebels.join` | – | Chờ chủ dự án quyết định |
+| A-OPT-1, `rebels.join` | A-OPT-1 (P1, 2026-11-23, xem mục 0b) | `rebels.join` chờ chủ dự án quyết định |
 | Agent | B2a, B2b, B1, B3, B4, POL, B5/6, B6s, B7, B9a, SCH-X, B-UI | **MVP chưa bật**: chủ dự án đặt `schedule.mode: agent` cho #1 rồi chạy 1 lượt + 1 lần chạy lại; B9b (giữ máy bật) chờ ngưỡng `keep_alive_min`; B3+, B8 sau MVP |
 
 Kiểm tra trên nhánh: 283 test pass; `mypy --strict src/aowbot` sạch; 6/6 hợp đồng import-linter; ruff sạch; hồi quy ảnh 13/13, 34/34.
+
+## 0b. Giai đoạn P1 "Ổn định nền" (PM duyệt 2026-11-23, nhánh `p1-on-dinh-nen`)
+
+Nguồn: báo cáo rà soát `logs/pm-audit-1.txt` (21/11 23:00 → 22/11 23:39: ~28 % lần ghé lỗi/bỏ dở, `reddots` ~30 % thời gian máy, chụp màn hình lỗi mất 39 phút, các bước luôn trả 0 mất ~25 phút).
+
+| Việc | Đã làm | File | Tham số (`config.yaml`) |
+|---|---|---|---|
+| A-OPT-3 | Chụp màn hình: timeout 8 s/lệnh (trước 20 s), 3 lần thử, ngân sách 30 s, 2 lần timeout liên tiếp = máy treo, dò lại địa chỉ ADB 1 lần 15 s; không cứu được → `Device.dead` → runner bỏ lượt máy ngay, sang máy kế tiếp (không backoff bước) | `bot/device.py`, `bot/runner.py` | `ldplayer.screencap.*` |
+| Lỗi agent `gather` | `'tuple' object has no attribute 'fact'`: biến trí nhớ `m` bị ghi đè bởi `read_marches()`; đã sửa từ b5a7106 (đổi tên `mem`/`mv`), nay thêm test hồi quy qua `LegacyActionRunner` | `tests/legacy/test_agent_gather_dispatch.py` | – |
+| Bước luôn trả 0 | `bot/stepgate.py`: điều kiện trước khi chạy (warday: mốc thể lực / ngày chiến tranh; mainquest: đang xây / chờ lực chiến; campaign: chờ lực chiến hoặc tới hạn nhận treo máy; heal: thấy bong bóng chữa trị hoặc vừa có trận) + trả 0 liên tiếp thì giãn chu kỳ theo máy (fact `idle:<bước>`, `state.json` → `idle_backoff`); lịch không kéo máy cho bước bị bỏ | `bot/stepgate.py`, `bot/runner.py`, `bot/scheduler.py`, `observe.py`, `campaign.py` | `stepgate.*`, `campaign.power_gain_pct`, `campaign.idle_claim_h` |
+| A-OPT-1 | `reddots` không chạy mỗi lần ghé: tối đa 1 lần / 30 phút / máy (sớm hơn khi `notify` vừa nhận được quà hoặc có chấm đỏ mới), tối đa 90 s / lần, icon mở ra vô ích bỏ qua 2 giờ rồi gấp đôi (tối đa 24 giờ) | `bot/modules/reddots.py` | `reddots.max_s`, `reddots.min_interval_min`, `reddots.dead_h`, `reddots.dead_cap_h` |
+
+Kiểm chứng (chủ dự án bật máy): 1 lượt chạy thật đầy đủ + 1 lần chạy lại, rồi `python tools/report_ro.py --split "<giờ bắt đầu P1>"`. Tiêu chí: lần ghé lỗi/bỏ dở < 5 %; `reddots` < 15 % thời gian máy; không còn lần chụp màn hình lỗi > 60 s; heal/campaign/warday/mainquest không còn chạy trả 0 ở mọi lần ghé.
 
 ## 1. Công thức ưu tiên
 `Ưu tiên ≈ Tác động nghiệp vụ × Giảm rủi ro × Giá trị phụ thuộc / Chi phí`. Đây là heuristic, không phải phép tính chính xác.
@@ -75,9 +88,9 @@ Thứ tự lớp ưu tiên:
 | A-FIX-2 | `_remember_facts` chỉ ghi khi giá trị đổi hoặc chưa có | `bot/runner.py:_remember_facts` | B4 | F0 | Test: `seen_at` không đổi khi giá trị không đổi. Live: ~1 dòng "Nha chinh … cap N" / máy / 6 h VM | revert | 1 |
 | A-FIX-3 | `plan_build`: đếm lần chạy `mainquest`+`quests` có `ret == 0` liên tiếp **bất kể kết quả**; giãn chu kỳ theo cấp số, trần `build_every_min`; reset khi tài nguyên, nhà chính hoặc lực chiến thay đổi | `bot/scheduler.py:plan_build` | B1: 111 lần ghé, 13,3 h | A-FIX-1a (cùng file), F4L | `sim_schedule` + phát lại: lần ghé "thợ rảnh"/farm-ngày giảm ≥ 50 %; "Đã bắt đầu nâng cấp"/ngày không giảm | `schedule.build_backoff: false` | 2 |
 | A-INV-1 | Lưu 1 ảnh/dòng/ngày ở nhánh `none` của `quests` và cuối chuỗi "Nhảy"; phân tích | `bot/modules/quests.py`, `bot/build.py:upgrade_here` (chỉ thêm `save_debug`) | 391 lần `none` | – | Có ≥ 10 ảnh phân loại được nguyên nhân; đề xuất task sửa | revert | 1 |
-| A-OPT-1 | **Đề xuất, chờ chủ dự án quyết:** `reddots` ra khỏi `ALWAYS` → `extra_due` theo giá trị; đặt cuối `ORDER` | `bot/scheduler.py`, `bot/runner.py:ORDER` | 426 phút, ok 7 % | A-SAFE-2, A-FIX-3, quyết định của chủ dự án | Phút `reddots`/lần ghé giảm; tổng `ret` của notify+rewards+daily+reddots/ngày giảm ≤ 10 % | revert | 1 |
+| A-OPT-1 | **Đã làm (P1, PM 2026-11-23) theo cách khác đề xuất: giữ vị trí trong `ORDER`, giới hạn tần suất/thời gian trong module.** Đề xuất cũ: `reddots` ra khỏi `ALWAYS` → `extra_due` theo giá trị; đặt cuối `ORDER` | `bot/scheduler.py`, `bot/runner.py:ORDER` | 426 phút, ok 7 % | A-SAFE-2, A-FIX-3, quyết định của chủ dự án | Phút `reddots`/lần ghé giảm; tổng `ret` của notify+rewards+daily+reddots/ngày giảm ≤ 10 % | revert | 1 |
 | A-OPT-2 | Một hàm đọc lực chiến (cache theo lần ghé), thay 3 bản `_power` | `bot/ctx.py`, `modules/quests.py`, `mainquest.py`, `tutorial.py` | 1.057 ms/lần | A-MEAS-1 | `perf`: số OCR mỗi bước có cổng lực chiến giảm; `check_tutorial` 34/34 | revert | 2 |
-| A-OPT-3 | Screencap fail-fast: lỗi lần 2 trong cùng bước → ném ngay, **giữ** chuỗi "Khong chup duoc man hinh" (runner `blind` so chuỗi này); bỏ qua lỗi của `HumanWatch._shot` | `bot/device.py:screencap` | 264–418 s rồi lỗi | A-MEAS-1 (cùng file) | `perf`: p99 tổng thời gian screencap giảm; số lần ghé bỏ dở do "máy không phản hồi" không tăng | revert | 1 |
+| A-OPT-3 | **Đã làm (P1, 2026-11-23).** Screencap fail-fast: lỗi lần 2 trong cùng bước → ném ngay, **giữ** chuỗi "Khong chup duoc man hinh" (runner `blind` so chuỗi này); bỏ qua lỗi của `HumanWatch._shot` | `bot/device.py:screencap` | 264–418 s rồi lỗi | A-MEAS-1 (cùng file) | `perf`: p99 tổng thời gian screencap giảm; số lần ghé bỏ dở do "máy không phản hồi" không tăng | revert | 1 |
 | A-OPT-4 | `_wait_game`: hạ sàn khi `identify` xác nhận game sẵn sàng; `close_popups` dừng sớm khi màn ổn định | `bot/runner.py:_wait_game`, `run_account` | 30 + 19 s/lần ghé | A-MEAS-1 | `perf` `_wait_game`+`_popups` giảm; số "game chưa mở → mở lại" không tăng | config | 2 |
 | A-OPT-5 | `human.py`: lọc chạm của bot **trước** khi chụp | `bot/human.py:99,105` | cơ chế OBSERVED | A-MEAS-1 | `perf src=human` ảnh do bot chạm ≈ 0; chủ dự án chạm tay 3 lần vẫn ghi đủ 3 | `learn.watch_human` | 1 |
 | A-OPT-7 | `_follow_guide`/`defense` tái dùng khung vừa chụp; bỏ qua khi màn không đổi | `bot/runner.py`, `modules/defense.py:under_attack`, `tutorial.guide_visible` | UNKNOWN → đo | A-MEAS-1, A-SAFE-1 | `perf` span `follow_guide`, `defense_check` giảm; không bỏ sót hướng dẫn (fixture tutorial) | `guide_follow` | 2 |

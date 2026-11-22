@@ -28,6 +28,7 @@ Thứ tự bước (`ORDER` trong [bot/runner.py](bot/runner.py)), chủ dự á
 
 | Bước (`modules.*`) | File | Làm gì |
 |---|---|---|
+| `warday` | [warday.py](bot/modules/warday.py) | Chạy đầu lượt. Ngày chiến tranh SVS (thấy bảng thông báo `warday/notice` hoặc khai tay `warday.dates`): bật khiên 8h lúc 22h UTC thứ 6, rồi 12h, chỉ dùng **vật phẩm** (`warday.buy_gems` mặc định false); cấm thu thập trong cửa sổ (phản quân được phép). Ghi nhận mốc thể lực 0h/8h/15h UTC (việc nhận do notify/rewards làm). Chỉ chạy khi tới mốc thể lực hoặc trong cửa sổ chiến tranh (`stepgate`) |
 | `tutorial` | [tutorial.py](bot/modules/tutorial.py) | Qua tân thủ: V-marker vàng, hội thoại, CONGRATULATIONS, bảng Chương, trận chạy đường (mặc định tắt, chỉ bật cho TK mới) |
 | `mainquest` | [mainquest.py](bot/modules/mainquest.py) | Ưu tiên: thanh nhiệm vụ chính → đánh/xây/chiến dịch; boss khó thì hoãn tới khi lực chiến tăng `power_gain_pct`% |
 | `collect_city` | [city.py](bot/modules/city.py) | Chạm biểu tượng tài nguyên nổi trên công trình |
@@ -35,19 +36,23 @@ Thứ tự bước (`ORDER` trong [bot/runner.py](bot/runner.py)), chủ dự á
 | `alliance` | [alliance.py](bot/modules/alliance.py) | Quyên góp công nghệ liên minh bằng **vàng**, trợ giúp |
 | `construct` | [construct.py](bot/modules/construct.py) | Xây công trình **mới**: icon búa góc phải dưới có chấm đỏ → bảng "Xây dựng" → nhóm có chấm đỏ (bỏ "Con đường") → kéo thẻ chưa khóa ra bản đồ, tìm ô cỏ trống tới khi ô đặt xanh → tick → nút phải "Xây dựng" (**không** bấm "Xây dựng ngay") |
 | `quests` | [quests.py](bot/modules/quests.py) | Nhiệm vụ Chương/Chính: "Đến" → nâng cấp công trình (nhà chính ≤ `build.hq_max_level`) |
-| `campaign` | [campaign.py](bot/modules/campaign.py) | Đánh màn kế tiếp khi dự đoán "Thắng toàn diện" + nhận treo máy |
+| `campaign` | [campaign.py](bot/modules/campaign.py) | Đánh màn kế tiếp khi dự đoán "Thắng toàn diện" + nhận treo máy. Không dự đoán thắng → chỉ mở lại khi lực chiến tăng `campaign.power_gain_pct`% hoặc treo máy tích đủ `campaign.idle_claim_h` giờ |
 | `notify` | [notify.py](bot/modules/notify.py) | Chấm đỏ: phúc lợi, online, hoạt động, tình báo, chiêu mộ miễn phí, tăng cấp tướng |
 | `research` | [research.py](bot/modules/research.py) | Nghiên cứu nhánh thu thập tài nguyên, trợ giúp/miễn phí |
 | `train` | [train.py](bot/modules/train.py) | Huấn luyện lính T3 đến đủ `số đội × troops_per_march` |
 | `rebels` | [rebels.py](bot/modules/rebels.py) | Từ nhà chính cấp 15, 5 lượt/ngày: **tự mở tập kết** Phản quân Cơ giáp trên bản đồ (3 phút, quân đoàn `rebels.legion`, chỉ Xuất chinh khi dự đoán "Thắng toàn diện"); nhớ cấp cao nhất đã đánh → lần sau thử cấp +1, dự đoán thua thì lùi; sau đó tham gia tập kết liên minh |
 | `upgrade` | [upgrade.py](bot/modules/upgrade.py) | Thợ rảnh → về thành phố từ thế giới (camera giữa nhà chính) → chạm (270,440), kiểm nhãn "Xưởng kiến trúc" → nâng cấp; thiếu điều kiện → "Nhảy" sang công trình điều kiện. HQ = `build.hq_max_level` (30) thì bỏ |
-| `heal` | [heal.py](bot/modules/heal.py) | Bệnh viện (chữ thập đỏ trên mái) → "Hồi phục" bằng tài nguyên; không bao giờ "Hồi phục ngay" |
+| `heal` | [heal.py](bot/modules/heal.py) | Bệnh viện (chữ thập đỏ trên mái) → "Hồi phục" bằng tài nguyên; không bao giờ "Hồi phục ngay". Chỉ chạy khi `observe` thấy bong bóng chữa trị hoặc trong lượt vừa có trận (`stepgate`) |
 | `gather` | [gather.py](bot/modules/gather.py) | Gửi quân đi mỏ đến khi "Hành quân x/y" đầy; ưu tiên alloy > metal > food, cấp cao → thấp, **tải trọng đội ≥ trữ lượng mỏ** (đội chở hết mỏ; không đọc được số thì không gửi); trước nhà chính cấp `gather.min_hq_level` (9, đủ 3 nhà lính) thì bỏ qua thu thập để làm nhiệm vụ căn cứ; nhớ dung tích mỏ theo cấp (`memory.db`) để bỏ cấp quá sức chở. Dò mỏ **từ cấp 8 hạ dần** tới cấp thỏa tải trọng; nhớ cấp cao nhất còn thỏa (`gather_top:<loại>`) và loại bị khóa theo nhà chính, chỉ dò lại từ cấp 8 khi nhà chính hoặc tướng (notify tăng cấp) đổi (`gather_sig`) — chủ dự án 2026-11-21 |
 | `daily` | [daily.py](bot/modules/daily.py) | Nhận thưởng nhiệm vụ + rương điểm năng động |
 | `play` | [play.py](bot/modules/play.py) | Lối chơi (TK cấp cao): nhận rương Mỏ khoáng sản; Đấu trường 3 lượt miễn phí: ưu tiên đối thủ lực chiến **màu đỏ**, không có thì đánh đối thủ lực chiến ≤ lực chiến mình × `arena.max_ratio` (mạnh nhất trong số đó); luôn bấm "Đội hình đề xuất", nhớ đối thủ đã thua (`arena.*`); cướp xe cam/tím (`loot.*`). Chạy lần đầu sau reset ngày; không mua lượt / Làm mới |
-| `reddots` | [reddots.py](bot/modules/reddots.py) | Cuối lượt: quét lại cột icon phải còn chấm đỏ → mở, chỉ nhận nút "Nhận" xanh; bỏ icon "Quà" ($) |
+| `reddots` | [reddots.py](bot/modules/reddots.py) | Quét lại chấm đỏ còn trên thành phố → mở, chỉ nhận nút "Nhận" xanh; bỏ icon "Quà" ($). **Không chạy mỗi lần ghé** (PM 2026-11-23, A-OPT-1): mỗi máy tối đa 1 lần / `reddots.min_interval_min` (30) phút, sớm hơn chỉ khi `notify` vừa nhận được quà hoặc có chấm đỏ mới; tối đa `reddots.max_s` (90) giây / lần; icon mở ra vô ích bỏ qua `dead_h` giờ, lặp lại thì gấp đôi (tối đa `dead_cap_h`) |
 | `observe` | [observe.py](bot/modules/observe.py) | Luôn chạy cuối: OCR tài nguyên, lực chiến, trạng thái hành quân → `data/state.json` |
 | (phòng thủ) | [defense.py](bot/modules/defense.py) | Bị tấn công → khiên (vật phẩm, hết thì kim cương trong trần), tùy chọn sơ tán quân (cần ảnh mẫu cảnh báo) |
+
+**Kiểm điều kiện + giãn chu kỳ** ([bot/stepgate.py](bot/stepgate.py), giai đoạn P1 2026-11-23): trước `heal`, `campaign`, `warday`, `mainquest` runner kiểm điều kiện từ trí nhớ (không mở màn hình); bước chạy xong mà trả 0 liên tiếp ≥ `stepgate.after` lần thì tạm bỏ `base_min` × 2ⁿ phút (tối đa `cap_h`), lưu theo máy (fact `idle:<bước>`, `state.json` → `idle_backoff`); làm được việc thì xóa. Bỏ vì điều kiện quá `max_skip_h` giờ thì vẫn chạy 1 lần kiểm tra. `--modules` trên dòng lệnh bỏ qua cổng này.
+
+**Máy treo** (A-OPT-3): chụp màn hình timeout ngắn (`ldplayer.screencap.*`); không cứu được sau 1 lần dò lại địa chỉ ADB → `Device.dead` → runner bỏ lượt máy đó ngay, sang máy kế tiếp.
 
 **Lái quân trong trận chạy đường** ([steer.py](bot/steer.py), [touch.py](bot/touch.py), [stream.py](bot/stream.py)): giữ ngón tay bằng `sendevent /dev/input/event2` suốt trận, đọc khung hình liên tục, trượt ngang để nhặt buff xanh (cả cổng nhạt), bắn bảng đỏ có số khi còn xa và né khi đã gần, né hàng rào gai sắt (né mạnh nhất), vòng đỏ ném bom, vệt xe lao.
 
@@ -81,6 +86,7 @@ bot/badges.py        Tìm chấm đỏ theo màu HSV
 bot/build.py         Nâng cấp công trình (đi theo nút "Nhảy" tới điều kiện), KHÔNG bấm "Tăng cấp ngay"
 bot/learn.py         Học máy mini (giai đoạn E+F): nhật ký kinh nghiệm mỗi lần chạm (bảng `exp`), kNN màn hình, biến thể ảnh mẫu tự học (`templates/<tên>@auto<N>.png`), "chỗ chết"
 bot/steer.py         Lái quân theo màu; touch.py = Finger (sendevent); stream.py = FrameStream (screencap liên tục)
+bot/stepgate.py      P1: điều kiện trước khi chạy + giãn chu kỳ khi trả 0 (heal/campaign/warday/mainquest), hàm thuần trên trí nhớ
 bot/state.py         Store: data/state.json (quan sát) + data/settings.json (tùy chọn web), ghi atomic
 bot/modules/*.py     Mỗi bước = module có run(ctx)
 web/                 Flask, chỉ nghe 127.0.0.1 (trang /agent: quyết định của agent, chỉ đọc)

@@ -334,7 +334,8 @@ def plan_step(mem, idx, step, sc, now, enabled, cfg=None):
 
 DAILY = ("daily", "rewards", "notify", "play")   # play: 3 luot dau truong mien phi + cuop boc theo ngay
 STAMINA_STEPS = ("notify", "rewards")   # moc the luc: nhan qua online/phuc loi
-ALWAYS = ("reddots", "heal")  # chay moi lan ghe: quet cham do (chu du an 2026-11-20), benh vien (Q5, re khi khong co thuong binh)
+# xep vao moi lan ghe; tu gioi han ben trong: reddots (tan suat/thoi gian - A-OPT-1, PM 2026-11-23), heal (bot/stepgate.py)
+ALWAYS = ("reddots", "heal")
 
 
 def last_reset(now, hour_utc):

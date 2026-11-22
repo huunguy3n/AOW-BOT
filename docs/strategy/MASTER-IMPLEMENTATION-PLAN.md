@@ -101,7 +101,7 @@ Phân loại A1–A6 cho từng thành phần: [master-audit.md](master-audit.md
 | Lập lịch (đã đo) | A-FIX-1a/1b, A-FIX-2, A-FIX-3 |
 | Điều tra | A-INV-1 (391 lần `none`) |
 | Tối ưu sau khi đo | A-OPT-2..7 |
-| Chờ chủ dự án | A-OPT-1 (vị trí/tần suất `reddots`, vì `ORDER` do chủ dự án chốt), `rebels.join` |
+| Chờ chủ dự án | `rebels.join` (A-OPT-1 đã quyết 2026-11-23: giới hạn tần suất/thời gian, làm ở giai đoạn P1 — xem [implementation-roadmap.md](implementation-roadmap.md) mục 0b) |
 | Dọn dẹp | A-DEAD-1, A-DUP-1 |
 
 Không tối ưu `gather.run`/`observe.run`, vì hai phần này sẽ bị bọc rồi thay trên #1.
