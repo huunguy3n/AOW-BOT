@@ -113,13 +113,33 @@ def run(ctx):
         log.info("Khong mo duoc Chien dich")
         return 0
     claim_idle(ctx)
-    wins = 0
+    m, idx = getattr(ctx, "mem", None), ctx.dev.idx
+    if m:
+        m.set_fact(idx, "campaign_idle_at", time.time())
+    wins, r = 0, None
     for _ in range(cc.get("max_fights", 5)):
         r = fight_one(ctx, cc.get("only_predicted_win", True))
         log.info("Chien dich: %s", r)
         if r != "win":
             break
         wins += 1
+    if m:
+        note_power(m, idx, cc, wins, r)
     ctx.back_out()
     ctx.ensure_city()
     return wins
+
+
+def note_power(m, idx, cc, wins, last):
+    """P1 (stepgate): man ke tiep khong du doan thang / thua -> nho luc chien can (+power_gain_pct %); lan sau chi mo
+    Chien dich khi luc chien tang du (hoac toi han nhan Loi ich treo may). Thang -> xoa."""
+    if wins:
+        m.set_fact(idx, "campaign_need_power", None)
+        return
+    if last not in ("skip", "lose"):
+        return
+    p = (m.fact(idx, "resources") or {}).get("power") if isinstance(m.fact(idx, "resources"), dict) else None
+    if p:
+        need = int(p * (1 + cc.get("power_gain_pct", 5) / 100))
+        m.set_fact(idx, "campaign_need_power", need)
+        log.info("Chien dich: cho luc chien >= %d moi mo lai (tru khi toi han nhan treo may)", need)

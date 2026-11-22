@@ -178,6 +178,13 @@ notify:
   recruit: true
   hero: true
   events: true            # o su kien cot phai (nhan qua an toan)
+stepgate:                  # P1 "On dinh nen" (bot/stepgate.py): dieu kien truoc khi chay + gian chu ky khi tra 0
+  enabled: true
+  steps: [heal, campaign, warday, mainquest]   # buoc duoc kiem dieu kien / gian chu ky
+  after: 2                 # tra 0 (chay ok ma khong lam duoc gi) N lan lien tiep -> bat dau gian
+  base_min: 60             # tam bo base x 2^(lan - after) phut...
+  cap_h: 8                 # ... toi da N gio. Lam duoc viec (tra > 0) -> xoa. Luu theo may: fact idle:<buoc>
+  max_skip_h: 6            # bo vi dieu kien (khong thay thuong binh, luc chien chua du...) qua N gio -> chay 1 lan kiem tra
 reddots:
   max_rounds: 6        # lap toi khi het cham do; dung som neu 1 vong khong nhan them duoc gi
   skip_idle_steps: true  # cham do cua icon ma buoc rieng vua chay trong lan ghe nay va tra 0 -> khong mo lai
@@ -242,6 +249,8 @@ battle:
 campaign:
   max_fights: 5            # so man toi da moi luot
   only_predicted_win: true # chi danh khi bang man ghi 'Thang toan dien'
+  power_gain_pct: 5        # P1: khong du doan thang -> chi mo lai Chien dich khi luc chien tang N %
+  idle_claim_h: 8          # ... hoac khi Loi ich treo may da tich N gio (mo de nhan)
 alliance:
   donate_max: 10       # so lan quyen gop (VANG) moi luot
   boss: true           # BOSS lien minh: nhan ruong muc sat thuong (cham do), khong khieu chien

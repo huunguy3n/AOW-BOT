@@ -9,7 +9,7 @@ from bot.device import LDConsole, Device
 from bot.ctx import Ctx, Stuck
 from bot import ocr
 from bot.memory import Memory
-from bot import perf, queues, scheduler
+from bot import perf, queues, scheduler, stepgate
 from aowbot.domain import drain
 from bot.modules import tutorial, mainquest, construct, city, rewards, alliance, quests, campaign, notify, research, train, rebels, gather, daily, observe, defense, intel, reddots, play, upgrade, heal, warday
 
@@ -369,6 +369,18 @@ class Runner:
         elif res == "ok":
             self.mem.step_ok(idx, name)
 
+    def _idle_backoff(self, cfg, idx, name, res, ret):
+        """P1: buoc tra 0 lien tiep -> gian chu ky (bot.stepgate, luu fact idle:<buoc> theo may + state.json)."""
+        try:
+            until = stepgate.record(self.mem, idx, name, res, ret, cfg)
+            if until:
+                log.info("Buoc %s tra 0 %d lan lien tiep -> gian chu ky toi %s", name,
+                         stepgate.idle_state(self.mem, idx, name).get("zeros", 0),
+                         time.strftime("%H:%M", time.localtime(until)))
+            self.store.update(idx, idle_backoff=stepgate.snapshot(self.mem, idx, cfg))
+        except Exception as e:   # tri nho loi khong duoc lam hong lan ghe
+            log.warning("stepgate: %s", e)
+
     # du kien module dang ghi rai rac trong state.json -> chep sang tri nho (A1) sau moi lan ghe
     FACT_KEYS = ("hq_level", "tutorial_done", "mainquest_need_power", "mainquest_block_reason", "name",
                  "tutorial_need_power", "tutorial_wait_until")
@@ -419,6 +431,8 @@ class Runner:
         enabled = dict(cfg["modules"])
         if modules is not None:
             enabled = {k: (k in modules) for k, _ in ORDER}
+        # --modules tren dong lenh (why None) = chu du an muon chay dung buoc do -> khong qua stepgate
+        explicit = modules is not None and why is None
         if mode in ("smart", "agent") and (cfg.get("schedule") or {}).get("mode") == "agent":
             enabled["gather"] = False   # SCH-X: hanh quan may agent do agent lo (ke ca lan ghe 'tran an toan' du buoc)
         st = self.store
@@ -555,6 +569,11 @@ class Runner:
                     log.info("-- Bo buoc %s: ban do the gioi chua mo (nha chinh < cap %d)", name,
                              cfg.get("world", {}).get("min_hq_level", 6))
                     continue
+                if not forced and not explicit:
+                    g_ = stepgate.check(self.mem, idx, name, cfg, time.time(), done)
+                    if not g_.run:   # P1: dieu kien truoc khi chay / gian chu ky khi tra 0 lien tiep
+                        log.info("-- Bo buoc %s: %s", name, g_.why)
+                        continue
                 self._check()
                 if not ctx.dev.app_alive(pkg):  # game tu thoat / bi tat giua chung -> mo lai truoc khi lam buoc ke
                     log.warning("Game khong con chay truoc buoc %s -> mo lai", name)
@@ -628,6 +647,7 @@ class Runner:
                 if pf:
                     self.mem.log_perf(visit, idx, name, pf.drain())
                 self._backoff(cfg, idx, name, res, note)
+                self._idle_backoff(cfg, idx, name, res, ret)
                 if ctx.nav and name not in ("tutorial", "observe"):
                     lost = 0 if any(a == "done" for _, a, _ in ctx.nav) else lost + 1
                 if lost >= 3:

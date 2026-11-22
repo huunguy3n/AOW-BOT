@@ -107,6 +107,18 @@ def _link_dispatches(marches, disp, now):
             m["arrive_at"] = d["t"] + d["travel"]
 
 
+def note_heal(ctx, cimg):
+    """P1 (stepgate): bong bong chua tri tren benh vien co hien khong -> fact heal_bubble (heal chi chay khi thay,
+    hoac vua co tran). Thieu anh mau -> khong ghi (heal van chay nhu cu)."""
+    m = getattr(ctx, "mem", None)
+    if m is None or not ctx.v.has("build/heal_bubble"):
+        return
+    try:
+        m.set_fact(ctx.dev.idx, "heal_bubble", bool(ctx.v.find(cimg, "build/heal_bubble", th=0.8, roi=(0, 110, 540, 700))))
+    except Exception as e:
+        log.debug("heal_bubble: %s", e)
+
+
 def run(ctx):
     if ctx.cfg.get("observe", {}).get("read_hq", True):
         try:
@@ -130,6 +142,7 @@ def run(ctx):
     if b and getattr(ctx, "mem", None):
         ctx.mem.set_fact(ctx.dev.idx, "builders_busy", b[0])
         log.info("Tho xay: %d/%d dang xay (dung toi da %d)", b[0], b[1], ctx.cfg.get("build", {}).get("max_builders", 1))
+    note_heal(ctx, cimg)
     base_state(ctx, cimg, b)
     world = ctx.world_ready() if hasattr(ctx, "world_ready") else True
     if world:

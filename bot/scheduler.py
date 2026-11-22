@@ -13,6 +13,7 @@ import json, time
 from dataclasses import dataclass, field
 
 from aowbot.domain import marches, warday
+from bot import stepgate
 
 TRIGGERS = ("warday", "gather", "upgrade", "mainquest", "quests", "research", "rebels")
 DEFAULTS = {"max_gap_min": 240, "min_gap_min": 10, "batch_window_min": 5, "idle_check_min": 15,
@@ -380,9 +381,13 @@ def decide_one(mem, idx, order, enabled, cfg, now):
     if (cfg.get("schedule") or {}).get("mode") == "agent":
         names = [n for n in names if n != "gather"]   # SCH-X: hanh quan cua may nay do agent lo
     backoff = {n for n in names if mem.backoff_until(idx, n) > now}
+    # P1: buoc dang gian chu ky / chua du dieu kien (bot.stepgate) -> khong chay; trigger da toi han cua no khong keo
+    # may (truoc day mainquest tra 0 van keo may moi min_gap); hen tuong lai (vd moc the luc cua warday) van giu
+    backoff |= {n for n in names if stepgate.planned_skip(mem, idx, n, cfg, now)}
     last = last_visit_end(mem, idx)
     plans = {n: plan_step(mem, idx, n, sc, now, enabled, cfg) for n in names}
-    trig = {n: p for n, p in plans.items() if p is not None and n not in backoff}
+    trig = {n: p for n, p in plans.items() if p is not None
+            and (n not in backoff or (mem.backoff_until(idx, n) <= now and p.at is not None and p.at > now))}
     cap = (last or 0) + sc["max_gap_min"] * 60
     soon = now + sc["batch_window_min"] * 60
     nexts = [p.at for p in trig.values() if p.at is not None]
@@ -419,7 +424,7 @@ def piggyback_steps(mem, idx, order, enabled, cfg, now):
     soon = now + sc["batch_window_min"] * 60
     out = []
     for n in names:
-        if mem.backoff_until(idx, n) > now:
+        if mem.backoff_until(idx, n) > now or stepgate.planned_skip(mem, idx, n, cfg, now):
             continue
         p = plan_step(mem, idx, n, sc, now, enabled, cfg)
         if p is None:
