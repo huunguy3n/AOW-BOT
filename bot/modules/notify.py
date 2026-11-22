@@ -71,7 +71,7 @@ def claim_scroll(ctx, pages=6):
     return n
 
 
-def claim_content(ctx, cards=False):
+def claim_content(ctx, cards=False, gift=True):
     n = claim_scroll(ctx)
     if cards:  # the qua co cham do (vd Thuong online 100/120 phut): cham giua the
         for _ in range(6):
@@ -107,6 +107,8 @@ def claim_content(ctx, cards=False):
         ctx.tap(285, 500, wait=1.5)
         ctx.dismiss_reward()
         n += 1
+    if gift:   # tab 'Chieu mo han gio': icon "Qua Chieu Mo" (cot phai) co cham do (chu du an 2026-11-22: 'bam vao day')
+        n += recruit_gift(ctx, ctx.shot())
     return n
 
 
@@ -399,6 +401,30 @@ def recruit_choice(free_ok, ten_dot, one_free, free_wait, use_tickets):
     return None
 
 
+def _gift_free(ctx, max_taps=4):
+    """Bang 'Qua chieu mo han gio': nut 'Mien phi' (cham do o goc tren-phai nut, anh #4 2026-11-22) -> bam. Goi co gia kim
+    cuong KHONG co cham do va khong bam; them kiem chu 'Mien phi' bang OCR cho chac (ADR-0008)."""
+    from bot import buttons
+    n, seen = 0, set()
+    for _ in range(max_taps):
+        img = ctx.shot()
+        dots = [d for d in red_dots(img, (300, 60, 240, 840)) if (d[0] // 30, d[1] // 30) not in seen]
+        log.info("Qua chieu mo: %d cham do", len(dots))
+        if not dots:
+            break
+        d = dots[0]
+        seen.add((d[0] // 30, d[1] // 30))
+        t = buttons._norm(ocr.text(img, (max(0, d[0] - 105), d[1] - 5, 125, 45), scale=3, psm=7, bright=170))
+        log.info("Qua chieu mo: cham do @%d,%d chu %r", d[0], d[1], t)
+        if "phi" not in t or "mi" not in t:
+            continue
+        ctx.tap(d[0] - 47, d[1] + 18, wait=1.5)
+        ctx.dismiss_reward()
+        n += 1
+        log.info("Qua chieu mo: nhan 'Mien phi' @%d,%d", d[0], d[1])
+    return n
+
+
 def recruit_gift(ctx, img):
     """Icon "Qua Chieu Mo" (cot phai man Tuyen dung han che, ~495,380) co cham do -> bam, nhan qua (chu du an
     2026-11-22: 'bam vao day'). Qua mien phi, khong tieu kim cuong. -> so lan nhan."""
@@ -409,7 +435,8 @@ def recruit_gift(ctx, img):
     # Truoc day +15 chạm ra ngoai mep phai icon nen bang qua khong bao gio mo (nhan 0).
     ctx.tap(dots[0][0] - 17, dots[0][1] + 15, wait=2.0)
     ctx.save_debug("recruit_gift")          # anh bang qua de doi chieu / cat mau nut Nhan neu can
-    got = (claim_content(ctx) or 0) + ctx.claim_buttons()   # claim_buttons: nut "Mien phi" xanh (khong bam nut co gia kim cuong)
+    got = _gift_free(ctx)   # truoc: claim_content cuon danh sach nen nut 'Mien phi' o dau danh sach bi troi mat
+    got += (claim_content(ctx, gift=False) or 0) + ctx.claim_buttons()   # claim_buttons: nut "Mien phi" xanh (khong bam nut co gia kim cuong)
     log.info("Chieu mo: Qua Chieu Mo - nhan %s", got)
     for _ in range(3):                      # ve man Tuyen dung
         if ctx.find("recruit/title"):
