@@ -55,6 +55,21 @@ Mục tiêu (theo `logs/pm-audit-1.txt`): thời gian bỏ trống xây < 25 % (
 
 Kiểm chứng (chủ dự án bật máy): 1 lượt chạy thật đầy đủ + 1 lần chạy lại, rồi `python tools/report_ro.py --split "<giờ bắt đầu P2>"`, xem mục "hang cho (lan quan sat con cho ranh)".
 
+## 0d. Giai đoạn P3 "Thu thập đầy hành quân" (PM duyệt 2026-11-23, nhánh `p3-thu-thap` tách từ `p2-hang-cho`)
+
+Mục tiêu (theo `logs/pm-audit-1.txt`): "Hành quân x/y" luôn đầy — trên máy #1 đầy ≥ 90 % số lần quan sát; **0 lần Hủy oan**.
+
+| Việc | Đã làm | File | Tham số (`config.yaml`) |
+|---|---|---|---|
+| P3-1 đọc "Hành quân x/y" | Đọc bằng **ảnh chữ số** `templates/mdigits/` (1–5, slash; cắt từ ảnh thật, dùng chung `queues.read_glyph_box`) → Tesseract → `digits/`. Khung "Hành quân" (`gather/march_header`) **chỉ hiện khi có đội đang đi**: trên bản đồ thế giới (thấy kính lúp) mà vắng khung + biết tổng → 0 đội. Đo trên 547 ảnh bản đồ có khung: ảnh chữ số đúng 544, sai 0, 3 ảnh mờ → không rõ; Tesseract cũ sai 3 (5/5 → 3/5) và hụt 7; 2214 ảnh khác: 0 đọc nhầm. `observe` ghi `march_obs` (used/total/reserve/nguồn) | `bot/march_count.py`, `bot/ctx.py` (`read_marches`), `bot/queues.py`, `bot/modules/observe.py`, `bot/memory.py` | `gather.ocr: auto`, `gather.infer_zero` |
+| P3-2 hộp thoại sau "Xuất chinh" | Hộp thoại là **"Chú ý! Có Chỉ huy trưởng khác đang hành quân đến điểm tài nguyên này… muốn tiếp tục xuất chinh? [Hủy] [Tiếp tục]"**. Log #1 22/11 16:44–16:48: cả 7 lần là đội **của mình** (cùng loại/cấp, cùng thời gian đi 1008 s, gửi 51 s trước) — mỏ đầy gần nhất chỉ hết "đầy" khi đội tới nơi nên "Tìm kiếm" trả lại đúng mỏ đó. Giờ: (loại, cấp) có đội mình đang đi tới → không tìm (`own_skip`); cùng loại/cấp + cùng thời gian đi → không bấm Xuất chinh (`own`); hộp thoại vẫn hiện (ảnh `gather/dlg_contested` hoặc OCR) → **Hủy, không bao giờ Tiếp tục**, tạm bỏ (loại, cấp) | `bot/gather_rules.py` (`own_target`), `bot/modules/gather.py` | `gather.contested_skip_min` (20) |
+| P3-3 mỏ bị chiếm / thông báo | `mine_occupied`, `msg_not_found`, `msg_march_full`, `msg_no_troops`: thiếu ảnh mẫu → `tplneed` log `thieu anh mau <tên>` (1 lần/giờ) + OCR thông báo (`gather_rules.classify_msg`) chỉ ở nhánh thất bại; mỏ bị chiếm / không tìm thấy → tạm bỏ (loại, cấp) qua các lần ghé (fact `gather_hold:<loại>:<cấp>`), thử cấp/loại khác; không bấm nút nào trên mỏ người khác | `bot/gather_rules.py`, `bot/modules/gather.py` | `gather.occupied_skip_min` (30), `notfound_skip_min` (30) |
+| P3-4 giảm `gather_unread` | 111/111 lần `gather_unread` (21–22/11) là **trữ lượng None** (OCR trên nền cây sáng), tải trọng đọc được cả 111. Bảng dung tích mỏ đầy `gather.mine_caps` (đo từ `memory.db` + log + chủ dự án): chỉ mỏ đầy + OCR hỏng/lệch [0,9; 1,25]× dung tích → dùng dung tích (số lớn nhất = an toàn cho luật tải trọng ≥ mỏ); biết dung tích thì đọc 1 lần thay vì 3 | `bot/gather_rules.py` (`choose_amount`), `bot/modules/gather.py` | `gather.mine_caps` |
+
+Ảnh mẫu chủ dự án cần chụp (trên #1, `python tools/snap.py todo gather`): `gather/msg_not_found` (thông báo nổi giữa màn sau "Tìm kiếm" khi không có mỏ), `gather/mine_occupied` (chạm mỏ đang có đội người khác: menu không có xe tải "Thu thập"), `gather/msg_march_full` (bấm "Thu thập" khi hành quân đã đầy), `gather/msg_no_troops` (bấm "Thu thập"/"Xuất chinh" khi hết lính). Chi tiết vùng cắt: [templates/README.md](../../templates/README.md). Thiếu ảnh thì code vẫn chạy bằng OCR thông báo.
+
+Kiểm chứng (chủ dự án bật máy): 1 lượt chạy thật đầy đủ + 1 lần chạy lại trên #1, rồi `python tools/report_ro.py --split "<giờ bắt đầu P3>"`, xem mục `march` (% lần quan sát hành quân đầy, mục tiêu ≥ 90 %) và `gather_ev` (`own_dialog` = Hủy oan, mục tiêu 0; `contested`, `occupied`, `cap_table`, `own_skip`).
+
 ## 1. Công thức ưu tiên
 `Ưu tiên ≈ Tác động nghiệp vụ × Giảm rủi ro × Giá trị phụ thuộc / Chi phí`. Đây là heuristic, không phải phép tính chính xác.
 

@@ -30,10 +30,20 @@ Kiem tra con thieu gi: `python main.py --check`. Thieu anh nao thi bot bo qua th
 | btn_recommended.png | Nut "Doi hinh de xuat" |
 | btn_march.png | Chu "Xuat chinh" (khong cat dong ho) |
 | msg_type_locked.png | Chu "tam thoi khong the thu thap" (chua du cap, vd Hop kim can cap 9) -> bot bo ca loai mo |
-| msg_not_found / mine_occupied / msg_march_full / msg_no_troops.png | (tuy chon) chua gap |
+| march_header.png | (P3, co) Chu "Hanh quan" + mui ten goc trai tren ban do the gioi (x 8-110, y 138-158). Vang mat = 0 doi dang di |
+| dlg_contested.png | (P3, co) Than hop thoai "Chu y! Co Chi huy truong khac dang hanh quan den diem tai nguyen nay..." sau Xuat chinh -> bot bam Huy, KHONG bao gio Tiep tuc |
+| msg_not_found.png | (P3, CAN CHUP) Thong bao noi giua man (y ~270-380) sau "Tim kiem" khi khong co mo loai/cap do. Cat dong chu, khong cat ban do |
+| mine_occupied.png | (P3, CAN CHUP) Cham mo dang co doi nguoi khac: bang/menu mo hien nut "Tan cong"/"Trinh sat" thay vi xe tai "Thu thap". Cat ten nguoi chiem/nhan dang chiem hoac nut Tan cong (KHONG bam) |
+| msg_march_full.png | (P3, CAN CHUP) Bam xe tai "Thu thap" khi "Hanh quan x/y" da day -> thong bao noi het quan doan. Cat dong chu |
+| msg_no_troops.png | (P3, CAN CHUP) Bam xe tai "Thu thap" / Xuat chinh khi khong con linh -> thong bao khong du binh. Cat dong chu |
+
+Thieu 4 anh CAN CHUP: bot log `thieu anh mau gather/<ten>` (1 lan/gio) va doc thong bao bang OCR (`gather_rules.classify_msg`), khong bam mo.
 
 Sau "Tim kiem" ban do can giua mo vao `gather.node_xy` (270,452). Menu sai thi bot dong bang phim Back
-(khong cham man hinh - ben trai co icon su kien). "Hanh quan x/y" doc tu `march_counter_roi` bang digits/.
+(khong cham man hinh - ben trai co icon su kien). "Hanh quan x/y" doc tu `march_counter_roi`: P3 bang `mdigits/` truoc, roi Tesseract, roi `digits/`.
+
+## mdigits/ (P3 - doc "Hanh quan x/y", bot/march_count.py)
+`1.png` ... `5.png`, `slash.png` - cat tu anh that o khung "Hanh quan" ban do the gioi, khop xam. Do tren 547 anh: dung 544, sai 0, 3 mo -> khong ro.
 
 ## digits/ (du phong khi khong co Tesseract)
 `0.png` ... `9.png`, `slash.png` - cat tung chu so trong o "Hanh quan x/y".
