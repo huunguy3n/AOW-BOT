@@ -3,7 +3,7 @@ title: Nha chinh bi ket vi nut Nhay dan toi cong trinh chua xay; luu ke hoach nh
 author: Trần
 date: 2026-11-22
 branch: roadmap-impl
-cost: { minutes: 79, tokens: 279443 }
+cost: { minutes: 93, tokens: 373404 }
 id: l-c3884d40
 scope: repo
 status: active
@@ -27,12 +27,14 @@ touches:
 - Sau luot ORDER, truoc observe, buoc lam duoc viec (ret > 0) mo khoa cac buoc da chay truoc no (tai nguyen, xay moi) nen chay lai 1 lan; upgrade lap toi 6 lan vi nang cap tuc thi mien phi dan chuoi dieu kien nha chinh. Toi da 8 lan chay lai, 30 phut moi lan ghe.
 - ensure_city bo qua khi lan kiem truoc xac nhan dung thanh pho, khong co tap/swipe/Back o giua, trong 3 giay. Du lieu: 8155/15806 ban ghi nav la 'done' lien sau 'done'.
 - Do thi man hinh da co san (screens.py, ctx.goto); khong viet lai. Tai lieu chi co G0-G3, khong co G4.
+Chấm đỏ vẫn hiện sau khi bước riêng của icon đã chạy và trả 0 (game đếm thông báo khác), nên mở lại chỉ tốn 20-40 giây mỗi icon mà không nhận được gì. Cuối lượt, nếu bước riêng đã chạy trong cùng lần ghé và không làm được việc thì bỏ qua chấm đó và không tính là còn sót.
 
 ## Tried and ruled out
 - Lui lich co dinh sau "none": bo, vi cong trinh dieu kien vua duoc xay xong thi nha chinh van phai doi.
 - Chan ca buoc mainquest de nhuong tho: bo, vi buoc do con danh chien dich.
 - Lap lai moi buoc khong gioi han: bo, vi nang cap bi chan thi tra 0 va vong dung dung luc tho ban.
 - Ghi nho 'o thanh pho' theo _nav_last: bo, vi goto tra ve truoc khi cap nhat no; chi nho khi goto tra True.
+Ước lượng tiết kiệm của việc bỏ kiểm tra thành phố thừa là 4-5% từ dữ liệu 3 ngày, nhưng đo thật trên một lượt toàn bước chấm đỏ cho 12%. Đừng suy ra mức tiết kiệm cho cả lượt từ con số đó.
 
 ## Watch out
 - Tren #4 (nha chinh cap 4), "Nhay" tra "none" roi buoc xay moi xay duoc 6 cong trinh ngay sau do. Day la suy luan tu log, chua xac nhan bang anh man Nhay.
@@ -45,3 +47,6 @@ In the code: src/aowbot/domain/hqplan.py, bot/hqplan.py, bot/modules/upgrade.py,
 - Chua do lai ty le tiet kiem sau G3 tren luot day du.
 
 In the code: src/aowbot/domain/drain.py, bot/runner.py (vong while + drain), bot/ctx.py (ensure_city, _ensure_city), bot/device.py (act_seq), config.yaml (drain:, nav.skip_recheck_s), tests/unit/test_drain.py, tests/legacy/test_ensure_city_skip.py.
+Chấm đỏ loại generic vẫn mở như cũ, mỗi cái 15-25 giây; đó là điểm nghẽn còn lại của reddots. Test test_research_waits_for_hq_and_scheduler_skips fail khi chạy cả bộ, pass khi chạy riêng, có từ trước.
+
+In the code: bot/modules/reddots.py (already_idle, KIND_STEP), bot/runner.py (ctx.visit_done), config.yaml reddots.skip_idle_steps.
