@@ -180,21 +180,25 @@ def intel_metrics(t0, t1, insts=None, log_dir="logs"):
     """P5-1: {kq: n, '_unknown': n, '_total': n, '_pct': %} tu log 'Tinh bao: <kq>' trong [t0, t1). --inst: chi dong
     co the [#N] (dong [MainThread] khong biet may -> bo khi loc may). Khong co log -> {}."""
     from bot import intel_rules as IR
-    lines = []
+    c = {}
     for f in sorted(glob.glob(os.path.join(log_dir, "bot-*.log"))):
+        m = re.search(r"bot-(\d{4})(\d\d)(\d\d)\.log$", f)
+        day = f"{m.group(1)}-{m.group(2)}-{m.group(3)}" if m else None
+        lines = []
         try:
             with open(f, encoding="utf-8", errors="replace") as fh:
                 for ln in fh:
                     if "Tinh bao: " not in ln:
                         continue
                     if insts:
-                        m = LOG_INST_RX.search(ln)
-                        if not m or int(m.group(1)) not in insts:
+                        mi = LOG_INST_RX.search(ln)
+                        if not mi or int(mi.group(1)) not in insts:
                             continue
                     lines.append(ln)
         except OSError:
             continue
-    c = IR.parse_log(lines, t0, t1)
+        for k, n in IR.parse_log(lines, t0, t1, day).items():
+            c[k] = c.get(k, 0) + n
     if not c:
         return {}
     unk, tot, pct = IR.unknown_rate(c)

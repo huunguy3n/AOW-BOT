@@ -41,19 +41,21 @@ def is_unknown(r):
     return isinstance(r, str) and r.startswith("unknown")
 
 
-LOG_RX = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \w+ \[[^\]]*\] Tinh bao: ([a-z_]+)\s*$")
+# 'YYYY-mm-dd HH:MM:SS INFO [#1] Tinh bao: kq' hoac dinh dang cu 'HH:MM:SS INFO Tinh bao: kq' (ngay lay tu ten file)
+LOG_RX = re.compile(r"^(?:(\d{4}-\d\d-\d\d) )?(\d\d:\d\d:\d\d) \w+ (?:\[[^\]]*\] )?Tinh bao: ([a-z_]+)\s*$")
 
 
-def parse_log(lines, t0=0, t1=1e12):
-    """Dong log 'Tinh bao: <ket qua>' trong [t0, t1) -> {ket qua: so lan}. Bo dong 'Tinh bao: N nhiem vu'."""
+def parse_log(lines, t0=0, t1=1e12, day=None):
+    """Dong log 'Tinh bao: <ket qua>' trong [t0, t1) -> {ket qua: so lan}. Bo dong 'Tinh bao: N nhiem vu'.
+    day 'YYYY-mm-dd': ngay cho dong dinh dang cu khong co ngay (khong co -> bo dong do)."""
     out = {}
     for ln in lines:
         m = LOG_RX.match(ln.rstrip("\n"))
-        if not m:
+        if not m or not (m.group(1) or day):
             continue
-        at = time.mktime(time.strptime(m.group(1), "%Y-%m-%d %H:%M:%S"))
+        at = time.mktime(time.strptime(f"{m.group(1) or day} {m.group(2)}", "%Y-%m-%d %H:%M:%S"))
         if t0 <= at < t1:
-            out[m.group(2)] = out.get(m.group(2), 0) + 1
+            out[m.group(3)] = out.get(m.group(3), 0) + 1
     return out
 
 

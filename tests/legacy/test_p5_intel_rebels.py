@@ -207,3 +207,9 @@ def test_replay_intel_panel_unknown_shots_are_reward():
     v = Vision("templates")
     kinds = [IR.panel_kind(cv2.imread(f), v) for f in SHOTS]
     assert kinds.count("reward") == len(SHOTS), kinds
+
+
+def test_parse_log_old_format_uses_file_day():
+    lines = ["21:23:56 INFO Tinh bao: unknown", "21:24:00 INFO Tinh bao: picked"]
+    assert IR.parse_log(lines) == {}
+    assert IR.parse_log(lines, day="2026-11-21") == {"unknown": 1, "picked": 1}
