@@ -116,7 +116,9 @@ train:
   card_x: [100, 205, 308, 410]   # toa do x the cap I..IV tren man 540x960
   card_y: 695
   max_queues: 4         # so nha linh toi da moi luot
-  use_max_button: false # bam nut 'toi da' (can anh mau train/btn_max)
+  use_max_button: true  # P2: bam nut 'toi da' (anh mau train/btn_max); thieu anh -> log "thieu anh mau", giu so mac dinh
+  nores_backoff_min: 30 # P2: bam 'Huan luyen' ma khong bat dau (thieu tai nguyen) -> khong mo lai 30 phut, lap lai gap doi
+  nores_cap_h: 4        # ... toi da 4 gio
   use_help: true
   use_free_speedup: true
 

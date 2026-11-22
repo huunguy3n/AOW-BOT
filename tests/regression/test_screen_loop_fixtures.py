@@ -1,12 +1,13 @@
 """S1/S2 tren anh that (logs/inv A-INV-1, bang nhiem vu #1) - tests/fixtures/screen_loop, chi co tren may local."""
 import os
+import types
 
 import cv2
 import pytest
 
 from aowbot.domain.blockers import BlockReason, hamming
 from bot import buttons, game_msg, ocr, queues
-from bot.modules import heal, notify, quests, upgrade
+from bot.modules import heal, notify, quests, train, upgrade
 from bot.vision import Vision
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -72,6 +73,14 @@ def test_queue_counters(name, want):
     ocr.init(TESS)
     v = Vision(os.path.join(ROOT, "templates"), 0.82)
     assert queues.read(v, img(name)) == want
+
+
+@pytest.mark.parametrize("name, full", [("queues2_city_main_i1.png", True), ("queues2_train11_i3.png", True),
+                                        ("queues2_snap_city.png", False), ("queues_0-2_0-1_0-3.png", False)])
+def test_train_queue_full_gate(name, full):
+    """P2: buoc train bo qua ngay khi icon cot trai bao moi nha linh dang luyen (3/3, 1/1) - khong mo bang."""
+    ctx = types.SimpleNamespace(v=Vision(os.path.join(ROOT, "templates"), 0.82), shot=lambda: img(name))
+    assert train.queue_full(ctx) is full
 
 
 @pytest.mark.ocr
