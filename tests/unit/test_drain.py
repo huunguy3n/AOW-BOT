@@ -1,4 +1,5 @@
 """aowbot.domain.drain (G2): buoc lam duoc viec mo khoa buoc da chay truoc no."""
+from aowbot.domain import drain
 from aowbot.domain.drain import followups, worked
 
 ORDER = ["notify", "rewards", "train", "upgrade", "construct", "research", "daily"]
@@ -47,3 +48,15 @@ def test_upgrade_repeats_while_it_keeps_working_up_to_limit():
     assert followups(ORDER, done, EN, {"upgrade": 6}) == []
     done["upgrade"] = 0
     assert followups(ORDER, done, EN, {"upgrade": 2}) == []
+
+
+def test_idle_slots_and_prioritize():
+    q = {"build": (0, 2), "research": (1, 1), "train": (1, 3)}
+    assert drain.idle_slots(q, max_builders=1) == ["build", "train"]
+    assert drain.idle_slots({"build": (1, 2), "research": None}, max_builders=1) == []
+    order = ["warday", "tutorial", "notify", "train", "upgrade", "construct", "quests", "research"]
+    got = drain.prioritize(order, ["build", "train"], {n: True for n in order})
+    assert got[:2] == ["warday", "tutorial"]
+    assert got[2:6] == ["upgrade", "construct", "quests", "train"]
+    assert sorted(got) == sorted(order)
+    assert drain.prioritize(order, []) == order

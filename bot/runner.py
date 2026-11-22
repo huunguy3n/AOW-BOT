@@ -9,7 +9,7 @@ from bot.device import LDConsole, Device
 from bot.ctx import Ctx, Stuck
 from bot import ocr
 from bot.memory import Memory
-from bot import perf, scheduler
+from bot import perf, queues, scheduler
 from aowbot.domain import drain
 from bot.modules import tutorial, mainquest, construct, city, rewards, alliance, quests, campaign, notify, research, train, rebels, gather, daily, observe, defense, intel, reddots, play, upgrade, heal, warday
 
@@ -501,6 +501,18 @@ class Runner:
             blind = 0  # so buoc lien tiep khong chup duoc man hinh (may treo du adb van 'device')
             lost = 0   # so buoc lien tiep goto() khong ve duoc thanh pho/ban do (vd canh tan thu toi den, #4 2026-11-19)
             queue = list(ORDER) + [("observe", observe)]
+            if (cfg.get("priority") or {}).get("idle_first", True) and not forced:
+                try:   # o rong (tho 0/2, nghien cuu 0/1, huan luyen x/3) -> lam truoc (chu du an 2026-11-22)
+                    ctx.ensure_city()
+                    qs0 = queues.read(self.vision, ctx.shot())
+                    idle0 = drain.idle_slots(qs0, cfg.get("build", {}).get("max_builders", 1))
+                    if idle0:
+                        names = drain.prioritize([n for n, _ in ORDER], idle0, enabled)
+                        by0 = dict(ORDER)
+                        queue = [(n, by0[n]) for n in names] + [("observe", observe)]
+                        log.info("Uu tien o rong %s: chay truoc %s", ",".join(idle0), ",".join(names[:6]))
+                except Exception as e:   # khong de doc hang cho lam hong luot ghe
+                    log.warning("Uu tien o rong: loi %s", e)
             qi, done, rerun = 0, {}, collections.Counter()
             ctx.visit_done = done   # reddots: biet buoc nao vua chay xong ma khong lam duoc gi
             dcfg = cfg.get("drain") or {}

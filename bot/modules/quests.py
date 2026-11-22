@@ -102,14 +102,45 @@ def remember_block(ctx, blocks, key, now, first=None):
     return reason
 
 
+def claim_dot_tabs(ctx, max_tabs=3):
+    """Bang nhiem vu co 3 tab (Chuong / Chinh / Hang ngay): tab nao co CHAM DO thi bam vao va nhan o tab do
+    (chu du an 2026-11-22). Cham do o goc tren-phai tab; chi nhan nut 'Nhan' / 'Nhan toan bo' (claim_buttons)."""
+    from bot.badges import red_dots
+    if not open_tab(ctx, None):
+        return 0
+    n, seen = 0, set()
+    for _ in range(max_tabs):
+        dots = [d for d in red_dots(ctx.shot(), TAB_STRIP) if d[0] // 150 not in seen]
+        if not dots:
+            break
+        x, y = dots[0]
+        seen.add(x // 150)
+        ctx.tap(x - 60, y + 22, wait=1.5)
+        got = ctx.claim_buttons(max_taps=8) + ctx.claim_loop(["tutorial/btn_claim_all", "tutorial/btn_claim"], max_taps=8, th=0.85)
+        n += got
+        log.info("Nhiem vu: tab co cham do @%d,%d -> nhan %d", x, y, got)
+    ctx.back_out()
+    ctx.ensure_city()
+    return n
+
+
+TAB_STRIP = (0, 80, 540, 60)    # hang 3 tab bang nhiem vu (y ~112); cham do o goc tren-phai tab
+
+
 def run(ctx):
     q = ctx.cfg.get("quests", {})
+    claimed = 0
+    try:
+        claimed = claim_dot_tabs(ctx)
+    except Exception as e:     # loi o day khong duoc chan buoc xay theo nhiem vu
+        log.warning("Nhiem vu: loi khi nhan o tab co cham do: %s", e)
+        ctx.ensure_city()
     if not ctx.cfg.get("build", {}).get("follow_quests", True):
         log.info("Tat xay theo nhiem vu - bo qua")
-        return 0
+        return claimed
     from bot import hqplan
     if hqplan.yield_builder(ctx, "quests"):   # G1: tho ranh dang danh cho nha chinh
-        return 0
+        return claimed
     tabs = []
     if q.get("story", True):
         tabs.append(None)                # tab Chuong mo san khi vao bang
@@ -127,7 +158,7 @@ def run(ctx):
             b = build.builders(ctx)
             if b and b[0] >= b[1] and not q.get("follow", True):
                 log.info("Tho xay dang ban %d/%d - dung xay theo nhiem vu", *b)
-                return started
+                return started + claimed
             if not open_tab(ctx, tab):
                 break
             # nhan thuong dong da xong + thuong chuong ("Nhan toan bo") - ca tab Chuong va Chinh (anh chu du an
@@ -174,6 +205,6 @@ def run(ctx):
                 build.quick_wait(ctx)    # xay nhanh -> cho xong, dong sau xay tiep (chu du an 2026-11-22)
             if res == "no_builder" and not q.get("follow", True):
                 ctx.ensure_city()
-                return started      # het tho: dong khac (tuong, phe tich...) van lam duoc neu bat follow
+                return started + claimed     # het tho: dong khac (tuong, phe tich...) van lam duoc neu bat follow
     ctx.ensure_city()
-    return started
+    return started + claimed

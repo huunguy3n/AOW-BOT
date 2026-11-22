@@ -51,3 +51,34 @@ def followups(order: list[str], done: dict[str, object], enabled: dict[str, bool
             if ok_pos and enabled.get(t) and already.get(t, 0) < (REPEAT_LIMIT.get(t, 1) if t == src else 1):
                 want.add(t)
     return sorted(want, key=pos.__getitem__)[:max(0, max_extra - sum(already.values()))]
+
+
+# ---- uu tien o rong (chu du an 2026-11-22): tho 0/2 xay truoc, nghien cuu 0/1, huan luyen x/3
+HEAD = ("warday", "tutorial")                      # buoc dau luot: luon giu dau
+SLOT_STEPS = (("build", ("upgrade", "construct", "quests")), ("research", ("research",)), ("train", ("train",)))
+
+
+def idle_slots(queues: dict, max_builders: int = 1) -> list[str]:
+    """Hang cho nao co o RANH: {'build'|'research'|'train': (dang chay, tong) | None}. Thu tu uu tien: xay, nghien cuu,
+    huan luyen. Khong doc duoc so (None) thi khong coi la ranh."""
+    out = []
+    for kind, _ in SLOT_STEPS:
+        q = queues.get(kind)
+        if not q:
+            continue
+        busy, total = q
+        cap = min(max_builders, total) if kind == "build" else total
+        if busy < cap:
+            out.append(kind)
+    return out
+
+
+def prioritize(order: list[str], idle: list[str], enabled: dict | None = None) -> list[str]:
+    """Dua buoc cua cac hang cho dang ranh len ngay sau buoc dau luot (warday, tutorial); con lai giu nguyen thu tu."""
+    head = [n for n in order if n in HEAD]
+    front = []
+    for kind, steps in SLOT_STEPS:
+        if kind in idle:
+            front += [n for n in steps if n in order and (enabled is None or enabled.get(n)) and n not in front]
+    rest = [n for n in order if n not in head and n not in front]
+    return head + front + rest
