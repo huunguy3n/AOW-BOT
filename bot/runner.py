@@ -9,7 +9,7 @@ from bot.device import LDConsole, Device
 from bot.ctx import Ctx, Stuck
 from bot import ocr
 from bot.memory import Memory
-from bot import perf, queues, scheduler, stepgate
+from bot import perf, quest_rules, queues, scheduler, stepgate
 from aowbot.domain import drain, rollout
 from aowbot.domain import warday as W
 from bot.modules import tutorial, mainquest, construct, city, rewards, alliance, quests, campaign, notify, research, train, rebels, gather, daily, observe, defense, intel, reddots, play, upgrade, heal, warday
@@ -542,6 +542,11 @@ class Runner:
             off = [n for n, _ in ORDER if not enabled.get(n) and n != "tutorial"]
             if off and not forced:   # P7-5: buoc tat trong cai dat may -> ghi ro (live #1: quests tat, bo qua im lang)
                 log.info("Buoc dang tat (cai dat may / config): %s", ",".join(off))
+            ctx.quests_claim_only = False
+            if quest_rules.quests_mode(bool(enabled.get("quests")), cfg.get("quests"), forced or explicit) == "claim":
+                enabled["quests"] = True        # P7-5: tat 'quests' = khong xay theo "Den", van nhan thuong nhiem vu
+                ctx.quests_claim_only = True
+                log.info("Buoc quests tat -> chi nhan thuong nhiem vu (quests.claim_when_off)")
             qi, done, rerun = 0, {}, collections.Counter()
             drained = False
             ctx.visit_done = done   # reddots: biet buoc nao vua chay xong ma khong lam duoc gi

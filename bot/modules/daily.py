@@ -11,7 +11,7 @@ Anh mau templates/daily/:
   btn_chest_claim.png nut "Nhan" trong bang chi tiet hien ra sau khi cham ruong
   chapter_claim.png (tuy chon) nut nhan thuong chuong o dau bang
 """
-import time, logging
+import logging
 import cv2
 import numpy as np
 
@@ -66,16 +66,10 @@ def claim_tab(ctx, claims, max_taps, by_color=False):
 def _claim_tab(ctx, claims, max_taps, by_color=False):
     if not claims:
         return claim_chests(ctx, by_color)
+    # P7-5 (chu du an 2026-11-24): KHONG cuon bang nhiem vu - nhiem vu hoan thanh luon nam tren cung (cuon xuong
+    # chi lam lech danh sach, ruong diem nang dong bi day khoi man)
     n = ctx.claim_loop([P + "chapter_claim"] + claims if ctx.v.has(P + "chapter_claim") else claims,
                        max_taps, th=0.9)
-    # nut Nhan co the nam duoi danh sach -> cuon xuong va thu lai
-    for _ in range(3):
-        ctx.dev.swipe(ctx.W // 2, int(ctx.H * 0.75), ctx.W // 2, int(ctx.H * 0.35), 500)
-        time.sleep(0.8)
-        got = ctx.claim_loop(claims, max_taps, th=0.9)
-        if not got:
-            break
-        n += got
     return n + claim_chests(ctx, by_color)
 
 

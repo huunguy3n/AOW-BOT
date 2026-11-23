@@ -192,7 +192,8 @@ quests: {daily: true, main: true, alliance: true, story: true, max_go_per_run: 6
          follow: true,      # dong Chuong khong phai xay (tuong, don phe tich...) -> lam theo huong dan game (tutorial.decide)
          follow_steps: 40,  # so buoc toi da moi dong
          read_rows: true,   # P4: OCR ten dong, dong la viec cua buoc khac (huan luyen, phan quan, dau truong...) -> khong bam Den
-         none_retry_h: 2}   # S2: dong "Den" khong dan toi man nang cap, game khong bao ly do -> thu lai sau N gio
+         none_retry_h: 2,   # S2: dong "Den" khong dan toi man nang cap, game khong bao ly do -> thu lai sau N gio
+         claim_when_off: true}  # P7-5: tat buoc quests tren may (vd #1) -> van CHI nhan thuong o tab co cham do, khong bam Den
                             # (co thong bao: lo dat chua mo 12 h, thieu cong trinh dieu kien 6 h - aowbot/domain/blockers.py)
 notify:
   welfare: true

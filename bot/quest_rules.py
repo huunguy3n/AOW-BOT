@@ -170,3 +170,14 @@ def should_retry(last: dict | None, text: str, now: float, base_h: float, cap_h:
     if left > 0:
         return False, f"cung nhiem vu, that bai {last.get('fails')} lan - thu lai sau {left / 60:.0f} phut"
     return True, "het thoi gian cho"
+
+
+def quests_mode(enabled: bool, qcfg: dict | None, forced: bool = False) -> str | None:
+    """P7-5 (live #1 2026-11-24: buoc quests KHONG chay lan nao vi cai dat may #1 `modules.quests: false`, runner bo qua
+    im lang). -> 'full' (bat: nhan + "Den" xay) | 'claim' (tat nhung quests.claim_when_off: CHI nhan thuong o tab co cham
+    do, khong bam "Den") | None (khong chay). Chay tay theo --modules / Chay ngay (forced) giu nguyen cai dat."""
+    if enabled:
+        return "full"
+    if forced or not (qcfg or {}).get("claim_when_off", True):
+        return None
+    return "claim"

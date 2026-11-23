@@ -161,6 +161,9 @@ def run(ctx):
     except Exception as e:     # loi o day khong duoc chan buoc xay theo nhiem vu
         log.warning("Nhiem vu: loi khi nhan o tab co cham do: %s", e)
         ctx.ensure_city()
+    if getattr(ctx, "quests_claim_only", False):   # P7-5: buoc tat tren may -> chi nhan, khong bam "Den"
+        log.info("Nhiem vu: che do chi nhan -> nhan %d", claimed)
+        return claimed
     if not ctx.cfg.get("build", {}).get("follow_quests", True):
         log.info("Tat xay theo nhiem vu - bo qua")
         return claimed
