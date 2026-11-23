@@ -66,6 +66,61 @@ def loot_trucks(img):
     return out
 
 
+def is_burning(img, x, y, half=(38, 48)):
+    """P7-6: xe DANG CHAY / da bi nguoi khac cuop (dau X do + lua, anh chu du an plunder_0) -> KHONG BAO GIO danh.
+    Dau X = net do manh, mong: thanh phan do lon (>= 25x25) nhung lap day thap (< 0,35); than xe cam (SSR) lap day cao."""
+    hw, hh = half
+    x0, y0 = max(0, x - hw), max(0, y - hh)
+    box = img[y0:y + hh, x0:x + hw]
+    if box.size == 0:
+        return False
+    hsv = cv2.cvtColor(box, cv2.COLOR_BGR2HSV)
+    H, S, V = hsv[..., 0], hsv[..., 1], hsv[..., 2]
+    m = (((H <= 8) | (H >= 172)) & (S >= 150) & (V >= 140)).astype(np.uint8)
+    n, _, st, _ = cv2.connectedComponentsWithStats(m)
+    return any(st[i][2] >= 25 and st[i][3] >= 25 and st[i][4] < 0.35 * st[i][2] * st[i][3] for i in range(1, n))
+
+
+CRYSTAL_ROI = (40, 650, 200, 80)   # hang vat pham van chuyen tren popup xe (duoi dong luc chien y~634)
+
+
+def crystal_item(img, roi=CRYSTAL_ROI, min_px=120):
+    """P7-6: xe chu du an cho cuop = xe CHO VAT PHAM PHA LE XANH (anh plunder_5: o vat pham dau). Pha le xanh nhat:
+    H 85-110, S 60-210, V >= 170 (nen popup tim H~130, hop qua vang/xam, tang toc vang -> khong khop)."""
+    x, y, w, h = roi
+    hsv = cv2.cvtColor(img[y:y + h, x:x + w], cv2.COLOR_BGR2HSV)
+    H, S, V = hsv[..., 0], hsv[..., 1], hsv[..., 2]
+    return int(((H >= 85) & (H <= 110) & (S >= 60) & (S <= 210) & (V >= 170)).sum()) >= min_px
+
+
+def has_crystal(ctx, img):
+    """Anh mau play/item_crystal (neu da cat) truoc, khong co thi theo mau."""
+    from bot import tplneed
+    if tplneed.has(ctx.v, "play/item_crystal", "vat pham pha le xanh tren popup xe"):
+        return bool(ctx.v.find(img, "play/item_crystal", th=0.8, roi=CRYSTAL_ROI))
+    return crystal_item(img)
+
+
+def refresh_trucks(ctx, lc):
+    """P7-6: nut lam moi (mui ten tron, play/btn_refresh) de tim xe SR/SSR. Toi da loot.refresh_max lan / luot.
+    Sau khi bam: bang khac hien (hop thoai ton phi / xac nhan) -> dong, KHONG xac nhan, dung lam moi."""
+    from bot import tplneed
+    cap = lc.get("refresh_max", 3)
+    if not tplneed.has(ctx.v, "play/btn_refresh", "nut lam moi xe khai thac") or getattr(ctx, "_loot_refresh", 0) >= cap:
+        return False
+    if not ctx.tap_tpl("play/btn_refresh", wait=2.0, th=0.85):
+        return False
+    ctx._loot_refresh = getattr(ctx, "_loot_refresh", 0) + 1
+    if not ctx.find("play/tab_others", th=0.8):
+        log.info("Cuop boc: bam lam moi hien bang khac (co the ton phi) -> dong, khong lam moi nua")
+        ctx.save_debug("loot_refresh_popup")
+        ctx.tap_first(ctx.POPUP_CLOSERS, wait=1.0)
+        ctx._loot_refresh = cap
+        return False
+    log.info("Cuop boc: lam moi danh sach xe (%d/%d)", ctx._loot_refresh, cap)
+    return True
+
+
 def popup_rarity(img):
     """Chu SSR (vang H~21) / SR (tim H~135) o goc trai tren popup xe."""
     hsv = cv2.cvtColor(img[520:560, 65:165], cv2.COLOR_BGR2HSV).reshape(-1, 3)
@@ -134,6 +189,11 @@ def _loot_result(ctx, timeout=120):
             ctx.save_debug("loot_lose")
             ctx.tap(270, 703, wait=1.5)                 # nut "Dong" cua man That bai
             return "lose"
+        if ctx.v.has("play/res_loot_win") and ctx.v.find(img, "play/res_loot_win", th=0.8):
+            ctx.save_debug("loot_win")                  # P7-6: man "Thang loi" -> "Dong" (anh plunder_4)
+            if not ctx.tap_tpl("play/btn_result_close", wait=2.0, th=0.8, fresh=False):
+                ctx.tap(270, 703, wait=2.0)
+            return "win"
         if ctx.v.find(img, "play/res_arena_win", th=0.8):   # man thang giong dau truong (doan, chua thay that)
             ctx.save_debug("loot_win")
             if not ctx.tap_tpl("play/btn_result_close", wait=2.0, th=0.8, fresh=False):
@@ -151,7 +211,10 @@ def _loot_result(ctx, timeout=120):
 
 
 def loot(ctx):
-    """Dang o man Mo khoang san. -> so lan cuop da danh (0/1)."""
+    """Dang o man Mo khoang san. -> so lan cuop da danh (0/1).
+    P7-6 (chu du an 2026-11-24): doc "So lan cuop boc con lai X/4" (0 -> bo); KHONG BAO GIO danh xe dang chay; chi xe
+    SR/SSR cho vat pham PHA LE XANH (loot.crystal_only); chua co -> nut lam moi (toi da loot.refresh_max).
+    Luong: popup xe "Toi cuop boc" -> ban do "Cuop boc" -> doi hinh "Chien dau" -> "Thang loi"/"That bai" -> "Dong"."""
     lc = ctx.cfg.get("loot", {})
     if not lc.get("enabled", True):
         return 0
@@ -174,27 +237,40 @@ def loot(ctx):
     lm = _loot_mem(ctx)
     legion = lm.get("legion")
     rar = tuple(lc.get("rarity", ["SSR", "SR"]))
+    crystal_only = lc.get("crystal_only", True)
     cands = []                                          # doc tung xe cam/tim -> chon doi thu YEU NHAT dat nguong
-    for col, x, y in loot_trucks(img)[:8]:
-        ctx.tap(x, y, wait=1.2)
-        p = ctx.shot()
-        if not ctx.v.find(p, "play/btn_go_loot", th=0.8):
-            ctx.tap(270, 150, wait=0.8)
-            continue
-        r = popup_rarity(p)
-        pw = _digits(p, (155, 634, 120, 24))
-        name = (ocr.text(p, (133, 585, 170, 26)) or "").strip()
-        ok, why = loot_ok(lm, pw, name, legion, lc.get("margin", 0.97))
-        if r not in rar:
-            ok, why = False, f"do hiem {r}"
-        log.info("Cuop boc: xe %s %s '%s' luc chien %s -> %s", col, r, name, pw, "CHON DUOC" if ok else why)
-        if ok:
-            cands.append((pw, x, y, name))
-        ctx.tap(270, 150, wait=0.8)                     # dong popup (cham ra ngoai)
+    for _round in range(1 + lc.get("refresh_max", 3)):
+        for col, x, y in loot_trucks(img)[:8]:
+            if is_burning(img, x, y):                   # P7-6: xe dang chay (da bi cuop) -> KHONG BAO GIO danh
+                log.info("Cuop boc: xe %s @%d,%d dang chay (da bi cuop) - bo", col, x, y)
+                continue
+            ctx.tap(x, y, wait=1.2)
+            p = ctx.shot()
+            if not ctx.v.find(p, "play/btn_go_loot", th=0.8):
+                ctx.tap(270, 150, wait=0.8)
+                continue
+            r = popup_rarity(p)
+            pw = _digits(p, (155, 634, 120, 24))
+            name = (ocr.text(p, (133, 585, 170, 26)) or "").strip()
+            ok, why = loot_ok(lm, pw, name, legion, lc.get("margin", 0.97))
+            if r not in rar:
+                ok, why = False, f"do hiem {r}"
+            elif crystal_only and not has_crystal(ctx, p):
+                ok, why = False, "khong cho pha le xanh"
+            log.info("Cuop boc: xe %s %s '%s' luc chien %s -> %s", col, r, name, pw, "CHON DUOC" if ok else why)
+            if ok:
+                cands.append((pw, x, y, name))
+            ctx.tap(270, 150, wait=0.8)                 # dong popup (cham ra ngoai)
+        if cands or not refresh_trucks(ctx, lc):        # P7-6: chua co xe SR/SSR pha le -> lam moi
+            break
+        img = ctx.shot()
     if not cands:
-        log.info("Cuop boc: khong co xe cam/tim nao trong nguong luc chien")
+        log.info("Cuop boc: khong co xe SR/SSR cho pha le nao trong nguong luc chien")
         return 0
     pw, x, y, name = min(cands)
+    if is_burning(ctx.shot(), x, y):                    # xe vua bi nguoi khac cuop trong luc doc
+        log.info("Cuop boc: xe '%s' vua bi cuop (dang chay) - bo", name)
+        return 0
     ctx.tap(x, y, wait=1.2)
     if not ctx.tap_tpl("play/btn_go_loot", wait=3.0, th=0.8):
         return 0
