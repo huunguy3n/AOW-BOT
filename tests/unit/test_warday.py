@@ -33,23 +33,23 @@ def test_war_saturday():
 
 
 def test_shield_plan_timeline():
+    """Chu du an 2026-11-23: Hiep uoc truoc gio G, roi khien tuc thi lien tuc toi het ngay (+ tail)."""
     days = [SAT]
     fri22 = SAT - 2 * 3600
-    assert W.shield_plan(fri22 - 3600, days, None).hours is None
+    assert W.shield_plan(fri22 - 3600, days, None).action is None
     assert W.shield_plan(fri22 - 3600, days, None).at == fri22
     p = W.shield_plan(fri22 + 60, days, None)
-    assert p.hours == 8
-    # khien 8h dang chay -> hen luc sap het
-    p = W.shield_plan(fri22 + 3600, days, fri22 + 8 * 3600)
-    assert p.hours is None and p.at == fri22 + 8 * 3600 - 20 * 60
-    # sap het 8h (sang thu 7) -> 12h
-    p = W.shield_plan(fri22 + 8 * 3600 - 600, days, fri22 + 8 * 3600)
-    assert p.hours == 12
-    # sap het 12h, chua qua ngay -> 12h tiep
-    p = W.shield_plan(SAT + 18 * 3600 - 600, days, SAT + 18 * 3600)
-    assert p.hours == 12
-    # qua ngay chien tranh -> khong bat nua
-    assert W.shield_plan(SAT + 86400 + 60, days, None).hours is None
+    assert p.action == "peace"
+    # Hiep uoc dang chuan bi (xong truoc gio G) -> coi la da che toi G + 7h
+    p = W.shield_plan(fri22 + 600, days, None, peace_at=fri22 + 60)
+    assert p.action is None and p.at == fri22 + 60 + 9 * 3600 - 20 * 60
+    # Hiep uoc sap het -> khien tuc thi, phai che toi het cua so
+    p = W.shield_plan(SAT + 7 * 3600 - 600, days, SAT + 7 * 3600, peace_at=fri22)
+    assert p.action == "shield" and p.need_s == SAT + 86400 + 30 * 60 - p.at
+    # sap het khien 12h, chua qua ngay -> khien tiep
+    assert W.shield_plan(SAT + 18 * 3600 - 600, days, SAT + 18 * 3600).action == "shield"
+    # qua cua so (het ngay + 30 phut) -> khong bat nua
+    assert W.shield_plan(SAT + 86400 + 31 * 60, days, None).action is None
 
 
 def test_blocks_step():
@@ -67,6 +67,7 @@ def test_scheduler_blocks_gather(monkeypatch):
             return {"war_notice_seen": ts(2026, 11, 25, 3)}.get(key, default)
     cfg = {"warday": {}}
     assert scheduler.war_blocks(Mem(), 0, "gather", cfg, SAT + 3600)
-    assert not scheduler.war_blocks(Mem(), 0, "gather", cfg, SAT + 86400 + 1)
+    assert scheduler.war_blocks(Mem(), 0, "gather", cfg, SAT + 86400 + 60)          # tail 30 phut: van cam
+    assert not scheduler.war_blocks(Mem(), 0, "gather", cfg, SAT + 86400 + 31 * 60)
     p = scheduler.plan_step(Mem(), 0, "gather", scheduler.sched_cfg(cfg), SAT + 3600, {}, cfg)
     assert not p.ready and "chien tranh" in p.why

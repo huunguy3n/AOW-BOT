@@ -10,11 +10,15 @@ import re, time, logging
 import cv2
 from bot import ocr, tplneed
 from aowbot.domain import policy
+from aowbot.domain import warday as W
 from aowbot.domain.policy import SHIELD_TAP as TAP, shield_spend as spent_amount
 
 log = logging.getLogger("aow")
 ROWS = {1: "defense/row_1h", 8: "defense/row_8h", 12: "defense/row_12h", 72: "defense/row_3d"}
-PRICE = {1: 500, 8: 3600, 12: 4800, 72: 25200}   # 8h: gia uoc luong, chi dung khi allow_buy (ngay chien tranh khong mua)
+PRICE = dict(W.PRICE)   # 1h 500, 12h 4800, 3d 25200 kim cuong. Dong 8h = Hiep uoc hoa binh (mien phi) -> peace()
+PEACE_LABEL_DY = (-15, 24)  # chu "Mien phi" phia tren nut Dung cua dong Hiep uoc (y dong - 15, cao 24)
+FREE_RX = re.compile(r"mi\w{0,2}n\s*ph")
+_CAP_CFG = object()        # shield(cap=...) mac dinh: lay defense.gem_cap_daily
 ACTIVE_ROI = (130, 79, 280, 17)   # "Thoi gian co hieu luc 2d:05:54:58"
 
 
@@ -108,13 +112,17 @@ def missing_tpls(v, hours):
     return [n for n, why in need if not tplneed.has(v, n, why)]
 
 
-def shield(ctx, force=False, hours=None, allow_buy=None, extend=False):
-    """hours/allow_buy: ghi de cau hinh (ngay chien tranh: 8h/12h, chi dung vat pham). extend=True: bat them khi
-    van con khien (gia han truoc khi het) thay vi coi la 'active'."""
+def shield(ctx, force=False, hours=None, allow_buy=None, extend=False, cap=_CAP_CFG, src="shield"):
+    """hours/allow_buy: ghi de cau hinh. extend=True: bat them khi van con khien (gia han truoc khi het) thay vi coi
+    la 'active'. cap: tran kim cuong/ngay (mac dinh defense.gem_cap_daily; None = khong gioi han - CHI ngay chien
+    tranh, chu du an 2026-11-23). src: nguon ghi so kim cuong (shield | shield_war)."""
     d = ctx.cfg.get("defense", {})
     hours = int(hours if hours is not None else d.get("shield_hours", 1))
     buy = bool(d.get("shield_buy_gems")) if allow_buy is None else bool(allow_buy)
-    if hours not in ROWS:
+    cap = d.get("gem_cap_daily", 0) if cap is _CAP_CFG else cap
+    if hours == 8:
+        return peace(ctx)
+    if hours not in PRICE:
         log.error("defense.shield_hours = %s khong hop le (chi %s) - khong bat khien", hours, sorted(ROWS))
         return "error"
     missing = missing_tpls(ctx.v, hours)
@@ -140,26 +148,83 @@ def shield(ctx, force=False, hours=None, allow_buy=None, extend=False):
     owned = parse_owned(ocr.text(img, (64, row[1] + 53, 22, 16), "0123456789", psm=8))
     btn = (469, row[1] + 27)
     price = PRICE[hours]
-    act, why = shield_choice(owned, gems_before, price, _spent_today(ctx), d.get("gem_cap_daily", 0),
-                             buy)
+    act, why = shield_choice(owned, gems_before, price, _spent_today(ctx), cap, buy)
     if act not in TAP:
         log.warning("Khong bat khien %dh: %s", hours, why)
         ctx.back_out()
         return act
-    log.info("Bat khien %dh: %s", hours, why)
+    if act == "buy":
+        log.warning("MUA khien %dh bang %d kim cuong (nguon %s, kim cuong dang co %s): %s", hours, price, src,
+                    gems_before, why)
+    else:
+        log.info("Bat khien %dh: %s", hours, why)
     ctx.tap(*btn, wait=1.5)
     ctx.tap_tpl("common/btn_confirm", wait=1.5)  # hop thoai xac nhan (neu co)
     ctx.back_out()
     gems_after = ocr.topbar(ctx.shot()).get("gems")
     if act == "buy":
-        _add_spent(ctx, spent_amount(gems_before, gems_after, price))
+        _add_spent(ctx, spent_amount(gems_before, gems_after, price), src)
     elif gems_before is not None and gems_after is not None and gems_after < gems_before:
         # 'use' nhung kim cuong giam: OCR doc nham so vat pham (vd 0 -> 1) va nut da MUA -> van tinh vao tran
         log.warning("Dung vat pham khien nhung kim cuong giam %d -> %d: tinh vao tran ngay", gems_before, gems_after)
-        _add_spent(ctx, gems_before - gems_after)
+        _add_spent(ctx, gems_before - gems_after, src)
     log.info("Da bat khien %dh (%s; kim cuong %s -> %s)", hours,
              "vat pham" if act == "use" else "mua", gems_before, gems_after)
     return "shielded"
+
+
+def peace_free(text):
+    """Chu OCR phia tren nut dong Hiep uoc co 'Mien phi' (mat dau) -> True. Khong doc duoc -> False (khong bam)."""
+    return bool(FREE_RX.search((text or "").lower()))
+
+
+def peace(ctx):
+    """Hiep uoc hoa binh (dong 8h, chu du an 2026-11-23 dong y dung): MIEN PHI, chuan bi 1h roi bao ho 8h, hoi 14h.
+    Chi bam 'Dung' khi phia tren nut co chu 'Mien phi' (dang hoi / khong doc duoc -> khong bam). Kiem lai: sau khi
+    bam chu 'Mien phi' phai mat. -> 'peace' | 'cooldown' | 'missing_tpl' | 'error'."""
+    missing = missing_tpls(ctx.v, 8)
+    if missing:
+        log.warning("Khong dung Hiep uoc: thieu anh mau %s", ", ".join(missing))
+        return "missing_tpl"
+    ctx.ensure_city()
+    if not ctx.tap_tpl("defense/btn_shield_icon", wait=1.5) or not ctx.wait_for("defense/title", timeout=3):
+        log.warning("Khong mo duoc bang Bao Ho Chien Tranh")
+        return "error"
+
+    def label(img, row):
+        return ocr.text(img, (400, row[1] + PEACE_LABEL_DY[0], 130, PEACE_LABEL_DY[1]))
+    img = ctx.shot()
+    row = ctx.v.find(img, ROWS[8], th=0.9)
+    if not row:
+        log.warning("Khong thay dong Hiep uoc hoa binh")
+        ctx.back_out()
+        return "error"
+    if not peace_free(label(img, row)):
+        log.info("Hiep uoc hoa binh: khong thay chu 'Mien phi' (dang hoi?) - khong bam")
+        ctx.back_out()
+        return "cooldown"
+    log.info("Dung Hiep uoc hoa binh (mien phi, chuan bi 1h)")
+    ctx.tap(469, row[1] + 27, wait=1.5)
+    ctx.tap_tpl("common/btn_confirm", wait=1.5)   # hop thoai xac nhan (neu co) - dong mien phi
+    img = ctx.shot()
+    row2 = ctx.v.find(img, ROWS[8], th=0.9)
+    ok = bool(row2) and not peace_free(label(img, row2))
+    ctx.back_out()
+    if not ok:
+        log.warning("Hiep uoc hoa binh: bam 'Dung' nhung chu 'Mien phi' van con / mat bang -> coi nhu chua dung")
+        return "error"
+    return "peace"
+
+
+def war_shield(ctx, need_s, buy=True, cap=None):
+    """Ngay chien tranh: thu lan luot cac dong khien (W.shield_options: vat pham truoc, roi mua) toi khi bat duoc.
+    -> so gio khien da bat | 0. Mua bang kim cuong khong gioi han khi cap None (chu du an 2026-11-23)."""
+    for hours, may_buy in W.shield_options(need_s, buy):
+        res = shield(ctx, hours=hours, allow_buy=may_buy, extend=True, cap=cap, src="shield_war")
+        if res == "shielded":
+            return hours
+        log.info("Khien %dh (%s): %s -> thu dong khac", hours, "mua" if may_buy else "vat pham", res)
+    return 0
 
 
 def evacuate(ctx):
@@ -179,7 +244,17 @@ def run(ctx, force=False):
     if not (force or under_attack(ctx)):
         return None
     log.warning("BI TAN CONG%s - xu ly phong thu", " (bam tay tu web)" if force else "")
-    res = shield(ctx, force) if d.get("shield_on_attack", True) else None
+    res = None
+    if d.get("shield_on_attack", True):
+        from bot.modules import warday
+        c = warday.wcfg(ctx.cfg)
+        now = time.time()
+        w = warday.window(getattr(ctx, "mem", None), ctx.dev.idx, ctx.cfg, now)
+        if w is not None:   # ngay chien tranh: moi loai khien, mua khong gioi han (chu du an 2026-11-23)
+            hours = war_shield(ctx, max(w.end - now, 3600), bool(c["buy_gems"]), c["gem_cap"])
+            res = "shielded" if hours else "error"
+        else:
+            res = shield(ctx, force)
     if d.get("evacuate_troops"):
         evacuate(ctx)
     if getattr(ctx, "store", None):

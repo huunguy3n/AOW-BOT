@@ -11,6 +11,7 @@ from bot import ocr
 from bot.memory import Memory
 from bot import perf, queues, scheduler, stepgate
 from aowbot.domain import drain, rollout
+from aowbot.domain import warday as W
 from bot.modules import tutorial, mainquest, construct, city, rewards, alliance, quests, campaign, notify, research, train, rebels, gather, daily, observe, defense, intel, reddots, play, upgrade, heal, warday
 
 log = logging.getLogger("aow")
@@ -530,6 +531,11 @@ class Runner:
                         log.info("Uu tien o rong %s: chay truoc %s", ",".join(idle0), ",".join(names[:6]))
                 except Exception as e:   # khong de doc hang cho lam hong luot ghe
                     log.warning("Uu tien o rong: loi %s", e)
+            if enabled.get("gather") and warday.gather_day(cfg) and not forced:
+                # chu du an 2026-11-23: thu 2 = ngay thu thap -> gui moi doi di thu thap truoc cac viec khac
+                byq = dict(queue)
+                queue = [(n, byq[n]) for n in W.gather_first([n for n, _ in queue])]
+                log.info("Ngay thu thap: chay gather som (sau warday/tutorial)")
             qi, done, rerun = 0, {}, collections.Counter()
             ctx.visit_done = done   # reddots: biet buoc nao vua chay xong ma khong lam duoc gi
             dcfg = cfg.get("drain") or {}

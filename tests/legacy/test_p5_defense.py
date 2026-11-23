@@ -58,10 +58,12 @@ def test_under_attack_without_alert_template_falls_back_to_red_flash(caplog, mon
     assert "thieu anh mau defense/alert_attack" in caplog.text
 
 
-def test_war_day_never_buys_with_gems_by_default():
+def test_war_day_buys_unlimited_only_in_war_window_config():
+    """Chu du an 2026-11-23: ngay chien tranh mua khien khong gioi han; ngoai ngay chien tranh tran 2000/ngay."""
     with open("config.yaml", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
-    assert cfg["warday"]["buy_gems"] is False
+    assert cfg["warday"]["buy_gems"] is True and cfg["warday"]["gem_cap"] is None
+    assert cfg["defense"]["gem_cap_daily"] == 2000
     # phong thu khi bi danh: mua chi khi config cho + trong tran ngay (A-SAFE-1, ADR-0008) - luat o policy
     assert defense.shield_choice(0, 99999, 3600, 0, 2000, False)[0] == "no_item"
     assert defense.shield_choice(0, 99999, 3600, 0, 2000, True)[0] == "cap"

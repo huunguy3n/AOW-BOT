@@ -359,7 +359,10 @@ def rebels_reserve(ctx):
     cfg = ctx.cfg
     rc = cfg.get("rebels", {})
     m = _mem(ctx)
+    from bot.modules import warday
     if not m or not rc.get("reserve_legion", True) or not cfg.get("modules", {}).get("rebels", True):
+        r = 0
+    elif warday.gather_day(cfg):   # chu du an 2026-11-23: thu 2 = ngay thu thap -> moi quan doan di thu thap
         r = 0
     else:
         from bot import scheduler

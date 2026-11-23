@@ -42,7 +42,7 @@ class ShieldInputs:
     gems: int | None         # kim cuong dang co (None = khong doc duoc)
     price: int
     spent_today: int
-    daily_cap: int
+    daily_cap: int | None    # None = khong gioi han (CHI ngay chien tranh, chu du an 2026-11-23)
     allow_buy: bool
 
 
@@ -58,13 +58,14 @@ def shield_decision(i: ShieldInputs) -> tuple[str, str]:
         (not i.allow_buy, "no_item", "het vat pham, khong cho phep mua bang kim cuong"),
         (i.gems is None, "unread", "khong doc duoc so kim cuong"),
         (i.gems is not None and i.gems < i.price, "no_gems", f"khong du kim cuong ({i.gems} < {i.price})"),
-        (i.spent_today + i.price > i.daily_cap, "cap",
+        (i.daily_cap is not None and i.spent_today + i.price > i.daily_cap, "cap",
          f"vuot tran ngay ({i.spent_today} + {i.price} > {i.daily_cap})"),
     )
     for hit, code, why in checks:
         if hit:
             return code, why
-    return "buy", f"mua {i.price} kim cuong (da tieu {i.spent_today}/{i.daily_cap})"
+    cap = "khong gioi han - ngay chien tranh" if i.daily_cap is None else i.daily_cap
+    return "buy", f"mua {i.price} kim cuong (da tieu {i.spent_today}/{cap})"
 
 
 def shield_spend(gems_before: int | None, gems_after: int | None, price: int) -> int:

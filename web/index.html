@@ -735,6 +735,7 @@ function rowHTML(i){
     <button class="sel-btn" data-act="select" aria-pressed="${i.idx===sel}" aria-label="Xem máy #${i.idx}">
       <span class="l1"><span class="idx">#${i.idx}</span><span class="nm">${esc(i.name||('Instance '+i.idx))}</span>
         ${i.mode==='demo'? '<span class="tag info">học mẫu</span>' : i.mode==='follow'? '<span class="tag info">làm theo</span>' : ''}
+        ${i.week==='war'? '<span class="tag" title="Cửa sổ ngày chiến tranh: giữ khiên liên tục, cấm thu thập">⚔ chiến tranh</span>' : i.week==='gather'? '<span class="tag info" title="Thứ 2: gửi mọi đội đi thu thập trước">ngày thu thập</span>' : ''}
         ${i.agent==='on'? '<span class="tag info">agent</span>' : i.agent==='blocked'? '<span class="tag" title="Chọn Agent nhưng công tắc chung TẮT → chạy theo lịch chung">agent: chờ công tắc</span>' : ''}
         ${needsAttention(i)? `<span class="warnicon" title="${esc(i.last_error||'Có bước đang tạm bỏ')}">${ico('alert','sm')}</span>`:''}
         <span class="badge ${stCls}"><span class="dot ${stCls}"></span>${stText}</span></span>

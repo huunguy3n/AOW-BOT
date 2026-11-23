@@ -16,3 +16,10 @@ Bot **không bao giờ** bấm: nút tốn kim cương ("Huấn luyện ngay", "
 - Tốt: không có kịch bản mất kim cương ngoài ý muốn.
 - Xấu: tiến độ chậm hơn người chơi tiêu kim cương.
 - Code mới phải phân biệt nút miễn phí/tốn phí (vd `build.py` chỉ bấm nút "Tăng cấp" bên phải có đồng hồ; `notify` kiểm tra màu nút "Nhận" để bỏ nút xám).
+
+## Sửa đổi 2026-11-23 — ngày chiến tranh (quyết định của chủ dự án)
+- **Thứ 7 = ngày chiến tranh:** căn cứ phải có khiên **liên tục** cả ngày. Bot được dùng mọi loại khiên: Hiệp ước hòa bình (miễn phí, chuẩn bị 1 giờ, bảo hộ 8 giờ, hồi 14 giờ — chỉ bấm khi thấy chữ "Miễn phí"), vật phẩm 1h / 12h / 3 ngày, và **được mua khiên bằng kim cương KHÔNG giới hạn** trong cửa sổ ngày chiến tranh (`warday.buy_gems: true`, `warday.gem_cap: null`). Không mua gói 3 ngày (đắt nhất); mua 1h hoặc 12h, cái nào rẻ hơn cho phần thời gian còn lại.
+- **Ngoài ngày chiến tranh** giữ nguyên ngoại lệ cũ: khiên khi bị tấn công, trần `defense.gem_cap_daily` (2000) / tài khoản / ngày.
+- Vẫn **đóng khi lỗi**: không đọc được số vật phẩm hoặc số kim cương thì không bấm, không đủ kim cương thì không bấm.
+- Mỗi lần mua: log `MUA khien ...` + `KIM CUONG: may #N tieu X (nguon shield_war)` và ghi bảng `gem_ev` (memory.db). `python tools/report_ro.py --24h` cộng theo nguồn; nguồn khác `shield` / `shield_war` = vi phạm.
+- Phát hiện ngày chiến tranh: lịch (`warday.weekdays`, `warday.reset_hour_utc`) + công tắc tay `warday.mode` (auto / on / off, có trên web) + bảng thông báo / banner "Giai đoạn N" (tùy chọn). Dấu hiệu chỉ **thêm** ngày, không bớt; cửa sổ mở sớm `lead_h` giờ và đóng muộn `tail_min` phút (không chắc → giữ khiên).

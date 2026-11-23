@@ -1,20 +1,33 @@
-"""Luat thuan: moc nhan the luc (0h/8h/15h UTC) va NGAY CHIEN TRANH cua su kien SVS (thu 7, tinh theo UTC).
+"""Luat thuan: moc nhan the luc (0h/8h/15h UTC), NGAY CHIEN TRANH (SVS) va NGAY THU THAP trong lich tuan su kien.
 
 Chu du an 2026-11-21:
 - The luc: phai dang nhap DUNG moc reset 0h, 8h, 15h UTC de nhan.
-- Ngay chien tranh = thu 7 cua su kien SVS; nhan biet bang bang thong bao "phoi hop chien tranh".
-- Bat khien 8h luc 22h UTC thu 6; het 8h thi bat 12h; sap het 12h ma chua qua ngay thi bat tiep 12h.
-- Trong ngay chien tranh cam thu thap .
+- Trong ngay chien tranh cam thu thap (phan quan duoc phep).
+Chu du an 2026-11-23 (lich tuan su kien, THAY luat khien 8h/12h cu):
+- Thu 7 = ngay chien tranh: giu khien LIEN TUC du 24h, can cu khong bao gio bi tan cong. Dung moi loai khien
+  (Hiep uoc hoa binh mien phi, vat pham 1h/12h/3d) va DUOC mua bang kim cuong KHONG GIOI HAN trong ngay chien
+  tranh. Ngoai ngay chien tranh van giu tran defense.gem_cap_daily.
+- Phat hien: lich (thu trong tuan + gio reset server cau hinh duoc) + cong tac tay (auto/on/off, config + web)
+  + bang thong bao / banner 'Giai doan N' (tuy chon). Khong chac -> an toan: giu khien (cua so co le truoc/sau,
+  dau hieu chi THEM ngay chien tranh, khong bao gio bot).
+- Gia han khien truoc khi het it nhat vai phut (renew_before_min).
+- Thu 2 = ngay thu thap: uu tien dua tat ca doi di thu thap.
 Khong doc game, khong doc dong ho: moi ham nhan `now` (epoch giay) -> test offline duoc.
 """
 from __future__ import annotations
 
 import calendar
+import math
+import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Any
 
 DAY = 86400
 STAMINA_MARKS_UTC = (0, 8, 15)
 SATURDAY = 5                          # datetime.weekday(): thu 2 = 0 ... thu 7 = 5
+MONDAY = 0
 BLOCK_STEPS = ("gather",)            # buoc cam trong cua so chien tranh (chu du an 2026-11-21: phan quan duoc phep)
 
 
@@ -28,25 +41,27 @@ def weekday_utc(now: float) -> int:
 
 
 # ---------- moc the luc ----------
-def last_stamina_mark(now: float, marks=STAMINA_MARKS_UTC) -> float:
+def last_stamina_mark(now: float, marks: tuple[int, ...] = STAMINA_MARKS_UTC) -> float:
     base = _utc_midnight(now)
     cands = [base + h * 3600 for h in marks] + [base - DAY + max(marks) * 3600]
     return max(t for t in cands if t <= now)
 
 
-def next_stamina_mark(now: float, marks=STAMINA_MARKS_UTC) -> float:
+def next_stamina_mark(now: float, marks: tuple[int, ...] = STAMINA_MARKS_UTC) -> float:
     base = _utc_midnight(now)
     cands = [base + h * 3600 for h in marks] + [base + DAY + min(marks) * 3600]
     return min(t for t in cands if t > now)
 
 
-def stamina_due(now: float, last_claim: float | None, delay_min: float = 1, marks=STAMINA_MARKS_UTC) -> bool:
+def stamina_due(now: float, last_claim: float | None, delay_min: float = 1,
+                marks: tuple[int, ...] = STAMINA_MARKS_UTC) -> bool:
     """Da qua moc (them delay) ma chua nhan ke tu moc do. last_claim = lan ghe nhan the luc gan nhat."""
     mark = last_stamina_mark(now, marks)
     return now >= mark + delay_min * 60 and (last_claim is None or last_claim < mark)
 
 
-def stamina_next_at(now: float, last_claim: float | None, delay_min: float = 1, marks=STAMINA_MARKS_UTC) -> float:
+def stamina_next_at(now: float, last_claim: float | None, delay_min: float = 1,
+                    marks: tuple[int, ...] = STAMINA_MARKS_UTC) -> float:
     """Luc som nhat can ghe de nhan the luc: ngay bay gio neu da den han, khong thi moc ke tiep."""
     if stamina_due(now, last_claim, delay_min, marks):
         return now
@@ -56,7 +71,67 @@ def stamina_next_at(now: float, last_claim: float | None, delay_min: float = 1, 
     return next_stamina_mark(now, marks) + delay_min * 60
 
 
-# ---------- ngay chien tranh ----------
+# ---------- cau hinh (mot cho cho runner / lich / stepgate / module) ----------
+MODES = ("auto", "on", "off")
+DEFAULTS: Mapping[str, Any] = MappingProxyType({
+    "enabled": True, "stamina": True, "stamina_delay_min": 1,
+    "mode": "auto",              # auto = lich + dau hieu; on = HOM NAY la ngay chien tranh; off = khong co
+    "weekdays": (SATURDAY,),      # ngay chien tranh trong tuan (0 = thu 2 ... 5 = thu 7)
+    "reset_hour_utc": 0,         # gio reset server (UTC): ngay chien tranh = [reset thu 7, reset chu nhat)
+    "lead_h": 2,                 # mo cua so (bat khien) truoc gio bat dau N gio
+    "tail_min": 30,              # giu cua so them N phut sau khi het ngay (dong ho lech -> giu khien)
+    "renew_before_min": 20,      # khien con <= N phut thi gia han
+    "buy_gems": True,            # het vat pham thi mua bang kim cuong (chu du an 2026-11-23)
+    "gem_cap": None,             # tran kim cuong / ngay chien tranh: None = khong gioi han (chu du an 2026-11-23)
+    "peace": True,               # Hiep uoc hoa binh (mien phi, chuan bi 1h, 8h, hoi 14h) dung truoc gio chien tranh
+    "peace_prep_min": 60, "peace_hours": 8, "peace_cooldown_h": 14,
+    "banner_ocr": False,         # doc banner 'Giai doan N' tren ban do the gioi (vung chua kiem tren may 540x960)
+    "dates": (),                 # ngay chien tranh khai tay 'YYYY-MM-DD'
+    "gather_weekdays": (MONDAY,),  # ngay thu thap: uu tien gui moi doi di thu thap
+})
+
+
+def wcfg(raw: Mapping[str, Any] | None) -> dict[str, Any]:
+    """cfg['warday'] (co the thieu / None) -> dict day du. mode la -> 'auto' (khong bao gio tu tat)."""
+    c = {**DEFAULTS, **(raw or {})}
+    if c.get("mode") not in MODES:
+        c["mode"] = "auto"
+    return c
+
+
+def reset_s(c: Mapping[str, Any]) -> float:
+    try:
+        return float(c.get("reset_hour_utc") or 0) % 24 * 3600
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def day_start(now: float, reset: float = 0.0) -> float:
+    """Luc reset server gan nhat <= now (dau 'ngay game')."""
+    return _utc_midnight(now - reset) + reset
+
+
+def game_weekday(now: float, reset: float = 0.0) -> int:
+    return weekday_utc(now - reset)
+
+
+def _wdays(v: Any) -> set[int]:
+    out = set()
+    for w in v or []:
+        try:
+            out.add(int(w) % 7)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def schedule_days(now: float, weekdays: Iterable[int], reset: float = 0.0) -> list[float]:
+    """Ngay chien tranh theo lich tuan quanh now (-7 .. +8 ngay) -> dau ngay game (epoch)."""
+    wd = _wdays(weekdays)
+    base = day_start(now, reset)
+    return [base + k * DAY for k in range(-7, 9) if game_weekday(base + k * DAY, reset) in wd]
+
+
 def war_saturday(seen_at: float) -> float | None:
     """Thu 7 (0h UTC) cua tuan SVS suy ra tu luc thay bang thong bao: thu 7 dau tien trong hoac sau ngay thay.
     Chu nhat -> None (bang con sot sau tran, khong suy ra tuan toi)."""
@@ -66,7 +141,7 @@ def war_saturday(seen_at: float) -> float | None:
     return _utc_midnight(seen_at) + ((SATURDAY - wd) % 7) * DAY
 
 
-def parse_dates(dates) -> list[float]:
+def parse_dates(dates: Iterable[Any] | None) -> list[float]:
     """Danh sach 'YYYY-MM-DD' (cau hinh warday.dates, chu du an tu khai) -> epoch 0h UTC cua ngay do."""
     out = []
     for d in dates or []:
@@ -78,8 +153,8 @@ def parse_dates(dates) -> list[float]:
     return out
 
 
-def war_days(seen_at: float | None, dates=None, now: float | None = None) -> list[float]:
-    """Cac ngay chien tranh (0h UTC) dang co hieu luc/sap toi: ngay khai thu cong + ngay suy ra tu bang thong bao."""
+def war_days(seen_at: float | None, dates: Iterable[Any] | None = None, now: float | None = None) -> list[float]:
+    """(Cu, chi dau hieu) ngay khai tay + ngay suy ra tu bang thong bao. Ma moi dung resolve_days."""
     out = parse_dates(dates)
     if seen_at:
         s = war_saturday(seen_at)
@@ -88,57 +163,152 @@ def war_days(seen_at: float | None, dates=None, now: float | None = None) -> lis
     return sorted(set(out))
 
 
+def resolve_days(c: Mapping[str, Any], notice_seen: float | None, now: float,
+                 banner_seen: float | None = None) -> list[float]:
+    """Ngay chien tranh (dau ngay game) theo cong tac + lich + bang thong bao + banner + ngay khai tay.
+    mode 'off' -> [] (chu du an tu tat); 'on' -> them HOM NAY; 'auto' -> lich + dau hieu. Dau hieu chi THEM ngay,
+    khong bao gio bot ngay cua lich (khong chac -> giu khien)."""
+    if not c.get("enabled", True) or c.get("mode") == "off":
+        return []
+    r = reset_s(c)
+    out = set(schedule_days(now, c.get("weekdays") or [], r))
+    out.update(d + r for d in parse_dates(c.get("dates")))
+    for seen in (notice_seen, banner_seen):
+        if seen:
+            s = war_saturday(seen)
+            if s is not None:
+                out.add(s + r)
+    if c.get("mode") == "on":
+        out.add(day_start(now, r))
+    return sorted(out)
+
+
+def is_gather_day(c: Mapping[str, Any], now: float) -> bool:
+    """Thu 2 (mac dinh) = ngay thu thap (chu du an 2026-11-23)."""
+    return bool(c.get("enabled", True)) and game_weekday(now, reset_s(c)) in _wdays(c.get("gather_weekdays"))
+
+
+BANNER_RX = re.compile(r"gia\w{0,2}\s*\w{0,2}o\w{0,2}n\s*\d")
+
+
+def banner_is_war(text: str | None) -> bool:
+    """Chu OCR (tieng Viet mat dau) cua banner ban do the gioi 'Giai doan N: ...' -> dang tuan su kien SVS."""
+    return bool(BANNER_RX.search((text or "").lower()))
+
+
 @dataclass(frozen=True, slots=True)
 class WarWindow:
-    day: float            # 0h UTC cua ngay chien tranh
-    start: float          # luc bat dau (thu 6 22h UTC: bat khien som)
-    end: float            # het ngay chien tranh (0h UTC hom sau)
+    day: float            # dau ngay chien tranh (reset server)
+    start: float          # luc mo cua so (bat khien som lead_h)
+    end: float            # het cua so (het ngay + tail)
 
 
-def window_for(day: float, lead_h: float = 2) -> WarWindow:
-    return WarWindow(day, day - lead_h * 3600, day + DAY)
+def window_for(day: float, lead_h: float = 2, tail_min: float = 0) -> WarWindow:
+    return WarWindow(day, day - lead_h * 3600, day + DAY + tail_min * 60)
 
 
-def active_window(now: float, days: list[float], lead_h: float = 2) -> WarWindow | None:
-    for d in days:
-        w = window_for(d, lead_h)
-        if w.start <= now < w.end:
-            return w
-    return None
+def active_window(now: float, days: list[float], lead_h: float = 2, tail_min: float = 0) -> WarWindow | None:
+    """Cua so chua now; 2 ngay sat nhau (vd mode 'on' + lich) gop thanh 1 cua so (khong ho khien giua)."""
+    ws = sorted((window_for(d, lead_h, tail_min) for d in set(days)), key=lambda w: w.start)
+    hit = [w for w in ws if w.start <= now < w.end]
+    if not hit:
+        return None
+    end = max(w.end for w in hit)
+    for w in ws:
+        if w.start <= end < w.end:
+            end = w.end
+    return WarWindow(hit[0].day, hit[0].start, end)
 
 
-def next_window(now: float, days: list[float], lead_h: float = 2) -> WarWindow | None:
-    fut = [window_for(d, lead_h) for d in days if window_for(d, lead_h).start > now]
+def next_window(now: float, days: list[float], lead_h: float = 2, tail_min: float = 0) -> WarWindow | None:
+    fut = [window_for(d, lead_h, tail_min) for d in days if window_for(d, lead_h, tail_min).start > now]
     return min(fut, key=lambda w: w.start) if fut else None
 
 
-def blocks_step(step: str, now: float, days: list[float], lead_h: float = 2) -> bool:
-    return step in BLOCK_STEPS and active_window(now, days, lead_h) is not None
+def blocks_step(step: str, now: float, days: list[float], lead_h: float = 2, tail_min: float = 0) -> bool:
+    return step in BLOCK_STEPS and active_window(now, days, lead_h, tail_min) is not None
+
+
+def window_now(c: Mapping[str, Any], notice_seen: float | None, now: float,
+               banner_seen: float | None = None) -> WarWindow | None:
+    """Cua so chien tranh dang mo theo cau hinh day du (wcfg) - dung chung cho lich / stepgate / module."""
+    days = resolve_days(c, notice_seen, now, banner_seen)
+    return active_window(now, days, float(c["lead_h"]), float(c["tail_min"]))
 
 
 # ---------- khien ngay chien tranh ----------
+# gia mua bang kim cuong (bang Bao Ho Chien Tranh tren #1, 2026-11-23)
+PRICE: Mapping[int, int] = MappingProxyType({1: 500, 12: 4800, 72: 25200})
+
+
 @dataclass(frozen=True, slots=True)
 class ShieldPlan:
-    hours: int | None      # None = chua can bat
+    action: str | None     # 'peace' (Hiep uoc) | 'shield' (khien tuc thi) | None (chua can)
     at: float | None       # luc can ghe (None = khong con viec)
     why: str
+    need_s: float = 0.0    # 'shield': so giay con phai che (toi het cua so)
 
 
-def shield_plan(now: float, days: list[float], shield_until: float | None, lead_h: float = 2,
-                renew_before_min: float = 20) -> ShieldPlan:
-    """Khien can bat luc nao / bao nhieu gio.
-    Trong cua so [thu 6 22h UTC, het thu 7]: chua co khien (hoac con <= renew_before_min phut) thi bat:
-    8h neu chua toi thu 7 (22h thu 6), 12h tu thu 7 tro di. Khien con lau (vd dung the 3 ngay) -> khong bat, hen
-    luc sap het. Het ngay chien tranh -> khong bat tiep (khien 12h cuoi tran qua dem la du)."""
-    w = active_window(now, days, lead_h)
+def peace_cover(c: Mapping[str, Any], peace_at: float | None, day: float) -> float | None:
+    """Hiep uoc kich hoat luc peace_at -> het han (epoch); chi tinh khi chuan bi xong TRUOC gio chien tranh."""
+    if not peace_at:
+        return None
+    ready = peace_at + float(c["peace_prep_min"]) * 60
+    return ready + float(c["peace_hours"]) * 3600 if ready <= day else None
+
+
+def peace_available(c: Mapping[str, Any], peace_at: float | None, now: float) -> bool:
+    return bool(c.get("peace")) and (not peace_at or now - peace_at >= float(c["peace_cooldown_h"]) * 3600)
+
+
+def shield_plan(now: float, days: list[float], shield_until: float | None, c: Mapping[str, Any] | None = None,
+                peace_at: float | None = None) -> ShieldPlan:
+    """Khien ngay chien tranh. shield_until = han khien da biet (doc man hinh / ghi luc bat), None = khong co.
+    - Ngoai cua so: hen luc mo cua so.
+    - Trong cua so, khien (hoac Hiep uoc chuan bi xong truoc gio G) con > renew_before_min: hen luc sap het.
+    - Chua che: truoc gio G du thoi gian chuan bi -> Hiep uoc (mien phi); khong thi khien tuc thi (vat pham, het thi
+      mua). Truoc gio G ma khong dung duoc Hiep uoc -> cho sat gio G (truoc renew_before_min) moi bat khien tuc thi."""
+    c = wcfg(c)
+    lead, tail, margin = float(c["lead_h"]), float(c["tail_min"]), float(c["renew_before_min"]) * 60
+    w = active_window(now, days, lead, tail)
     if w is None:
-        nw = next_window(now, days, lead_h)
-        why = "chua toi ngay chien tranh" if nw else "khong co ngay chien tranh"
-        return ShieldPlan(None, nw.start if nw else None, why)
-    margin = renew_before_min * 60
-    if shield_until is not None and shield_until - now > margin:
-        nxt = shield_until - margin
-        hh, mm = int(shield_until % DAY // 3600), int(shield_until % 3600 // 60)
+        nw = next_window(now, days, lead, tail)
+        return ShieldPlan(None, nw.start if nw else None,
+                          "chua toi ngay chien tranh" if nw else "khong co ngay chien tranh")
+    cover = max([x for x in (shield_until, peace_cover(c, peace_at, w.day)) if x is not None] or [0.0])
+    if cover - now > margin:
+        nxt = cover - margin
+        hh, mm = int(cover % DAY // 3600), int(cover % 3600 // 60)
         return ShieldPlan(None, nxt if nxt < w.end else None, f"khien con den {hh:02d}:{mm:02d} UTC")
-    hours = 8 if now < w.day else 12
-    return ShieldPlan(hours, now, f"ngay chien tranh: bat khien {hours}h")
+    prep = float(c["peace_prep_min"]) * 60
+    if now < w.day:
+        if peace_available(c, peace_at, now) and now + prep + margin <= w.day:
+            return ShieldPlan("peace", now, "truoc gio chien tranh: dung Hiep uoc hoa binh (mien phi)")
+        if now < w.day - margin:
+            return ShieldPlan(None, w.day - margin, "cho sat gio chien tranh moi bat khien tuc thi")
+    return ShieldPlan("shield", now, "ngay chien tranh: bat khien tuc thi", w.end - now)
+
+
+def shield_options(need_s: float, buy: bool) -> list[tuple[int, bool]]:
+    """Thu tu thu cac dong khien (gio, duoc mua?) de che need_s giay. Vat pham (khong ton kim cuong) truoc: dong nho
+    nhat du che, roi dong lon hon, roi dong nho hon; sau do mua (neu cho): re hon trong 1h / 12h truoc. Khong mua 3d."""
+    need_h = max(need_s, 1.0) / 3600
+    rows = sorted(PRICE)
+    fit = [h for h in rows if h >= need_h]
+    small = [h for h in reversed(rows) if h < need_h]
+    out = [(h, False) for h in fit + small]
+    if buy:
+        first = 1 if math.ceil(need_h) * PRICE[1] < PRICE[12] else 12
+        out += [(first, True), (13 - first, True)]
+    return out
+
+
+GATHER_HEAD = ("warday", "tutorial")
+
+
+def gather_first(order: list[str]) -> list[str]:
+    """Ngay thu thap: dua 'gather' len ngay sau buoc dau luot (warday, tutorial); con lai giu thu tu."""
+    if "gather" not in order:
+        return list(order)
+    head = [n for n in order if n in GATHER_HEAD]
+    return head + ["gather"] + [n for n in order if n not in GATHER_HEAD and n != "gather"]

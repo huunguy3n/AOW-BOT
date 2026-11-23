@@ -65,14 +65,13 @@ def precheck(mem, idx, step, cfg, now=None, done=None):
     if not g["enabled"]:
         return Gate(True, "stepgate tat")
     if step == "warday":
-        c = {"enabled": True, "stamina": True, "lead_h": 2, "stamina_delay_min": 1, "dates": [],
-             **((cfg or {}).get("warday") or {})}
+        c = W.wcfg((cfg or {}).get("warday"))
         if not c["enabled"]:
             return Gate(False, "warday tat")
         if c["stamina"] and W.stamina_due(now, _num(mem.fact(idx, "stamina_claim_at")), c["stamina_delay_min"]):
             return Gate(True, "moc the luc", must=True)
-        days = W.war_days(_num(mem.fact(idx, "war_notice_seen")), c["dates"], now)
-        if W.active_window(now, days, c["lead_h"]) is not None:
+        if W.window_now(c, _num(mem.fact(idx, "war_notice_seen")), now,
+                        _num(mem.fact(idx, "war_banner_seen"))) is not None:
             return Gate(True, "cua so ngay chien tranh", must=True)
         return Gate(False, "chua toi moc the luc, ngoai ngay chien tranh")
     if step == "heal":

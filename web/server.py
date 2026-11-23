@@ -6,6 +6,7 @@ import logging, os, time
 from flask import Flask, jsonify, redirect, request, send_from_directory
 
 from aowbot.domain import rollout
+from aowbot.domain import warday as warday_rules
 from web.options import MODULES, GROUPS
 from bot.vnames import fix_name
 
@@ -56,6 +57,18 @@ def timers_info(mem, idx):
         return None
 
 
+def week_info(mem, idx, c, now=None):
+    """Lich tuan su kien (chu du an 2026-11-23): 'war' (cua so chien tranh - giu khien) | 'gather' (thu 2) | None."""
+    from bot import scheduler
+    now = now or time.time()
+    try:
+        if mem is not None and scheduler.war_window(mem, idx, c, now) is not None:
+            return "war"
+    except Exception:   # noqa: BLE001 - web khong duoc chet vi tri nho hong
+        return None
+    return "gather" if warday_rules.is_gather_day(warday_rules.wcfg(c.get("warday")), now) else None
+
+
 def create_app(runner, store, ring):
     app = Flask(__name__)
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
@@ -82,6 +95,7 @@ def create_app(runner, store, ring):
                          "smart": g.get("schedule", {}).get("mode") == "smart",
                          "mode": (c.get("schedule") or {}).get("mode"),
                          "agent": rollout.agent_status(c),     # P6: on | blocked (cong tac chung tat) | off
+                         "week": week_info(mem, idx, c),       # lich tuan su kien: war | gather | None
                          "modules": {k: bool(c["modules"].get(k)) for k, _ in MODULES}})
         opts = [{"group": name, "items": [{**o, "value": get_path(g, o["key"])} for o in items]}
                 for name, items in GROUPS]

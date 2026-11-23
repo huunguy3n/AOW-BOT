@@ -232,6 +232,8 @@ def step_health(q, cond, args):
     """P6: buoc khong loi = ket qua khong phai err/stuck. -> {n, fail, ok_pct, worst: [(buoc, % khong loi, n)]}."""
     rcond = cond.replace("started", "r.started").replace("inst", "r.inst")
     per = {}
+    if "result" not in {r[1] for r in q("PRAGMA table_info(runs)")}:   # DB rat cu / DB test
+        return {"n": 0, "fail": 0, "ok_pct": None, "worst": []}
     for step, res in q(f"SELECT step, result FROM runs r WHERE {rcond}", args):
         p = per.setdefault(step, [0, 0])
         p[0] += 1

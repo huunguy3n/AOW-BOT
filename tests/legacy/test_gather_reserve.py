@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from bot.modules import gather
+from bot.modules import gather, warday
 
 
 class Mem:
@@ -28,7 +28,8 @@ def ctx(hq=30, done=0, cfg=None):
     return SimpleNamespace(cfg=c, mem=m, dev=SimpleNamespace(idx=1))
 
 
-def test_reserve_when_rebels_due():
+def test_reserve_when_rebels_due(monkeypatch):
+    monkeypatch.setattr(warday, "gather_day", lambda cfg, now=None: False)   # khong phu thuoc hom nay co la thu 2
     c = ctx()
     assert gather.rebels_reserve(c) == 1 and c.mem.fact(1, "rebels_reserve") == 1
 

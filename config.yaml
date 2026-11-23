@@ -326,13 +326,26 @@ rebels:
   search_tries: 3         # P5-2: so cap thu trong 1 luot (cap ke tiep roi ha dan khi du doan thua / khong tim thay)
   intel_rally_min_hq: 0   # P5-2: ghim tinh bao Phan quan Co giap tu mo tap ket chi khi nha chinh >= N (0 = moi cap, nhu cu)
 warday:
+  # Lich tuan su kien (chu du an 2026-11-23): thu 7 = ngay chien tranh (giu khien LIEN TUC du 24h), thu 2 = ngay thu thap.
   enabled: true
+  mode: auto                # CONG TAC TAY (web: Tuy chon -> Ngay chien tranh): auto = theo lich + dau hieu; on = coi HOM NAY la
+                            # ngay chien tranh (giu khien ngay); off = khong co ngay chien tranh (chi khi chac chan)
+  weekdays: [5]             # ngay chien tranh trong tuan (0 = thu 2 ... 5 = thu 7, 6 = chu nhat)
+  reset_hour_utc: 0         # gio reset server (UTC): ngay chien tranh = [reset thu 7, reset chu nhat)
+  gather_weekdays: [0]      # ngay thu thap: gather chay dau luot, khong de danh quan doan cho phan quan
   stamina: true             # dang nhap dung moc 0h, 8h, 15h UTC de nhan the luc
   stamina_delay_min: 1      # ghe sau moc N phut
-  lead_h: 2                 # bat khien truoc 0h UTC thu 7 bao nhieu gio (2 = 22h UTC thu 6)
-  renew_before_min: 20      # khien con <= N phut thi bat tiep (chua qua ngay)
-  buy_gems: false           # chi dung vat pham khien, KHONG mua bang kim cuong (ADR-0008)
-  dates: []                 # ngay chien tranh khai tay "YYYY-MM-DD" (thu 7 UTC); mac dinh suy ra tu bang thong bao phoi hop chien tranh
+  lead_h: 2                 # mo cua so (bat khien) truoc gio reset N gio
+  tail_min: 30              # giu cua so them N phut sau khi het ngay (khong chac -> giu khien)
+  renew_before_min: 20      # khien con <= N phut thi gia han
+  peace: true               # Hiep uoc hoa binh (mien phi, chuan bi 1h, bao ho 8h, hoi 14h) dung truoc gio chien tranh
+  peace_prep_min: 60
+  peace_hours: 8
+  peace_cooldown_h: 14
+  buy_gems: true            # chu du an 2026-11-23: ngay chien tranh het vat pham thi MUA khien bang kim cuong
+  gem_cap: null             # tran kim cuong trong ngay chien tranh: null = KHONG GIOI HAN (chu du an 2026-11-23)
+  banner_ocr: false         # doc banner 'Giai doan N' tren ban do the gioi (vung OCR chua kiem tren may 540x960)
+  dates: []                 # ngay chien tranh khai tay "YYYY-MM-DD" (them vao lich, khong thay lich)
 
 defense:
   shield_on_attack: true  # bi tan cong -> bat khien
