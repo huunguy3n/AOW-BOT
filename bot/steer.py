@@ -260,6 +260,60 @@ def in_battle(v, img):
     return bool(v.find(img, "campaign/battle_hud", th=0.9))
 
 
+ENTER_WAIT_S = 25        # P7-9: tran chien dich #1 tai lau hon 10 s (live #1 2026-11-24: "Khong xac nhan duoc dang trong tran")
+
+
+def campaign_battle(v, img):
+    """P7-9: nhan tran chien dich rong hon in_battle (live #1: tran thua 79,7M/83,1M ma bot KHONG lai - battle_hud cu
+    khong khop -> khong dat ngon tay, khong ne, khong an buff). Them: bien the campaign/battle_hud_* (chu du an cat) +
+    dau hieu tran chay duong tan thu (battle_top/flag). -> True | False | None (chac chan khong phai tran)."""
+    if v.find(img, "campaign/btn_fight") or v.find(img, "common/btn_to_world") or v.find(img, "common/btn_to_city"):
+        return False
+    if v.find(img, "campaign/res_win") or v.find(img, "campaign/res_lose"):
+        return None
+    if v.find(img, "campaign/battle_hud", th=0.85):
+        return True
+    for n in v.list("campaign/battle_hud_"):
+        if v.find(img, n, th=0.85):
+            return True
+    from bot.modules import tutorial
+    return bool(tutorial.is_battle(v, img))
+
+
+def template_buffs(v, img, names=None, th=0.8):
+    """P7-9: buff cat bang anh mau (templates/steer/buff_*.png: linh "+N" xanh, dan "+%" xanh la...) trong dai phia
+    truoc doi quan -> [(cx, cy, w)] bo sung cho nhan dien theo mau (hieu ung lua/khoi che mau)."""
+    out = []
+    y0, y1 = AHEAD
+    for n in (names if names is not None else v.list("steer/buff_")):
+        for x, y, _ in v.find_all(img, n, th=th, roi=(0, y0, img.shape[1], y1 - y0)):
+            out.append((int(x), int(y), 60))
+    return out
+
+
+def merge_buffs(det, extra, dist=50):
+    """Them buff tu anh mau, bo trung voi buff theo mau (gan nhau < dist px)."""
+    for cx, cy, w in extra:
+        if all(abs(cx - a) >= dist or abs(cy - b) >= dist for a, b, _ in det["buff"]):
+            det["buff"].append((cx, cy, w))
+    return det
+
+
+def save_enter_fail(img, root="logs/inv/steer_no_battle", keep=30):
+    """Khong xac nhan duoc dang trong tran -> luu khung cuoi (toi da `keep` anh) de chu du an cat anh mau HUD tran."""
+    try:
+        if img is None:
+            return None
+        os.makedirs(root, exist_ok=True)
+        if len(os.listdir(root)) >= keep:
+            return None
+        path = os.path.join(root, time.strftime("%Y%m%d-%H%M%S") + ".png")
+        cv2.imwrite(path, img)
+        return path
+    except Exception:
+        return None
+
+
 RESULT_TPLS = ["campaign/btn_done", "campaign/btn_done_lose", "campaign/btn_retry"]
 
 
@@ -292,7 +346,7 @@ def result_of(vision, img):
     return "win" if d and d[2] >= 0.82 and (not dl or d[2] > dl[2]) else "lose"
 
 
-def run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None):
+def run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None, enter_wait=10):
     global _battle_owner
     with _battle_cv:
         while _battle_owner not in (None, threading.get_ident()):
@@ -302,7 +356,7 @@ def run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None)
         if debug_dir:
             os.makedirs(debug_dir, exist_ok=True)
         active_serials.add(serial)
-        return _run_battle(adb, serial, vision, timeout, debug_dir, is_battle)
+        return _run_battle(adb, serial, vision, timeout, debug_dir, is_battle, enter_wait)
     finally:
         active_serials.discard(serial)
         with _battle_cv:
@@ -310,7 +364,7 @@ def run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None)
             _battle_cv.notify_all()
 
 
-def _run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None):
+def _run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None, enter_wait=10):
     """Da bam 'Chien dau'. Lai den khi hien man ket qua. -> 'win' | 'lose' | 'error'
     is_battle(vision, img) -> bool: bo nhan dien tran rieng (vd tran tan thu khong co battle_hud)."""
     in_battle_fn = is_battle or in_battle
@@ -323,13 +377,15 @@ def _run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None
     result = "error"
     try:
         # cho vao tran that su (KHONG BAO GIO dat ngon tay khi chua chac dang trong tran)
-        while time.time() - t0 < 10:
+        img = None
+        while time.time() - t0 < enter_wait:
             img, last = s.latest(last)
             if img is not None and in_battle_fn(vision, img):
                 break
         else:
-            log.warning("Khong xac nhan duoc dang trong tran - khong lai")
+            log.warning("Khong xac nhan duoc dang trong tran sau %ss - khong lai (anh %s)", enter_wait, save_enter_fail(img))
             return "error"
+        tbuffs = vision.list("steer/buff_")       # P7-9: buff theo anh mau (neu chu du an da cat)
         time.sleep(0.8)          # cho het hieu ung vao tran / dem nguoc: cham dat xuong luc nay game bo qua
         fg.down(270, SQUAD_Y)
         est = 270.0              # uoc luong x cua doi quan (cong don theo do keo, hieu chinh bang anh khi hop ly)
@@ -351,6 +407,8 @@ def _run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None
             elif not in_battle_fn(vision, img) and not vision.find(img, "campaign/battle_hud", th=0.7):
                 fg.up()  # roi khoi tran (man khac) -> nhac tay ngay
             det = detect(img)
+            if tbuffs:
+                merge_buffs(det, template_buffs(vision, img, tbuffs))
             if det["nerf"]:
                 classify_gates(det, img, gates, time.time() - t0)   # P7-8: cong do lat duoc -> lao vao
             sx = squad_x(img)
