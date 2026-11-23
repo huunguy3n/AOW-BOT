@@ -61,6 +61,9 @@ rewards:
   routes: [mail, vip, celebration, city]
   use_vip_items: true     # Ruong ngay VIP can VIP: dung vat pham 'Thoi gian VIP' (nut Dung) - chu du an cho phep 2026-11-20; KHONG mua The thang
   max_taps_per_route: 30
+  repeat_until_clear: true   # P7-3: tuyen thu lap toi khi icon thu het so do (nhan het, tab dau tien truoc)
+  repeat_rounds: 4           # toi da so lan mo lai icon thu / icon qua lien minh moi buoc
+  ally_gift: true            # P7-3: icon hop qua lien minh (so do) goc phai duoi -> nhan, lap toi khi het so
   require_dot: true    # chi mo tuyen khi icon open_1 co cham do ben canh (bo qua bang khong co qua)
   always_open: []      # tuyen luon mo du khong co cham do
   dot_tabs:            # tuyen co hang tab: cham tab theo cham do (x, y, w, h)

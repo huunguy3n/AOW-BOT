@@ -122,7 +122,9 @@ def run_route(ctx, prefix, max_taps=30):
         ctx.ensure_city()
         return total
     if strip:
-        # tab co cham do (so tren tab che mat chu -> anh mau tab khong khop) -> cham tab theo cham do
+        # tab co cham do (so tren tab che mat chu -> anh mau tab khong khop) -> cham tab theo cham do.
+        # P7-3 (chu du an 2026-11-24): nhan het o tab DAU TIEN (dang mo) truoc, roi moi sang tab co cham do
+        total += claim_tab(ctx, claims, onces, max_taps)
         done = set()
         for _ in range(6):
             dots = [d for d in red_dots(ctx.shot(), tuple(strip)) if d[0] // 50 not in done]
@@ -132,12 +134,13 @@ def run_route(ctx, prefix, max_taps=30):
             done.add(x // 50)
             ctx.tap(x - 40, y + 14, wait=1.2)   # cham do o goc tren-phai tab
             total += claim_tab(ctx, claims, onces, max_taps)
-        if not done:
-            total += claim_tab(ctx, claims, onces, max_taps)  # tab dang mo
         ctx.ensure_city()
         return total
     tabs = ctx.v.list(prefix + "tab_")
     if tabs:
+        # P7-3 (chu du an 2026-11-24): tab DAU TIEN (dang mo khi vao bang, khong co anh mau tab_1) cung phai nhan het -
+        # truoc day chi nhan o tab_2, tab_3... -> thu o tab dau bi bo, so do thu (1) con mai
+        total += claim_tab(ctx, claims, onces, max_taps)
         for t in tabs:
             if ctx.tap_tpl(t, wait=1.2):
                 total += claim_tab(ctx, claims, onces, max_taps)
@@ -149,12 +152,68 @@ def run_route(ctx, prefix, max_taps=30):
     return total
 
 
+def icon_badged(ctx, img, tpl, roi=None):
+    """Icon `tpl` (thanh pho) con cham do / so do o goc tren-phai -> (x, y) icon | None."""
+    p = ctx.v.find(img, tpl, roi=roi) if ctx.v.has(tpl) else None
+    if not p:
+        return None
+    return p if any(-10 <= d[0] - p[0] <= 60 and -60 <= d[1] - p[1] <= 15 for d in red_dots(img)) else None
+
+
+def repeat_more(rounds, got, still_badged, max_rounds):
+    """P7-3: lap mo icon thu / qua toi khi HET so do. Dung khi het so, lan vua roi khong nhan duoc gi (so do khong
+    mat vi ly do khac - vd qua lien minh het luot nhan hom nay), hoac du max_rounds."""
+    return bool(still_badged) and got > 0 and rounds < max_rounds
+
+
+def run_until_clear(ctx, route, max_taps, max_rounds=4):
+    """Tuyen co icon thanh pho (thu): lap toi khi icon het so do."""
+    prefix = f"rewards/{route}/"
+    total, r = 0, 0
+    while True:
+        n = run_route(ctx, prefix, max_taps)
+        total += n
+        r += 1
+        ctx.ensure_city()
+        still = icon_badged(ctx, ctx.shot(), prefix + "open_1")
+        if not repeat_more(r, n, still, max_rounds):
+            if still and n == 0 and r > 1:
+                log.info("Qua [%s]: con so do nhung khong nhan them duoc gi - dung", route)
+            return total
+
+
+GIFT_ICON_ROI = (330, 600, 210, 300)     # icon hop qua lien minh (so do) goc phai duoi thanh pho
+
+
+def ally_gift_until_clear(ctx, max_rounds=4):
+    """P7-3 (anh chu du an 2026-11-24: icon qua so 6): mo "Qua tang lien minh" lap toi khi het so do."""
+    from bot.modules import alliance
+    total, r = 0, 0
+    while r < max_rounds:
+        ctx.ensure_city()
+        p = icon_badged(ctx, ctx.shot(), "ally/icon_gift", GIFT_ICON_ROI)
+        if not p:
+            break
+        n = alliance.gifts(ctx, p[0] + 16, p[1] - 17)   # gifts() cham (x-16, y+17) = tam icon
+        ctx.ensure_city()
+        total += n
+        r += 1
+        if not n:
+            log.info("Qua lien minh: so do con nhung khong nhan them duoc (het luot hom nay?) - dung")
+            break
+    return total
+
+
 def run(ctx):
     rc = ctx.cfg.get("rewards", {})
     grand = 0
+    rounds = rc.get("repeat_rounds", 4)
     for route in rc.get("routes", []):
         try:
-            n = run_route(ctx, f"rewards/{route}/", rc.get("max_taps_per_route", 30))
+            if route == "mail" and rc.get("repeat_until_clear", True):
+                n = run_until_clear(ctx, route, rc.get("max_taps_per_route", 30), rounds)
+            else:
+                n = run_route(ctx, f"rewards/{route}/", rc.get("max_taps_per_route", 30))
         except Exception as e:
             log.warning("Loi tuyen qua %s: %s", route, e)
             ctx.save_debug(f"rewards_{route}")
@@ -162,4 +221,14 @@ def run(ctx):
             continue
         log.info("Qua [%s]: nhan %d lan", route, n)
         grand += n
+    if rc.get("ally_gift", True):
+        try:
+            n = ally_gift_until_clear(ctx, rounds)
+            if n:
+                log.info("Qua [ally_gift]: nhan %d lan", n)
+            grand += n
+        except Exception as e:
+            log.warning("Loi qua lien minh: %s", e)
+            ctx.save_debug("rewards_ally_gift")
+            ctx.ensure_city()
     return grand

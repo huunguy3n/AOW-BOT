@@ -63,6 +63,20 @@ def _order(dots):
     return sorted(dots, key=lambda d: (d[1] // 30, d[0]))
 
 
+# P7-3 (chu du an 2026-11-24): uu tien so do CO THE NHAN (thu, qua lien minh, VIP, nhiem vu ngay...) truoc; chat KHONG uu
+# tien (xoa huy hieu chat chay cuoi, chi khi con thoi gian). Cung muc -> tren xuong, trai qua phai.
+KIND_PRIO = {"mail": 0, "ally_gift": 0, "vip": 1, "daily": 1, "shop_gift": 2, "intel": 2, "play": 2,
+             "build": 3, "research": 3, "train": 3, "campaign": 3, "recruit": 3, "hero": 3, "alliance": 4,
+             "rally": 4, "generic": 5}
+
+
+def pick(kinded):
+    """kinded: [((x, y), kind)] -> phan tu xu ly truoc (uu tien loai, roi tren xuong / trai qua phai) | None."""
+    if not kinded:
+        return None
+    return min(kinded, key=lambda dk: (KIND_PRIO.get(dk[1], 5), dk[0][1] // 30, dk[0][0]))
+
+
 def _key(d):
     return (d[0] // 40, d[1] // 40)
 
@@ -100,6 +114,8 @@ def _kind(ctx, img, d):
         return "rally"
     if _near(d, ctx.v.find(img, "ally/icon_gift", th=0.8, roi=(330, 600, 210, 300))):
         return "ally_gift"
+    if _near(d, ctx.v.find(img, "rewards/mail/open_1", roi=(400, 600, 140, 300))):
+        return "mail"                              # P7-3: icon thu (so do) goc phai duoi -> nhan het, lap toi khi het so
     return "generic"
 
 
@@ -167,6 +183,9 @@ def _handle(ctx, kind, x, y):
             return rebels.run(ctx) or 0
         if kind == "ally_gift":
             return alliance.gifts(ctx, x, y)
+        if kind == "mail":
+            rc_ = ctx.cfg.get("rewards", {})
+            return rewards.run_until_clear(ctx, "mail", rc_.get("max_taps_per_route", 30), rc_.get("repeat_rounds", 4))
         if kind == "shop_gift":   # goi tra phi KHONG bam; chi nut "Nhan" xanh (claim_buttons nhan theo mau + chu)
             ctx.tap(x - 16, y + 17, wait=2.5)
             if ctx.is_home():
@@ -315,11 +334,6 @@ def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
             log.info("Cham do: bo qua lan nay (%s)", why_)
             return 0
         log.info("Cham do: quet (%s), toi da %s s", why_, rc["max_s"] or "-")
-    try:
-        chat.clear(ctx)            # chu du an 2026-11-22: mo roi thoat chat de mat huy hieu (chi doc, khong gui)
-    except Exception as e:         # loi o day khong duoc lam hong ca buoc cham do
-        log.warning("Chat: loi khi xoa huy hieu: %s", e)
-        ctx.ensure_city()
     total, dead = 0, set()          # dead: vi tri da mo ma khong nhan duoc gi -> khong mo lai trong buoc nay
     useless, worked_at = set(), set()   # vo ich -> nho lau dan; lam duoc viec -> xoa dem vo ich
     # G3: tri nho cham do vo ich giua cac lan ghe (het han) -> khong mo lai moi lan ghe
@@ -350,9 +364,8 @@ def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
             todo = _order([d for d in _left(img, ctx.v) if _key(d) not in dead])
             if not todo:
                 break
-            x, y = todo[0]
+            (x, y), kind = pick([(d, _kind(ctx, img, d)) for d in todo])   # P7-3: so do co the nhan truoc
             k = _key((x, y))
-            kind = _kind(ctx, img, (x, y))
             ok, gate = allowed(kind, ctx.cfg)
             if not ok:
                 dead.add(k)
@@ -405,6 +418,13 @@ def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
         if not got:
             log.info("Vong %d khong nhan them duoc gi - dung (con %s)", rnd, left)
             break
+    if not over():
+        try:
+            chat.clear(ctx)        # chu du an 2026-11-22: mo roi thoat chat de mat huy hieu; P7-3: KHONG uu tien -> cuoi
+        except Exception as e:     # loi o day khong duoc lam hong ca buoc cham do
+            log.warning("Chat: loi khi xoa huy hieu: %s", e)
+        ctx.ensure_city()
+        img = ctx.shot()
     if img is None:                 # max_rounds = 0
         img = ctx.shot()
     if m:
