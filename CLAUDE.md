@@ -100,8 +100,8 @@ web/                 Flask, chỉ nghe 127.0.0.1 (trang /agent: quyết định 
 src/aowbot/          Kiến trúc mới (ADR-0013): domain (luật thuần) → application (world view, planner, utility,
                      executor, điều phối sự kiện) → infrastructure (SQLite, khóa, adapter `legacy` vào bot/*) /
                      interfaces (CLI) → app (composition). Luật phụ thuộc kiểm bằng `lint-imports` (pyproject.toml).
-                     bot/* chỉ được import aowbot.domain. Agent TẮT mặc định: bật theo máy bằng
-                     data/settings.json "instances": {"<idx>": {"schedule": {"mode": "agent"}}} (vòng chung = smart).
+                     bot/* chỉ được import aowbot.domain. Agent TẮT mặc định: chạy trên máy khi CẢ HAI — công tắc chung `agent.enabled`
+                     (web, P6) và máy chọn chế độ "Agent"; tắt công tắc = dừng khẩn cấp agent mọi máy. Trần cứng 2 máy: aowbot.domain.rollout.
 templates/<nhóm>/    Ảnh mẫu PNG cắt từ màn 540×960 (xem templates/README.md)
 tools/               snap.py (chụp/cắt ảnh mẫu), record.py (ghi thao tác người chơi), replay_tutorial.py, run_tutorial.py
 poc/                 Script bash Account Manager (Git Bash, MSYS_NO_PATHCONV=1)
@@ -135,6 +135,7 @@ python tools/learn.py train / eval     # nạp mẫu kNN từ ảnh cũ / đo đ
 python tools/imitate_eval.py --idx 3   # đo offline bộ "làm theo mẫu" (bot/imitate.py) trên thao tác tay đã ghi của máy #3
 python main.py --web                   # web quản lý (launch config: .claude/launch.json "aow-web")
 python tools/report_ro.py [--split "YYYY-mm-dd HH:MM"]   # số đo chỉ-đọc trước/sau (lần ghé vô ích, perf ADB/ảnh/OCR, follow kẹt, cấp nhà chính/ngày)
+python tools/report_ro.py --24h       # P6: tổng hợp 24 giờ — bước không lỗi ≥ 95 %, kim cương theo nguồn (bảng gem_ev, chỉ khiên), số máy cùng lúc ≤ 2, chỉ số P1-P5; hướng dẫn chạy thật: docs/strategy/p6-huong-dan-chay-that.md
 python tools/follow_stats.py [--replay] [--human] [--since YYYY-mm-dd]   # P4: follow kẹt theo loại màn, phát lại decide() trên ảnh kẹt, thao tác tay
 python -m aowbot world|plan|shadow <idx>                 # agent dry-run: trạng thái + độ tươi / quyết định + lý do / phát lại
 ```
