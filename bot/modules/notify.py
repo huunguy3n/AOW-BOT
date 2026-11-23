@@ -173,7 +173,7 @@ def refill_energy(ctx, need=INTEL_COST, force=False):
     while getattr(ctx, "_potions", 0) < cap:
         if not ctx.tap_tpl("intel/btn_energy_plus", wait=1.5) or not ctx.wait_for("intel/potion_title", timeout=3):
             break
-        if not ctx.tap_tpl("intel/btn_use_potion", wait=1.2):
+        if not use_potion10(ctx):
             log.info("Het thuoc the luc")
             ctx.tap_first(ctx.POPUP_CLOSERS, wait=1.0)
             break
@@ -186,6 +186,21 @@ def refill_energy(ctx, need=INTEL_COST, force=False):
             break
     log.info("Dung %d thuoc the luc (luot nay %d/%d), nang luong %s -> %s", used, getattr(ctx, "_potions", 0), cap, e, energy(ctx))
     return used > 0
+
+
+def use_potion10(ctx):
+    """P7-4: bang "Thuoc The Luc" -> nut "Dung" o hang binh 10 diem (intel/potion_10). KHONG BAO GIO bam "Mua"
+    (nut Dung khop trung vi tri nut Mua intel/btn_buy_potion bi loai). Thieu anh binh 10 -> nut Dung tren cung (cu)."""
+    from bot import tplneed
+    img = ctx.shot()
+    uses = ctx.v.find_all(img, "intel/btn_use_potion")
+    buys = ctx.v.find_all(img, "intel/btn_buy_potion") if tplneed.has(ctx.v, "intel/btn_buy_potion", "nut Mua bang thuoc") else []
+    row = ctx.v.find(img, "intel/potion_10") if tplneed.has(ctx.v, "intel/potion_10", "binh the luc 10 diem") else None
+    p = IR.pick_use_button(uses, row, buys)
+    if not p:
+        return False
+    ctx.tap(p[0], p[1], wait=1.2)
+    return True
 
 
 def done_ticks(img, roi=(0, 90, 540, 770)):
@@ -247,10 +262,22 @@ def special_pins(img, roi=(0, 90, 540, 760)):
     return out
 
 
+def _pickups(ctx):
+    """P7-4: hop qua tinh bao dang nhat (toi da 2 cung luc) - song qua 1 lan ghe (ctx)."""
+    pk = getattr(ctx, "_intel_pickups", None)
+    if pk is None:
+        nc = ctx.cfg.get("notify", {})
+        pk = ctx._intel_pickups = IR.Pickups(nc.get("intel_pickup_max", IR.PICKUP_MAX), nc.get("intel_pickup_s", IR.PICKUP_S))
+    return pk
+
+
 def intel(ctx, max_n):
-    only_gold = ctx.cfg.get("notify", {}).get("intel_only_gold", False)   # #1 (TK chinh): chi lam ghim vang
+    nc = ctx.cfg.get("notify", {})
+    only_gold = nc.get("intel_only_gold", False)   # #1 (TK chinh): chi lam ghim vang
     done = 0
     tried = set()
+    done_keys = set()           # P7-4: ghim lam xong (tran thang / nhat) -> o quet lai co the la diem MOI
+    rescans, done_scan = 0, 0
     for _ in range(max_n):
         if not ctx.find("intel/title"):
             ctx.ensure_city()
@@ -270,6 +297,8 @@ def intel(ctx, max_n):
             ctx.tap(x - 20, y + 18, wait=1.5)       # than ghim nam duoi-trai dau tick
             ctx.dismiss_reward()
             done += 1
+            done_scan += 1
+            _pickups(ctx).done()
             log.info("Tinh bao: nhan hop qua da xong @%d,%d", x, y)
         img = ctx.shot()
         pins = [p for p in ctx.v.find_all(img, "intel/pin_base", th=0.6, min_dist=15)  # vong mo, chong nhau
@@ -280,6 +309,14 @@ def intel(ctx, max_n):
                 if all(abs(sx - p[0]) > 30 or abs(sy + 35 - p[1]) > 40 for p in pins)                         and (sx // 20, (sy + 35) // 20) not in tried:
                     pins.append((sx, sy + 35, 1.0))     # quy uoc ghim = vong, cham tai y - 35 = dau ghim
         if not pins:
+            # P7-4: hoan thanh tinh bao co the sinh diem moi -> quet lai (cho diem hien) toi khi khong con diem
+            if IR.should_rescan(done_scan, rescans, nc.get("intel_rescans", 3)):
+                rescans, done_scan = rescans + 1, 0
+                tried -= done_keys
+                done_keys.clear()
+                log.info("Tinh bao: quet lai ban do lan %d (vua lam xong nhiem vu, co the co diem moi)", rescans)
+                time.sleep(nc.get("intel_rescan_wait_s", 3))
+                continue
             break
         e = energy(ctx)
         if e is not None and e < INTEL_COST and not refill_energy(ctx):
@@ -292,6 +329,9 @@ def intel(ctx, max_n):
         log.info("Tinh bao: %s", r)
         if r in IR.DONE:
             done += 1
+            done_scan += 1
+            if r != "marched":          # quan doan dang di -> ghim con tren ban do toi khi xong
+                done_keys.add((x // 20, y // 20))
         if r in IR.STOP:
             break
         if r in IR.SKIP:
@@ -362,11 +402,56 @@ def legion_march(ctx):
         log.info("Tinh bao: man quan doan khong du doan thang -> bo ghim")
         ctx.back_out()
         return "lose_pred"
-    if not ctx.tap_tpl("rebels/btn_march_out", wait=2.0):
+    if not ctx.find("rebels/btn_march_out"):
         ctx.back_out()
         return _intel_unknown(ctx, IR.UNKNOWN_AFTER)
-    ctx.march_sent()
-    return "marched"
+    return confirm_departure(ctx, "rebels/btn_march_out")
+
+
+def _marches(ctx):
+    try:
+        return ctx.read_marches()
+    except Exception:
+        return None
+
+
+def confirm_departure(ctx, btn, tries=2, ok="marched"):
+    """P7-4 (live #1: quan doan khong di chuyen): bam nut xuat phat roi KIEM quan doan that su di - nut da bien mat
+    va (neu doc duoc) 'Hanh quan x/y' tang. Khong di -> bam lai 1 lan; van khong -> log loi + anh, 'not_departed'."""
+    before = _marches(ctx)
+    for k in range(tries):
+        if not ctx.tap_tpl(btn, wait=2.0):
+            if k == 0:
+                ctx.back_out()
+                return _intel_unknown(ctx, IR.UNKNOWN_AFTER)
+        gone = not ctx.find(btn)
+        if IR.departed(before, _marches(ctx) if gone else None, gone):
+            if ok == "marched":
+                ctx.march_sent()
+            return ok
+        log.info("Tinh bao: bam %s nhung quan doan chua di (lan %d/%d)", btn.split("/")[-1], k + 1, tries)
+    log.warning("Tinh bao: quan doan KHONG xuat phat sau %d lan bam %s", tries, btn)
+    ctx.back_out()
+    return _intel_unknown(ctx, IR.NOT_DEPARTED)
+
+
+def pickup(ctx):
+    """P7-4: hop qua / tiep te tinh bao (moi mau): toi da intel_pickup_max hop dang nhat; day -> cho toi da
+    intel_pickup_wait_max_s giay roi moi nhat tiep, van day -> bo ghim (lan sau). Kiem don vi that su di."""
+    pk = _pickups(ctx)
+    w = pk.wait_s(time.time())
+    if w > 0:
+        cap = ctx.cfg.get("notify", {}).get("intel_pickup_wait_max_s", 120)
+        if w > cap:
+            log.info("Tinh bao: dang nhat %d hop (toi da) - con %.0f s, bo ghim nay", len(pk.until), w)
+            ctx.back_out()
+            return IR.PICKUP_BUSY
+        log.info("Tinh bao: dang nhat %d hop (toi da) - cho %.0f s", len(pk.until), w)
+        time.sleep(w)
+    r = confirm_departure(ctx, "intel/btn_pickup", ok="picked")
+    if r == "picked":
+        pk.add(time.time())
+    return r
 
 
 def intel_mission(ctx):
@@ -396,8 +481,8 @@ def intel_mission(ctx):
             img = ctx.shot()
             if any(ctx.v.find(img, n) for n in ("intel/btn_attack", "intel/btn_pickup", "rebels/btn_rally")):
                 break
-    if ctx.tap_tpl("intel/btn_pickup", wait=2.0):     # Tiep te vat tu: don vi tinh bao rieng, khong ton doi
-        return "picked"
+    if ctx.find("intel/btn_pickup"):     # Tiep te vat tu / hop qua: don vi tinh bao rieng, khong ton doi (P7-4: toi da 2)
+        return pickup(ctx)
     if not ctx.tap_tpl("intel/btn_attack", wait=2.5):
         if ctx.find("rebels/btn_rally", fresh=False):   # ghim Phan quan Co giap: chi co "Tap ket tan cong" (chu du an 2026-11-22)
             return rebels_pin(ctx)
@@ -418,12 +503,7 @@ def intel_mission(ctx):
             ctx.back_out()
             return "no_march"
         ctx.tap_tpl("gather/btn_recommended", wait=1.0)
-        ctx.tap_tpl("gather/btn_march", wait=2.0)
-        if ctx.find("gather/btn_march"):
-            ctx.back_out()
-            return "no_march"
-        ctx.march_sent()
-        return "marched"
+        return confirm_departure(ctx, "gather/btn_march")
     if ctx.find("rebels/btn_march_out", fresh=False):   # P5-1: man quan doan kieu moi (#1)
         return legion_march(ctx)
     ctx.back_out()

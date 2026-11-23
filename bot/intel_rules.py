@@ -64,3 +64,66 @@ def unknown_rate(counts):
     tot = sum(counts.values())
     unk = sum(n for k, n in counts.items() if is_unknown(k))
     return unk, tot, (round(100.0 * unk / tot, 1) if tot else None)
+
+
+# ---------- P7-4 (chu du an 2026-11-24, live #1) ----------
+NOT_DEPARTED = "not_departed"   # bam Xuat chinh / Tiep te nhung quan doan khong di (nut con nguyen, x/y khong tang)
+PICKUP_BUSY = "pickup_busy"     # da co PICKUP_MAX hop dang nhat -> cho het gio van day: bo ghim nay (lan sau)
+PICKUP_MAX = 2                  # hop qua tinh bao (moi mau) toi da 2 hop dang nhat cung luc
+PICKUP_S = 90                   # thoi gian nhat 1 hop (uoc luong; cau hinh notify.intel_pickup_s)
+SKIP = SKIP + (PICKUP_BUSY, NOT_DEPARTED)
+
+
+def departed(before, after, screen_gone):
+    """Quan doan/don vi tinh bao co THAT SU xuat phat? before/after: (dang di, tong) doc 'Hanh quan x/y' (None = khong doc
+    duoc); screen_gone: nut Xuat chinh / Tiep te da bien mat sau khi bam. -> True | False.
+    Doc duoc ca 2 so: so dang di phai tang. Khong doc duoc: dua vao nut da bien mat."""
+    if before and after and before[1] == after[1]:
+        return after[0] > before[0]
+    return bool(screen_gone)
+
+
+class Pickups:
+    """Hop qua dang nhat (ham thuan, thoi gian truyen vao): toi da `cap` hop cung luc; het `dur` giay coi nhu nhat xong."""
+
+    def __init__(self, cap=PICKUP_MAX, dur=PICKUP_S):
+        self.cap, self.dur, self.until = cap, dur, []
+
+    def _prune(self, now):
+        self.until = [t for t in self.until if t > now]
+
+    def can_pick(self, now):
+        self._prune(now)
+        return len(self.until) < self.cap
+
+    def wait_s(self, now):
+        """Giay phai cho toi khi co cho trong (0 = nhat duoc ngay)."""
+        self._prune(now)
+        return 0.0 if len(self.until) < self.cap else max(0.0, min(self.until) - now)
+
+    def add(self, now):
+        self._prune(now)
+        self.until.append(now + self.dur)
+
+    def done(self):
+        """Ghim hop vua nhan thuong (tick xanh) -> 1 hop da xong, giai phong cho som nhat."""
+        if self.until:
+            self.until.remove(min(self.until))
+
+
+def should_rescan(done_since_scan, rescans, max_rescans):
+    """Hoan thanh tinh bao co the sinh diem moi -> quet lai ban do khi lan quet truoc co lam duoc viec, toi da max_rescans."""
+    return done_since_scan > 0 and rescans < max_rescans
+
+
+def pick_use_button(uses, potion_row, buys=(), tol=22):
+    """Bang "Thuoc The Luc": chon nut "Dung" cung hang voi binh 10 diem; KHONG BAO GIO tra nut "Mua".
+    uses / buys: [(x, y, ...)] nut Dung / Mua; potion_row: (x, y, ...) icon/chu binh 10 diem hoac None.
+    potion_row None -> nut Dung tren cung (hanh vi cu). Nut Dung trung vi tri nut Mua (khop nham) bi loai."""
+    ok = [u for u in uses if all(abs(u[0] - b[0]) > tol or abs(u[1] - b[1]) > tol for b in buys)]
+    if not ok:
+        return None
+    if potion_row is None:
+        return min(ok, key=lambda u: u[1])
+    best = min(ok, key=lambda u: abs(u[1] - potion_row[1]))
+    return best if abs(best[1] - potion_row[1]) <= 45 else None

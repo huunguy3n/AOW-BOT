@@ -203,6 +203,11 @@ notify:
   intel_max_potions: 20   # so Thuoc The Luc toi da / luot (dung tung vien khi thieu)
   intel_use_potions: true  # het nang luong tinh bao -> dung Thuoc The Luc (khong bao gio Mua bang kim cuong)
   intel_only_gold: false   # chi lam ghim tinh bao VANG + TIM dau lau (nhiem vu cao cap); #1 bat (chu du an 2026-11-21)
+  intel_pickup_max: 2      # P7-4: hop qua tinh bao (moi mau) toi da 2 hop dang nhat cung luc; cho nhat xong moi nhat tiep
+  intel_pickup_s: 90       # P7-4: uoc luong giay nhat 1 hop (tick xanh som hon -> giai phong cho som)
+  intel_pickup_wait_max_s: 120  # P7-4: day 2 hop -> cho toi da N giay, lau hon thi bo ghim hop nay (lan sau)
+  intel_rescans: 3         # P7-4: lam xong nhiem vu co the sinh diem moi -> quet lai ban do toi da N lan
+  intel_rescan_wait_s: 3   # P7-4: cho diem moi hien truoc khi quet lai
   recruit: true
   hero: true
   events: true            # o su kien cot phai (nhan qua an toan)

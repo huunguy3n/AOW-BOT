@@ -64,6 +64,9 @@ def test_marker_roi_excludes_bottom_left_false_hit():
 
 
 # ---------- tinh bao: luong intel_mission tren Ctx gia ----------
+GONE_ON_TAP = {"rebels/btn_march_out"}
+
+
 class Ctx:
     def __init__(self, v, full=False):
         self.POPUP_CLOSERS = ["common/btn_x"]
@@ -87,6 +90,8 @@ class Ctx:
     def tap_tpl(self, name, **k):
         if self.v.find("img", name):
             self.taps.append(name)
+            if name in GONE_ON_TAP:          # P7-4: nut xuat phat bien mat sau khi bam = quan doan da di
+                self.v.seen.discard(name)
             return True
         return False
 
@@ -134,14 +139,15 @@ def test_target_not_found_is_unknown_target():
 
 
 def test_legion_screen_marches_only_on_predicted_win(monkeypatch):
-    v = V({"intel/btn_go", "intel/btn_attack", "rebels/btn_march_out"})
+    seen = {"intel/btn_go", "intel/btn_attack", "rebels/btn_march_out"}
+    v = V(seen)
     monkeypatch.setattr(rebels, "pred_win", lambda img: True)
     c = Ctx(v)
     assert notify.intel_mission(c) == "marched" and c.sent == 1 and "rebels/btn_march_out" in c.taps
     monkeypatch.setattr(rebels, "pred_win", lambda img: False)
-    c = Ctx(V(v.seen))
+    c = Ctx(V(seen))
     assert notify.intel_mission(c) == "lose_pred" and c.sent == 0 and "rebels/btn_march_out" not in c.taps
-    c = Ctx(V(v.seen), full=True)
+    c = Ctx(V(seen), full=True)
     assert notify.intel_mission(c) == "no_march"
 
 
