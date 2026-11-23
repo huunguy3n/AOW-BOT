@@ -5,6 +5,7 @@ Chi nghe tren 127.0.0.1 (may nay). Muon xem tu dien thoai cung mang LAN: --host 
 import logging, os, time
 from flask import Flask, jsonify, redirect, request, send_from_directory
 
+from aowbot.domain import rollout
 from web.options import MODULES, GROUPS
 from bot.vnames import fix_name
 
@@ -80,11 +81,13 @@ def create_app(runner, store, ring):
             inst.append({**s, "idx": idx, "enabled": s.get("enabled", True), "backoff": bo, "rebels": rebels_info(mem, idx, c), "timers": timers_info(mem, idx),
                          "smart": g.get("schedule", {}).get("mode") == "smart",
                          "mode": (c.get("schedule") or {}).get("mode"),
+                         "agent": rollout.agent_status(c),     # P6: on | blocked (cong tac chung tat) | off
                          "modules": {k: bool(c["modules"].get(k)) for k, _ in MODULES}})
         opts = [{"group": name, "items": [{**o, "value": get_path(g, o["key"])} for o in items]}
                 for name, items in GROUPS]
         return jsonify(now=time.time(), runner={**snap.get("runner", {}), "alive": runner.running,
-                       "queue": list(runner.queue)}, instances=inst, modules=MODULES, options=opts)
+                       "queue": list(runner.queue)}, instances=inst, modules=MODULES, options=opts,
+                       agent_switch=rollout.agent_switch(g))
 
     @app.post("/api/runner")
     def runner_ctl():
@@ -189,9 +192,20 @@ def create_app(runner, store, ring):
         events = [dict(zip(("account", "type", "due_at", "status", "note"), r))
                   for r in (q("SELECT account, type, due_at, status, note FROM events WHERE status IN ('pending','claimed') "
                               "ORDER BY due_at LIMIT 50") if "events" in has else [])]
-        modes = {str(i): (store.cfg_for(runner.base_cfg, i).get("schedule") or {}).get("mode")
-                 for i in runner.base_cfg["instances"]}
-        return jsonify(now=time.time(), decisions=decisions, events=events, modes=modes)
+        cfgs = {str(i): store.cfg_for(runner.base_cfg, i) for i in runner.base_cfg["instances"]}
+        modes = {i: (c.get("schedule") or {}).get("mode") for i, c in cfgs.items()}
+        status = {i: rollout.agent_status(c) for i, c in cfgs.items()}
+        return jsonify(now=time.time(), decisions=decisions, events=events, modes=modes, status=status,
+                       switch=rollout.agent_switch(store.cfg_for(runner.base_cfg)))
+
+    @app.post("/api/agent/switch")
+    def agent_switch():
+        """P6: cong tac chung agent.enabled (chi nhan true/false that). Tat = dung khan cap agent tren moi may."""
+        on = (request.json or {}).get("on")
+        if not isinstance(on, bool):
+            return jsonify(ok=False, error="on phai la true/false"), 400
+        store.set_settings("global", {"agent": {"enabled": on}})
+        return jsonify(ok=True, on=on)
 
     @app.get("/api/learn")
     def learn_api():

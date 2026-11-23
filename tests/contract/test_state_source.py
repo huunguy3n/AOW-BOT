@@ -75,7 +75,8 @@ def test_agent_hooks_work_from_runner_thread(tmp_path):
     'SQLite objects created in a thread...' -> agent khong bao gio chay, may agent mat luon buoc gather."""
     (tmp_path / "data").mkdir()
     Memory(str(tmp_path / "data" / "m.db"))
-    hooks = AgentHooks(lambda i: {"schedule": {"mode": "agent"}}, str(tmp_path / "data" / "m.db"), str(tmp_path / "l"))
+    hooks = AgentHooks(lambda i: {"schedule": {"mode": "agent"}, "agent": {"enabled": True}},
+                       str(tmp_path / "data" / "m.db"), str(tmp_path / "l"))
     out, err = [], []
 
     def work():
@@ -89,3 +90,11 @@ def test_agent_hooks_work_from_runner_thread(tmp_path):
     t.join()
     assert not err
     assert out[0] is not None                                   # chua co gi -> su kien quan sat ngay
+
+
+def test_agent_hooks_idle_when_master_switch_off(tmp_path):
+    """P6: may chon Agent nhung cong tac chung tat -> hooks khong tra su kien (runner khong mo lan ghe agent)."""
+    (tmp_path / "data").mkdir()
+    Memory(str(tmp_path / "data" / "m.db"))
+    hooks = AgentHooks(lambda i: {"schedule": {"mode": "agent"}}, str(tmp_path / "data" / "m.db"), str(tmp_path / "l"))
+    assert not hooks.enabled(1) and hooks.due_event(1) is None and hooks.next_at(1) is None

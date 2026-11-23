@@ -171,8 +171,10 @@ def test_scheduler_leaves_gather_to_agent(tmp_path):
     order = ["mainquest", "gather"]
     enabled = {"mainquest": True, "gather": True}
     legacy = scheduler.decide_one(mem, 1, order, enabled, {"schedule": {"mode": "smart"}}, NOW)
-    agent = scheduler.decide_one(mem, 1, order, enabled, {"schedule": {"mode": "agent"}}, NOW)
-    assert "gather" in legacy.steps and "gather" not in agent.steps
+    agent = scheduler.decide_one(mem, 1, order, enabled, {"schedule": {"mode": "agent"}, "agent": {"enabled": True}},
+                                 NOW)
+    blocked = scheduler.decide_one(mem, 1, order, enabled, {"schedule": {"mode": "agent"}}, NOW)  # P6: cong tac tat
+    assert "gather" in legacy.steps and "gather" not in agent.steps and "gather" in blocked.steps
 
 
 def test_runner_spawns_agent_visit_for_due_event(tmp_path):
@@ -190,7 +192,7 @@ def test_runner_spawns_agent_visit_for_due_event(tmp_path):
             pass
 
         def cfg_for(self, base, idx=None):     # may hoc mau (demo) bi loai khoi vong agent
-            return {"schedule": {"mode": "agent"}, "modules": mods}
+            return {"schedule": {"mode": "agent"}, "agent": {"enabled": True}, "modules": mods}
     r = Runner.__new__(Runner)
     r.base_cfg, r.store, r.agent, r._busy = {"instances": [0, 1]}, Store(), Agent(), {}
     r.mem = Memory(str(tmp_path / "m.db"))

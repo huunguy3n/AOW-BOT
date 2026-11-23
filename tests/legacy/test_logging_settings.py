@@ -42,7 +42,8 @@ def _runner(settings):
 
 def test_effective_settings_reflect_overrides_and_cap():
     r = _runner({"schedule": {"mode": "smart", "parallel": 5}, "speed": {"wait_scale": 0.5}})
-    assert r.effective_settings() == {"mode": "smart", "parallel": 2, "max_running": 2, "wait_scale": 0.5}
+    assert r.effective_settings() == {"mode": "smart", "parallel": 2, "max_running": 2, "agent": "tat",
+                                      "wait_scale": 0.5}
 
 
 def test_settings_logged_once_until_changed(caplog):

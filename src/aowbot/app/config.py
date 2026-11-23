@@ -15,7 +15,7 @@ from aowbot.domain.policy import SafetyPolicy
 
 DEFAULT_TTL_MIN = MappingProxyType({"default": 30.0, "hq_level": 360.0, "march_used": 20.0,
                                     "march_total": 1440.0, "world_open": 360.0})
-AGENT_KEYS = frozenset({"ttl_min", "weights", "idle_recheck_min", "min_state_confidence"})
+AGENT_KEYS = frozenset({"enabled", "ttl_min", "weights", "idle_recheck_min", "min_state_confidence"})
 
 
 @dataclass(frozen=True, slots=True)

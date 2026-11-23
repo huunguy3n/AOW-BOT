@@ -1,6 +1,6 @@
 """Noi agent vao runner cu (SCH-X). Runner chi thay mot doi tuong 'hooks' (bot/ khong import duoc aowbot.app,
 luat D7) - main.py dung va truyen vao. Agent chi tac dong may co schedule.mode = 'agent' (dat theo may tren web /
-data/settings.json); mac dinh khong may nao."""
+data/settings.json) VA cong tac chung agent.enabled bat (P6, mac dinh tat) - aowbot.domain.rollout."""
 from __future__ import annotations
 
 import logging
@@ -13,6 +13,7 @@ from aowbot.application.coordinator import AgentCoordinator
 from aowbot.application.execute import SessionDeps, run_session
 from aowbot.application.scheduling import TimerRegistry
 from aowbot.application.world_view import build_account_state
+from aowbot.domain import rollout
 from aowbot.domain.events import Event
 from aowbot.infrastructure.clock import SystemClock
 from aowbot.infrastructure.legacy.actions import LegacyActionRunner
@@ -21,7 +22,7 @@ from aowbot.infrastructure.sqlite.agent_store import SqliteAgentStore
 from aowbot.infrastructure.sqlite.legacy_memory_reader import LegacyMemoryReader
 
 log = logging.getLogger("aow")
-AGENT_MODE = "agent"
+AGENT_MODE = rollout.AGENT_MODE
 
 
 class AgentHooks:
@@ -35,7 +36,7 @@ class AgentHooks:
             log.info("Agent: tra %d su kien dang do (tien trinh truoc bi ngat) ve cho xu ly", len(recovered))
 
     def enabled(self, idx: int) -> bool:
-        return (self._cfg_for(idx).get("schedule") or {}).get("mode") == AGENT_MODE
+        return rollout.agent_active(self._cfg_for(idx))
 
     def due_event(self, idx: int) -> Event | None:
         return self._coord.due_event(idx) if self.enabled(idx) else None

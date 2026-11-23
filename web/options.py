@@ -97,6 +97,9 @@ GROUPS = [
         dict(key="watchdog.still_min", label="Kẹt khi màn hình đứng yên quá (phút)", type="int", min=1, max=60, ready=True),
         dict(key="watchdog.step_max_min", label="Kẹt khi 1 bước chạy quá (phút)", type="int", min=5, max=180, ready=True),
     ]),
+    ("Agent (P6, chỉ chủ dự án bật)", [
+        dict(key="agent.enabled", label="CÔNG TẮC CHUNG Agent: cho phép máy chọn chế độ \"Agent\" chạy agent (tắt = dừng agent mọi máy, máy chạy theo lịch chung)", type="bool", ready=True),
+    ]),
     ("Lập lịch theo trí nhớ", [
         dict(key="schedule.mode", label="Chế độ chạy", type="select",
              choices=[["fixed", "Cố định: chạy hết máy, hết bước"], ["smart", "Thông minh: chỉ vào khi cần xây / thu thập / nghiên cứu"]], ready=True),

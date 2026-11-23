@@ -12,7 +12,7 @@ Thu tu buoc trong 1 lan ghe van theo ORDER (runner), lich chi chon buoc nao + lu
 import json, time
 from dataclasses import dataclass, field
 
-from aowbot.domain import marches, warday
+from aowbot.domain import marches, rollout, warday
 from bot import stepgate
 
 TRIGGERS = ("warday", "gather", "upgrade", "mainquest", "quests", "research", "rebels")
@@ -403,7 +403,7 @@ def decide_one(mem, idx, order, enabled, cfg, now):
     """-> Visit (at co the > now = chua toi luc)."""
     sc = sched_cfg(cfg)
     names = [n for n in order if enabled.get(n)]
-    if (cfg.get("schedule") or {}).get("mode") == "agent":
+    if rollout.agent_active(cfg):   # P6: chi khi cong tac chung agent.enabled bat
         names = [n for n in names if n != "gather"]   # SCH-X: hanh quan cua may nay do agent lo
     backoff = {n for n in names if mem.backoff_until(idx, n) > now}
     # P1: buoc dang gian chu ky / chua du dieu kien (bot.stepgate) -> khong chay; trigger da toi han cua no khong keo
@@ -444,7 +444,7 @@ def piggyback_steps(mem, idx, order, enabled, cfg, now):
     Vi sao: lan ghe agent tung chi gui quan roi tat may -> cham do / qua bi bo qua du may da ton ~70 s khoi dong."""
     sc = sched_cfg(cfg)
     names = [n for n in order if enabled.get(n)]
-    if (cfg.get("schedule") or {}).get("mode") == "agent":
+    if rollout.agent_active(cfg):   # P6: chi khi cong tac chung agent.enabled bat
         names = [n for n in names if n != "gather"]
     soon = now + sc["batch_window_min"] * 60
     out = []

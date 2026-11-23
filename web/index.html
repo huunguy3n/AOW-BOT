@@ -480,7 +480,7 @@ dialog.dlg::backdrop{background:rgba(15,23,42,.45)}
       <!-- 2. agent -->
       <div class="panel">
         <div class="panel-h"><h2>Agent quyết định gì</h2><span class="spacer"></span><span class="chips" id="amodes"></span></div>
-        <p class="panel-d">Agent chỉ mở máy khi có sự kiện đến hạn. Bật cho một máy trong <code class="k">data/settings.json</code> → <code class="k">"instances": {"1": {"schedule": {"mode": "agent"}}}</code> · xem thử không chạm game: <code class="k">python -m aowbot plan 1</code></p>
+        <p class="panel-d">Agent chỉ chạy trên máy khi <b>cả hai</b>: công tắc chung bật (nút bên phải, mặc định TẮT) <b>và</b> máy đó chọn chế độ "Agent" (ô Chế độ của từng máy). Công tắc chung tắt → các máy chọn Agent chạy theo lịch chung — dùng làm nút dừng khẩn cấp. Xem thử không chạm game: <code class="k">python -m aowbot plan 1</code> · <code class="k">python -m aowbot shadow all</code></p>
         <div class="two w12">
           <div><div class="sub-h"><span>Sự kiện đang hẹn</span></div><div class="panel tbl-wrap" style="box-shadow:none"><table class="dt" id="aevents"></table></div></div>
           <div><div class="sub-h"><span>Quyết định gần nhất</span><span class="faint">vì sao chọn · kết quả thật · lúc đánh giá lại</span></div><div class="panel tbl-wrap" style="box-shadow:none"><table class="dt" id="adecisions"></table></div></div>
@@ -735,6 +735,7 @@ function rowHTML(i){
     <button class="sel-btn" data-act="select" aria-pressed="${i.idx===sel}" aria-label="Xem máy #${i.idx}">
       <span class="l1"><span class="idx">#${i.idx}</span><span class="nm">${esc(i.name||('Instance '+i.idx))}</span>
         ${i.mode==='demo'? '<span class="tag info">học mẫu</span>' : i.mode==='follow'? '<span class="tag info">làm theo</span>' : ''}
+        ${i.agent==='on'? '<span class="tag info">agent</span>' : i.agent==='blocked'? '<span class="tag" title="Chọn Agent nhưng công tắc chung TẮT → chạy theo lịch chung">agent: chờ công tắc</span>' : ''}
         ${needsAttention(i)? `<span class="warnicon" title="${esc(i.last_error||'Có bước đang tạm bỏ')}">${ico('alert','sm')}</span>`:''}
         <span class="badge ${stCls}"><span class="dot ${stCls}"></span>${stText}</span></span>
       <span class="l2">${l2}</span>
@@ -875,7 +876,7 @@ function detailHTML(i){
       <span class="spacer"></span>
       <label class="msel" title="Cách bot xử lý máy này">Chế độ
         <select data-act="mode" aria-label="Chế độ máy #${i.idx}">
-          ${[['', 'Theo lịch chung'], ['agent', 'Agent'], ['demo', 'Học mẫu (bot đứng yên)'], ['follow', 'Làm theo mẫu']].map(([v,t]) => `<option value="${v}" ${(['demo','agent','follow'].includes(i.mode)? i.mode : '')===v?'selected':''}>${t}</option>`).join('')}
+          ${[['', 'Theo lịch chung'], ['agent', i.agent==='blocked'? 'Agent (công tắc chung TẮT → đang chạy lịch chung)' : 'Agent'], ['demo', 'Học mẫu (bot đứng yên)'], ['follow', 'Làm theo mẫu']].map(([v,t]) => `<option value="${v}" ${(['demo','agent','follow'].includes(i.mode)? i.mode : '')===v?'selected':''}>${t}</option>`).join('')}
         </select></label>
       <button class="btn warn" data-act="shield" title="Bật máy và bật khiên ngay (theo tuỳ chọn Phòng thủ)">${ico('shield')}Bật khiên</button>
       ${i.mode==='demo'
@@ -1087,6 +1088,18 @@ const imgUrl = (kind, f) => `/learnimg/${kind}/${f.split('/').map(encodeURICompo
 const dtFull = clock;
 const EV = {observe_due:'Cần quan sát lại', march_return_due:'Đội về, gửi quân tiếp', march_arrive_due:'Đội tới mỏ, đọc giờ thu thập', manual:'Chạy tay'};
 
+// P6: cong tac chung agent (agent.enabled) - luon hoi lai truoc khi doi
+document.addEventListener('click', async e => {
+  const b = e.target.closest('#agentSwitch'); if (!b) return;
+  const on = b.dataset.on === '1';
+  const ok = await ask(on? 'Bật công tắc chung Agent?' : 'Tắt agent trên mọi máy?',
+    on? 'Agent sẽ tự quyết định ghé máy và gửi quân trên <b>các máy đã chọn chế độ Agent</b>. Chủ dự án chưa duyệt chạy thật thì đừng bật.'
+      : 'Các máy chọn Agent sẽ chạy theo lịch chung từ lần ghé tiếp theo (lần ghé đang chạy vẫn làm nốt; muốn dừng ngay thì bấm Dừng runner).',
+    on? 'Bật agent' : 'Tắt agent', on);
+  if (!ok) return;
+  await act(() => post('/api/agent/switch', {on}), on? 'Đã bật công tắc chung Agent' : 'Đã tắt agent mọi máy', b);
+  loadHoc();
+});
 async function loadHoc(){
   const [h, a] = await Promise.allSettled([fetch('/api/learn').then(r => r.json()), fetch('/api/agent').then(r => r.json())]);
   if (h.status==='fulfilled' && !h.value.error) H = h.value;
@@ -1097,7 +1110,8 @@ async function loadHoc(){
 }
 function renderHoc(){
   const d = (H?.days||[]).at(-1) || {}, knnN = Object.values(H?.knn||{}).reduce((x,y)=>x+y,0);
-  const on = A ? Object.entries(A.modes||{}).filter(([,m]) => m==='agent').map(([i]) => i) : [];
+  const on = A ? Object.entries(A.status||{}).filter(([,m]) => m==='on').map(([i]) => i) : [];
+  const blocked = A ? Object.entries(A.status||{}).filter(([,m]) => m==='blocked').map(([i]) => i) : [];
   const nTodo = (H?.unknown?.length||0) + (H?.candidates?.length||0) + (H?.human_queue?.length||0);
   const k = (icon, key, v, s, cls='') => `<div class="kpi ${cls}"><div class="k">${ico(icon,'sm')}${key}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
   put($('#hkpis'),
@@ -1135,7 +1149,9 @@ function renderHoc(){
   put($('#cands'), vrows.join('') || emptyBox('Chưa có biến thể nào — bot chỉ dùng ảnh mẫu gốc.'));
 
   // agent
-  put($('#amodes'), A ? (on.length? `<span class="badge ok"><span class="dot ok"></span>Đang bật cho ${on.map(i => '#'+i).join(', ')}</span>` : '<span class="badge off">Chưa máy nào bật agent</span>')
+  put($('#amodes'), A ? (on.length? `<span class="badge ok"><span class="dot ok"></span>Đang chạy agent: ${on.map(i => '#'+i).join(', ')}</span>` : '<span class="badge off">Không máy nào chạy agent</span>')
+      + (blocked.length? ` <span class="badge wait" title="Máy chọn Agent nhưng công tắc chung tắt → chạy theo lịch chung">Chờ công tắc: ${blocked.map(i => '#'+i).join(', ')}</span>` : '')
+      + ` <button class="btn sm ${A.switch? 'danger':'primary'}" id="agentSwitch" data-on="${A.switch? '0':'1'}">${A.switch? 'Công tắc chung: BẬT — bấm để TẮT agent mọi máy' : 'Công tắc chung: TẮT — bấm để bật'}</button>`
     : '<span class="badge err">Không tải được dữ liệu agent</span>');
   put($('#aevents'), dtable([['Máy'],['Việc'],['Lúc',1]], (A?.events||[]).map(e =>
     `<tr><td>#${e.account}</td><td>${esc(EV[e.type]||e.type)}${e.status==='claimed'? ' <span class="tag info">đang làm</span>':''}</td><td class="n">${dtFull(e.due_at)}</td></tr>`), 'Không có sự kiện nào đang hẹn.'));

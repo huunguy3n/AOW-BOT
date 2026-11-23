@@ -2,6 +2,8 @@
 import subprocess, time, logging, threading
 import cv2, numpy as np
 
+from aowbot.domain import rollout
+
 log = logging.getLogger("aow")
 
 
@@ -15,7 +17,7 @@ class LDConsole:
     def __init__(self, cfg):
         self.exe = cfg["ldconsole"]
         self.boot_timeout = cfg.get("boot_timeout", 120)
-        self.max_running = cfg.get("max_running", 2)
+        self.max_running = rollout.max_running(cfg.get("max_running", 2))   # P6: tran cung 2 may
         self.wait_slot = cfg.get("wait_slot_min", 60) * 60
 
     def run(self, *args, timeout=60):

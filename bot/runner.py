@@ -10,7 +10,7 @@ from bot.ctx import Ctx, Stuck
 from bot import ocr
 from bot.memory import Memory
 from bot import perf, queues, scheduler, stepgate
-from aowbot.domain import drain
+from aowbot.domain import drain, rollout
 from bot.modules import tutorial, mainquest, construct, city, rewards, alliance, quests, campaign, notify, research, train, rebels, gather, daily, observe, defense, intel, reddots, play, upgrade, heal, warday
 
 log = logging.getLogger("aow")
@@ -139,8 +139,8 @@ class Runner:
     # so luong = schedule.parallel, khong vuot ldplayer.max_running (LDConsole.launch giu khoa khi bat may).
     def _parallel(self):
         cfg = self.store.cfg_for(self.base_cfg)
-        p = int((cfg.get("schedule") or {}).get("parallel", 2))
-        return max(1, min(p, cfg["ldplayer"].get("max_running", 2)))
+        # P6: tran cung 2 may (rollout.HARD_MAX_RUNNING) - config ghi lon hon cung chi 2
+        return rollout.parallel_slots((cfg.get("schedule") or {}).get("parallel", 2), cfg["ldplayer"].get("max_running", 2))
 
     def _spawn(self, idx, **kw):
         def work():
@@ -167,7 +167,8 @@ class Runner:
         cfg = self.store.cfg_for(self.base_cfg)
         sc = cfg.get("schedule") or {}
         return {"mode": sc.get("mode", "fixed"), "parallel": self._parallel(),
-                "max_running": cfg["ldplayer"].get("max_running", 2),
+                "max_running": rollout.max_running(cfg["ldplayer"].get("max_running", 2)),
+                "agent": "bat" if rollout.agent_switch(cfg) else "tat",
                 "wait_scale": (cfg.get("speed") or {}).get("wait_scale", 1.0)}
 
     def _log_settings(self):
@@ -433,7 +434,7 @@ class Runner:
             enabled = {k: (k in modules) for k, _ in ORDER}
         # --modules tren dong lenh (why None) = chu du an muon chay dung buoc do -> khong qua stepgate
         explicit = modules is not None and why is None
-        if mode in ("smart", "agent") and (cfg.get("schedule") or {}).get("mode") == "agent":
+        if mode in ("smart", "agent") and rollout.agent_active(cfg):
             enabled["gather"] = False   # SCH-X: hanh quan may agent do agent lo (ke ca lan ghe 'tran an toan' du buoc)
         st = self.store
         st.update(idx, status="starting", step="bat may", started=time.time(), last_error=None)

@@ -255,6 +255,8 @@ world:
 # May o che do agent: hanh quan do agent quyet dinh (doi ve -> chon mo -> gui 1 doi -> xac minh x/y -> hen su kien ke);
 # cac viec khac van theo lich smart cu. Xem quyet dinh: python -m aowbot plan <idx> / shadow <idx>.
 agent:
+  enabled: false             # P6 CONG TAC CHUNG: false = khong may nao chay agent (may chon 'Agent' tren web chay lich chung).
+                             # Chi chu du an bat (web: Tuy chon -> Agent). Tat = dung khan cap agent tren moi may.
   ttl_min: {default: 30, hq_level: 360, march_used: 20, march_total: 1440, world_open: 360}  # qua TTL = du lieu cu
   weights: {goal: 1.0, time: 0.5, risk: 0.5}   # utility = (muc tieu - thoi gian - rui ro) x do tin
   idle_recheck_min: 60       # khong biet bao gio co viec -> danh gia lai sau N phut
