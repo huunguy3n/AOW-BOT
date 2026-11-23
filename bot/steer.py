@@ -7,7 +7,7 @@ Nhan dien theo mau tren khung 540x960 (khong can anh mau):
   nerf : khoi do DAC hinh chu nhat (bang -N). Linh dich mau do co hinh khong deu -> do dac thap, bo qua
   nguy: vong do RONG (hinh elip lon, ruot rong) = vung nem bom
 """
-import time, logging, threading, os
+import time, logging, threading, os, re
 import cv2, numpy as np
 
 from bot.stream import FrameStream
@@ -151,6 +151,81 @@ def reachable(cx, cy, w, cur_x):
     return abs(cx - cur_x) <= VX_S * t + w / 2 + 15
 
 
+# ---------- P7-8 (chu du an 2026-11-24, anh minigame_runner_gates_minus_plus): cong do "-X" ban du se lat "+Y" ----------
+GATE_MIN_W = 60          # bang do co so (cong) - nho hon la linh dich / dan
+GATE_SAFETY = 0.8        # chi lao vao cong khi du doan con du 20 % thoi gian (ban cham hon uoc luong -> van kip)
+GATE_OCR_MAX = 2         # doc so toi da 2 cong / khung (moi lan OCR ~0.1-0.2 s)
+GATE_RX = re.compile(r"([+-]?)\s*(\d{1,4})")
+
+
+def parse_gate(txt):
+    """Chu OCR tren bang cong -> so co dau ('-5' -> -5, '+3' -> 3). Bang do mac dinh am khi mat dau '-'."""
+    m = GATE_RX.search(txt or "")
+    if not m:
+        return None
+    v = int(m.group(2))
+    return v if m.group(1) == "+" else -v
+
+
+def gate_value(img, cx, cy, w):
+    """Doc so tren bang cong do (giua bang, chu trang)."""
+    from bot import ocr
+    h = max(20, int(w * 0.45))
+    x0, y0 = max(0, cx - w // 2 + 6), max(0, cy - h // 2)
+    roi = (x0, y0, min(img.shape[1] - x0, w - 12), min(img.shape[0] - y0, h))
+    if roi[2] < 10 or roi[3] < 10:
+        return None
+    return parse_gate(ocr.text(img, roi, "+-0123456789", bright=170))
+
+
+class GateTrack:
+    """Theo doi gia tri tung cong do theo lan (x // 60) qua cac khung -> toc do tang (do doi quan ban). Ham thuan:
+    thoi gian truyen vao."""
+
+    def __init__(self, keep_s=6.0):
+        self.keep_s, self.hist = keep_s, {}
+
+    def update(self, cx, value, t):
+        k = int(cx) // 60
+        h = [(tt, vv) for tt, vv in self.hist.get(k, []) if t - tt <= self.keep_s] + [(t, value)]
+        self.hist[k] = h
+        return self.rate(cx)
+
+    def rate(self, cx):
+        """Gia tri tang / giay (>0 = dang bi ban, tien ve 0). Chua du 2 lan doc -> None."""
+        h = self.hist.get(int(cx) // 60, [])
+        if len(h) < 2 or h[-1][0] - h[0][0] < 0.3:
+            return None
+        return (h[-1][1] - h[0][1]) / (h[-1][0] - h[0][0])
+
+
+def flip_ok(value, rate, cy, vy=VY_S, safety=GATE_SAFETY):
+    """Cong am `value` (vd -5) dang tang `rate`/giay, cach doi quan (SQUAD_Y - cy) px, roi xuong vy px/giay -> kip lat
+    thanh "+" truoc khi cham doi quan? Duong / chua doc duoc toc do -> False (giu luat cu: xa thi ban, gan thi ne)."""
+    if value is None or rate is None or rate <= 0:
+        return value is not None and value > 0
+    t = max(0.0, (SQUAD_Y - cy) / vy)
+    return value + rate * t * safety >= 1
+
+
+def classify_gates(det, img, track, t, read=gate_value, max_ocr=GATE_OCR_MAX):
+    """Cong do co so (nerf rong >= GATE_MIN_W): doc so, cap nhat toc do; du doan lat kip -> det['flip'] (lao vao ban,
+    an "+"), khong thi giu trong nerf (gan thi ne). Sua det tai cho, tra det."""
+    flip, keep, n = [], [], 0
+    for o in sorted(det["nerf"], key=lambda o: -o[1]):        # cong gan doi quan truoc
+        cx, cy, w = o
+        if w < GATE_MIN_W or n >= max_ocr:
+            keep.append(o)
+            continue
+        n += 1
+        v = read(img, cx, cy, w)
+        r = track.update(cx, v, t) if v is not None else track.rate(cx)
+        (flip if flip_ok(v, r, cy) else keep).append(o)
+    det["nerf"], det["flip"] = keep, flip
+    det["target"] = [o for o in det.get("target", []) if o not in flip]
+    return det
+
+
 def choose(det, cur_x):
     """Chon lan theo uu tien:
       1. co buff con KIP toi -> nhat buff
@@ -167,7 +242,7 @@ def choose(det, cur_x):
             sigma = w / 2 + 35
             sc += near * np.exp(-((LANES - cx) ** 2) / (2 * sigma ** 2))
         return sc
-    buff = layer(det["buff"], only_reachable=True)
+    buff = layer(det["buff"] + det.get("flip", []), only_reachable=True)   # P7-8: cong se lat "+" = buff
     enemy = layer(det.get("enemy", []) + det.get("target", []))
     if enemy.max() > 0:
         enemy = enemy / enemy.max()                  # chuan hoa: dam dong dich nhat = 1.0
@@ -243,6 +318,7 @@ def _run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None
     fg = Finger(adb, serial)
     x = 270
     miss = 0
+    gates = GateTrack()
     t0, last, i = time.time(), 0, 0
     result = "error"
     try:
@@ -275,6 +351,8 @@ def _run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None
             elif not in_battle_fn(vision, img) and not vision.find(img, "campaign/battle_hud", th=0.7):
                 fg.up()  # roi khoi tran (man khac) -> nhac tay ngay
             det = detect(img)
+            if det["nerf"]:
+                classify_gates(det, img, gates, time.time() - t0)   # P7-8: cong do lat duoc -> lao vao
             sx = squad_x(img)
             if sx is not None and abs(sx - est) < 70:   # bo do anh nhieu (bat nham cong/thung xanh) -> chi tin khi gan
                 est = 0.6 * est + 0.4 * sx

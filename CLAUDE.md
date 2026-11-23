@@ -56,7 +56,7 @@ Thứ tự bước (`ORDER` trong [bot/runner.py](bot/runner.py)), chủ dự á
 
 **Máy treo** (A-OPT-3): chụp màn hình timeout ngắn (`ldplayer.screencap.*`); không cứu được sau 1 lần dò lại địa chỉ ADB → `Device.dead` → runner bỏ lượt máy đó ngay, sang máy kế tiếp.
 
-**Lái quân trong trận chạy đường** ([steer.py](bot/steer.py), [touch.py](bot/touch.py), [stream.py](bot/stream.py)): giữ ngón tay bằng `sendevent /dev/input/event2` suốt trận, đọc khung hình liên tục, trượt ngang để nhặt buff xanh (cả cổng nhạt), bắn bảng đỏ có số khi còn xa và né khi đã gần, né hàng rào gai sắt (né mạnh nhất), vòng đỏ ném bom, vệt xe lao.
+**Lái quân trong trận chạy đường** ([steer.py](bot/steer.py), [touch.py](bot/touch.py), [stream.py](bot/stream.py)): giữ ngón tay bằng `sendevent /dev/input/event2` suốt trận, đọc khung hình liên tục, trượt ngang để nhặt buff xanh (cả cổng nhạt), bắn bảng đỏ có số khi còn xa và né khi đã gần, né hàng rào gai sắt (né mạnh nhất), vòng đỏ ném bom, vệt xe lao. P7-8: cổng đỏ "-X" (bảng đỏ có số, rộng ≥ 60 px) đọc số qua các khung → tốc độ tăng do bắn; dự đoán lật thành "+" kịp trước khi chạm đội quân (`steer.flip_ok`, an toàn 80 %) → lao vào như buff, không thì né.
 
 **Quân đoàn:** số quân đoàn tối đa = số việc ngoài thế giới cùng lúc (tình báo, phản quân, thu thập, mỏ liên minh, cướp xe). "Hành quân x/y" đầy thì dừng các việc này (`ctx.march_full()`). → [ADR-0007](docs/adr/0007-lai-quan-bang-sendevent.md)
 
