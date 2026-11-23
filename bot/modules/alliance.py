@@ -18,6 +18,9 @@ def open_alliance(ctx):
     return True
 
 
+DONATE_ROI = (270, 0, 270, 960)   # P6 ra soat an toan (A-SAFE-5): chi tim o NUA PHAI - nut trai quyen gop bang kim cuong
+
+
 def donate(ctx, max_n):
     if not ctx.tap_tpl("ally/tab_tech", wait=1.5):
         return 0
@@ -32,7 +35,7 @@ def donate(ctx, max_n):
         m = re.search(r"(\d+)\s*/\s*(\d+)", ocr.text(img, TURNS_ROI))
         if m and int(m.group(1)) == 0:
             break
-        p = ctx.v.find(img, "ally/btn_donate_gold")  # nut PHAI (vang); nut trai ton kim cuong
+        p = ctx.v.find(img, "ally/btn_donate_gold", roi=DONATE_ROI)  # nut PHAI (vang); nut trai ton kim cuong
         if not p:
             break
         ctx.tap(p[0], p[1], wait=1.2)  # cho so luot cap nhat truoc khi doc lai

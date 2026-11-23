@@ -8,7 +8,7 @@ import pytest
 
 from bot import tplcheck
 from bot.ctx import Ctx
-from bot.modules import rebels, research
+from bot.modules import alliance, rebels, research
 from bot.vision import Vision
 
 SHOTS = os.path.join("data", "pm-shots", "adb")
@@ -96,3 +96,8 @@ def test_exit_dialog_always_cancelled_before_confirm():
 def test_train_max_template_not_required_by_default():
     assert "train/btn_max" not in tplcheck.needed({"train": {}})
     assert "train/btn_max" in tplcheck.needed({"train": {"use_max_button": True}})
+
+
+def test_donate_only_right_half():
+    x, _y, w, _h = alliance.DONATE_ROI
+    assert x >= 270 and x + w == 540           # nut trai (kim cuong) nam ngoai vung tim
