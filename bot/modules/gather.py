@@ -86,6 +86,23 @@ def set_level(ctx, level):
     return False
 
 
+def type_level(ctx, level):
+    """P7-10 (chu du an 2026-11-24): GO SO truc tiep vao o "Cap" (giua nut - va +) thay vi bam +/- tung buoc.
+    Doc lai khong ra dung cap -> bam +/- (set_level). -> True neu o 'Cap' = level."""
+    minus = ctx.find("gather/btn_level_minus")
+    plus = ctx.find("gather/btn_level_plus", fresh=False)
+    if not (minus and plus) or not hasattr(ctx.dev, "type_digits"):
+        return set_level(ctx, level)
+    ctx.tap((minus[0] + plus[0]) // 2, (minus[1] + plus[1]) // 2, wait=0.8)
+    ctx.dev.type_digits(int(level))
+    time.sleep(0.8)
+    if read_level(ctx) == level:
+        log.info("O Cap: go truc tiep %d", level)
+        return True
+    log.info("O Cap: go %d khong an (doc %s) -> bam +/-", level, read_level(ctx))
+    return set_level(ctx, level)
+
+
 def select_tab(ctx, rtype, name=None):
     name = name or f"gather/tab_{rtype}"
     p = ctx.find(name, th=TAB_TH)

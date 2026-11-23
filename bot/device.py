@@ -259,6 +259,18 @@ class Device:
         self._mine(x1, y1, time.time())
         self._cmd("shell", "input", "swipe", int(x1), int(y1), int(x2), int(y2), int(ms))
 
+    def type_digits(self, s, clear=3):
+        """P7-10: go SO vao o nhap dang co tieu diem (o "Cap" tim kiem). Chi chu so (khong bao gio go chu tu do):
+        xoa `clear` ky tu cu (DEL) -> 'input text' -> Enter dong ban phim."""
+        s = str(s)
+        if not s.isdigit():
+            raise ValueError("type_digits: chi nhan chu so")
+        self.act_seq = getattr(self, "act_seq", 0) + 1
+        for _ in range(clear):
+            self._cmd("shell", "input", "keyevent", "67")
+        self._cmd("shell", "input", "text", s)
+        self._cmd("shell", "input", "keyevent", "66")
+
     def back(self):
         self.act_seq = getattr(self, "act_seq", 0) + 1
         self.backs = getattr(self, "backs", 0) + 1       # bot/human.py: phim Back cua bot, khong phai cua nguoi

@@ -29,6 +29,9 @@ def join(ctx):
     if not (tplneed.has(ctx.v, "rebels/rally_mech", "dong tap ket Phan quan Co giap - Lien minh > Su vu")
             and tplneed.has(ctx.v, "rebels/btn_join", "nut tham gia tren dong tap ket")):
         return 0
+    if not join_hq_ok(getattr(ctx, "mem", None), ctx.dev.idx, rc):   # P7-10: farm < 15 khong bao gio tham gia
+        log.info("Tap ket Co giap: nha chinh < %s -> khong tham gia (farm)", rc.get("min_hq_level", 15))
+        return 0
     ctx.ensure_city()
     res = ocr.topbar(ctx.shot())
     if res.get("stamina") is not None and res["stamina"] <= rc.get("min_stamina", 0):
@@ -140,7 +143,8 @@ def search_target(ctx, level):
         log.info("Phan quan: o tim kiem khong co tab Co giap")
         ctx.back_out()
         return False
-    if not gather.set_level(ctx, level):
+    setter = gather.type_level if ctx.cfg.get("rebels", {}).get("type_level", True) else gather.set_level
+    if not setter(ctx, level):          # P7-10: go so truc tiep vao o "Cap"
         log.info("Phan quan: khong dat duoc cap %d trong o tim kiem", level)
     ctx.tap_tpl("gather/btn_search_go", wait=3.0)
     if ctx.find("gather/msg_not_found") or ctx.find("gather/btn_search_go"):
@@ -159,6 +163,7 @@ def launch_rally(ctx, rc, rec, lv, rec_pw="", record=True):
         ctx.close_popups(1)
         return -1
     if ctx.wait_for("rebels/rally_time_title", timeout=3):
+        rally_ticks(ctx)
         ctx.tap_tpl("rebels/btn_rally_confirm", wait=2.0)
     if not ctx.wait_for("rebels/legion_title", timeout=4):
         ctx.save_debug("rebels_no_legion")
@@ -189,6 +194,34 @@ def launch_rally(ctx, rc, rec, lv, rec_pw="", record=True):
              lv, rec_pw or "?", legion, f" -> lan sau thu Lv.{lv + 1}" if record else " [tinh bao]")
     ctx.ensure_world()
     return 1
+
+
+RALLY_TICKS = (("rebels/chk_3min_off", "o tick 3Phut chua chon"),
+               ("rebels/chk_full_start_off", "o tick Du thanh vien se xuat phat chua chon"))
+
+
+def rally_ticks(ctx):
+    """P7-10: bang "Thoi gian tap ket": tick "3Phut" + "Du thanh vien se xuat phat" (anh mau o tick CHUA chon) truoc
+    "Xac nhan". Da chon (khong khop mau chua chon) -> khong cham (cham lai se bo chon). Thieu mau -> bo qua em.
+    -> so o vua tick."""
+    n = 0
+    for name, why in RALLY_TICKS:
+        if not tplneed.has(ctx.v, name, why):
+            continue
+        p = ctx.find(name, th=0.85)
+        if p:
+            ctx.tap(p[0], p[1], wait=0.8)
+            n += 1
+            if ctx.find(name, th=0.85):
+                log.info("Tap ket: tick %s khong an", name.split("/")[-1])
+    return n
+
+
+def join_hq_ok(mem, idx, rc):
+    """P7-10: nha chinh < rebels.min_hq_level (15) -> KHONG BAO GIO tham gia tap ket Phan quan Co giap (ke ca khi bat
+    join_mech_rally). Khong biet cap nha chinh -> khong."""
+    hq = mem.fact(idx, "hq_level") if mem is not None else None
+    return isinstance(hq, (int, float)) and hq >= int(rc.get("min_hq_level", 15))
 
 
 def search_levels(rec, start=10, fail_h=12, tries=3, now=None):

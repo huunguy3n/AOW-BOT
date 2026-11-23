@@ -389,15 +389,47 @@ def fight(ctx):
     return "unknown"
 
 
-def arena_eligible(pw, red, own, ratio, only_red=False):
+def arena_eligible(pw, red, own, ratio, only_red=False, weaker_only=False):
     """Doi thu co duoc danh khong (ham thuan). Luat chu du an 2026-11-21: luc chien MAU DO uu tien, khong can so;
     con lai chi khi luc chien <= luc chien minh x ratio. A-SAFE-3: khong doc duoc luc chien minh (own None/0)
-    -> chi doi thu mau do (truoc day moi doi thu deu hop le va max() chon doi thu MANH nhat)."""
+    -> chi doi thu mau do (truoc day moi doi thu deu hop le va max() chon doi thu MANH nhat).
+    P7-10 (chu du an 2026-11-24) weaker_only: CHI doi thu luc chien YEU HON minh (< own x ratio), mau do khong mien;
+    khong biet luc chien minh -> khong danh."""
     if pw is None or (only_red and not red):
         return False
+    if weaker_only:
+        return bool(own) and pw < own * ratio
     if red:
         return True
     return bool(own) and pw <= own * ratio
+
+
+def arena_refresh(ctx, ac):
+    """P7-10: nut "Lam moi" danh sach doi thu (play/btn_arena_refresh), toi da arena.refresh_max lan / luot. Chu tren
+    nut co dau hieu tra phi (kim cuong / gia) -> khong bam; bam xong hien hop thoai khac -> dong, khong xac nhan, dung."""
+    from bot import buttons, tplneed
+    cap = ac.get("refresh_max", 3)
+    if not tplneed.has(ctx.v, "play/btn_arena_refresh", "nut Lam moi dau truong") or getattr(ctx, "_arena_refresh", 0) >= cap:
+        return False
+    img = ctx.shot()
+    p = ctx.v.find(img, "play/btn_arena_refresh", th=0.85)
+    if not p:
+        return False
+    txt = ocr.text(img, (max(0, p[0] - 70), max(0, p[1] - 22), 140, 44)) or ""
+    if buttons.is_danger(txt) or re.search(r"\d", txt):
+        log.info("Dau truong: nut Lam moi co dau hieu ton phi (%r) - khong bam", txt[:20])
+        ctx._arena_refresh = cap
+        return False
+    ctx.tap(p[0], p[1], wait=2.0)
+    ctx._arena_refresh = getattr(ctx, "_arena_refresh", 0) + 1
+    if not ctx.wait_for("play/arena_title", timeout=3):
+        log.info("Dau truong: bam Lam moi hien bang khac (co the ton phi) -> dong, dung")
+        ctx.save_debug("arena_refresh_popup")
+        ctx.tap_first(ctx.POPUP_CLOSERS, wait=1.0)
+        ctx._arena_refresh = cap
+        return False
+    log.info("Dau truong: Lam moi danh sach doi thu (%d/%d)", ctx._arena_refresh, cap)
+    return True
 
 
 def arena(ctx):
@@ -412,7 +444,9 @@ def arena(ctx):
     st = ctx.store.inst(ctx.dev.idx) if getattr(ctx, "store", None) else {}
     own = (st.get("resources") or {}).get("power")
     ratio = ac.get("max_ratio", 1.0)
-    for _ in range(ac.get("max_fights", 3)):
+    for _ in range(ac.get("max_fights", 3) + ac.get("refresh_max", 3)):   # P7-10: lan Lam moi khong tinh luot danh
+        if done >= ac.get("max_fights", 3):
+            break
         img = ctx.shot()
         # anh mau = chu "Khieu chien mien phi" (cu: "(3/3)" -> sau tran dau thanh 2/3 khong khop, 2026-11-21);
         # +14 = tam cu (dong so luot) de giu toa do doc luc chien / cham nut
@@ -432,11 +466,14 @@ def arena(ctx):
                 skip.add(by // 30)
                 continue
             red = power_red(img, by)
-            if not arena_eligible(pw, red, own, ratio, ac.get("only_red_power", False)):
+            if not arena_eligible(pw, red, own, ratio, ac.get("only_red_power", False), ac.get("weaker_only", True)):
                 continue
             cands.append((red, pw, bx, by))
         if not cands:
-            log.info("Dau truong: khong co doi thu hop le (luc chien minh %s; mau do / yeu hon / chua thua)", own)
+            log.info("Dau truong: khong co doi thu hop le (luc chien minh %s; yeu hon / chua thua)", own)
+            if own and arena_refresh(ctx, ac):         # P7-10: khong co doi thu yeu hon -> "Lam moi"
+                skip.clear()
+                continue
             break
         red, pw, bx, by = max(cands)
         skip.add(by // 30)

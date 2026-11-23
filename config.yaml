@@ -328,12 +328,15 @@ loot:                     # Cuop boc xe khai thac (Mo khoang san) - chu du an la
                           #       bam ma hien hop thoai khac (ton phi?) -> dong, khong xac nhan, dung lam moi
 arena:                    # Dau truong (Loi choi) - chu du an 2026-11-21
   enabled: true
-  max_fights: 3           # 3 luot "Khieu chien mien phi" / ngay; khong bao gio mua luot / Lam moi
+  max_fights: 3           # 3 luot "Khieu chien mien phi" / ngay; khong bao gio mua luot
+  weaker_only: true       # P7-10: CHI danh doi thu luc chien YEU HON minh (mau do khong mien)
+  refresh_max: 3          # P7-10: khong co doi thu yeu hon -> "Lam moi" (play/btn_arena_refresh) toi da N lan; nut co so/kim cuong -> khong bam
   only_red_power: false   # true = chi danh doi thu chu luc chien mau do (game hien chu trang -> tat)
   max_ratio: 1.0          # chi danh doi thu luc chien <= luc chien minh x ti le nay (manh nhat trong so do)
   lost_days: 7            # nho doi thu da thua (theo luc chien +-3%) N ngay -> khong danh lai
 rebels:
   start_level: 10        # Q6: chua thang cap nao -> tim Co giap cap nay qua o tim kiem; thang N -> lan sau N+1, du doan thua -> lui
+  type_level: true       # P7-10: tim Co giap: go so truc tiep vao o "Cap" (khong doc lai dung -> bam +/-)
   join_mech_rally: false  # THAM GIA tap ket Co giap cua lien minh - TAT mac dinh (PM 2026-11-23: chu du an chua quyet);
                           # bat cung can anh mau rebels/rally_mech + rebels/btn_join (thieu -> bo qua, log 'thieu anh mau')
   min_stamina: 0
