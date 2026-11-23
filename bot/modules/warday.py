@@ -106,6 +106,11 @@ def run(ctx):
         mem.set_fact(idx, "stamina_claim_at", now)
         log.info("Moc the luc %s UTC: nhan qua online/phuc loi (notify, rewards) trong lan ghe nay",
                  time.strftime("%H:%M", time.gmtime(W.last_stamina_mark(now))))
+    if c["timed_login"] and mem and W.timed_login_due(now, _num(mem.fact(idx, "timed_login_at")),
+                                                       c["timed_login_windows_utc"], c["timed_login_delay_min"]):
+        mem.set_fact(idx, "timed_login_at", now)      # P7-11: lan ghe trong khung -> qua 5 the luc (notify, rewards)
+        log.info("Dang nhap hen gio (khung %s UTC): ghe nhan 5 the luc trong lan ghe nay",
+                 time.strftime("%H:%M", time.gmtime(W.login_window(now, c["timed_login_windows_utc"])[0])))
     days = days_for(mem, idx, ctx.cfg, now)
     if W.active_window(now, days, c["lead_h"], c["tail_min"]) is None:
         log.info("Ngay chien tranh: %s", W.shield_plan(now, days, None, c).why)

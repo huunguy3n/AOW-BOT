@@ -358,6 +358,9 @@ warday:
   gather_weekdays: [0]      # ngay thu thap: gather chay dau luot, khong de danh quan doan cho phan quan
   stamina: true             # dang nhap dung moc 0h, 8h, 15h UTC de nhan the luc
   stamina_delay_min: 1      # ghe sau moc N phut
+  timed_login: true         # P7-11: su kien "Dang nhap hen gio" (5 the luc / khung) - lich keo moi may len trong khung
+  timed_login_windows_utc: [[18, 19], [8, 9]]   # = 01:00-02:00 va 15:00-16:00 gio VN
+  timed_login_delay_min: 2  # ghe sau dau khung N phut
   lead_h: 2                 # mo cua so (bat khien) truoc gio reset N gio
   tail_min: 30              # giu cua so them N phut sau khi het ngay (khong chac -> giu khien)
   renew_before_min: 20      # khien con <= N phut thi gia han

@@ -306,10 +306,19 @@ def war_blocks(mem, idx, step, cfg, now):
     return war_cfg(cfg)["enabled"] and step in warday.BLOCK_STEPS and war_window(mem, idx, cfg, now) is not None
 
 
-def stamina_due(mem, idx, cfg, now):
+def timed_login_due(mem, idx, cfg, now):
+    """P7-11: dang trong khung "Dang nhap hen gio" (18-19h / 8-9h UTC) ma chua ghe nhan."""
     c = war_cfg(cfg)
-    return c["enabled"] and c["stamina"] and warday.stamina_due(now, mem.fact(idx, "stamina_claim_at"),
-                                                                 c["stamina_delay_min"])
+    return bool(c["enabled"] and c["timed_login"] and warday.timed_login_due(
+        now, _fnum(mem.fact(idx, "timed_login_at")), c["timed_login_windows_utc"], c["timed_login_delay_min"]))
+
+
+def stamina_due(mem, idx, cfg, now):
+    """Moc the luc 0h/8h/15h UTC hoac khung Dang nhap hen gio (P7-11) -> notify/rewards chay kem de nhan."""
+    c = war_cfg(cfg)
+    return bool(c["enabled"] and c["stamina"] and warday.stamina_due(now, mem.fact(idx, "stamina_claim_at"),
+                                                                      c["stamina_delay_min"])) \
+        or timed_login_due(mem, idx, cfg, now)
 
 
 def plan_warday(mem, idx, sc, now, cfg=None):
@@ -321,6 +330,11 @@ def plan_warday(mem, idx, sc, now, cfg=None):
     if c["stamina"]:
         at = warday.stamina_next_at(now, mem.fact(idx, "stamina_claim_at"), c["stamina_delay_min"])
         cands.append((at, "moc the luc " + _hhmm_utc(warday.last_stamina_mark(max(at, now)))))
+    if c["timed_login"]:    # P7-11: hen gio co dinh - ghe moi may trong khung Dang nhap hen gio
+        at = warday.timed_login_next_at(now, _fnum(mem.fact(idx, "timed_login_at")), c["timed_login_windows_utc"],
+                                        c["timed_login_delay_min"])
+        if at is not None:
+            cands.append((at, "dang nhap hen gio " + _hhmm_utc(at)))
     until = max([x for x in (_fnum(mem.fact(idx, "shield_until")), _fnum(mem.fact(idx, "war_shield_until")))
                  if x is not None] or [0.0]) or None
     sp = warday.shield_plan(now, war_days(mem, idx, cfg, now), until, c, _fnum(mem.fact(idx, "peace_at")))

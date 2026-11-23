@@ -71,6 +71,56 @@ def stamina_next_at(now: float, last_claim: float | None, delay_min: float = 1,
     return next_stamina_mark(now, marks) + delay_min * 60
 
 
+# ---------- P7-11: "Dang nhap hen gio" (khung gio co dinh, UTC) ----------
+def _windows(windows: Iterable[Iterable[float]]) -> list[tuple[float, float]]:
+    out = []
+    for w in windows or ():
+        a, b = (float(x) for x in w)
+        out.append((a % 24, b % 24 if b % 24 != a % 24 else (a % 24) + 24))
+    return out
+
+
+def _spans(now: float, windows: Iterable[Iterable[float]]) -> list[tuple[float, float]]:
+    """Khung [bat dau, ket thuc) epoch cua hom qua / hom nay / ngay mai (khung qua nua dem: ket thuc < bat dau)."""
+    out = []
+    base = _utc_midnight(now)
+    for a, b in _windows(windows):
+        dur = ((b - a) % 24 or 24) * 3600
+        for d in (-DAY, 0, DAY):
+            s = base + d + a * 3600
+            out.append((s, s + dur))
+    return sorted(out)
+
+
+def login_window(now: float, windows: Iterable[Iterable[float]]) -> tuple[float, float] | None:
+    """Khung dang nhap hen gio dang mo luc `now` -> (bat dau, ket thuc) | None."""
+    for s, e in _spans(now, windows):
+        if s <= now < e:
+            return s, e
+    return None
+
+
+def timed_login_due(now: float, last: float | None, windows: Iterable[Iterable[float]], delay_min: float = 2) -> bool:
+    """Dang trong khung (qua `delay_min` phut dau) ma chua ghe nhan tu dau khung nay."""
+    w = login_window(now, windows)
+    if w is None:
+        return False
+    return now >= w[0] + delay_min * 60 and (last is None or last < w[0])
+
+
+def timed_login_next_at(now: float, last: float | None, windows: Iterable[Iterable[float]],
+                        delay_min: float = 2) -> float | None:
+    """Luc som nhat can ghe: ngay neu den han; dang o dau khung (delay) -> het delay; khong thi khung ke tiep."""
+    if timed_login_due(now, last, windows, delay_min):
+        return now
+    for s, e in _spans(now, windows):
+        t = s + delay_min * 60
+        if e <= now or t >= e or (last is not None and last >= s):
+            continue
+        return max(t, now) if s <= now else t
+    return None
+
+
 # ---------- cau hinh (mot cho cho runner / lich / stepgate / module) ----------
 MODES = ("auto", "on", "off")
 DEFAULTS: Mapping[str, Any] = MappingProxyType({
@@ -88,6 +138,9 @@ DEFAULTS: Mapping[str, Any] = MappingProxyType({
     "banner_ocr": False,         # doc banner 'Giai doan N' tren ban do the gioi (vung chua kiem tren may 540x960)
     "dates": (),                 # ngay chien tranh khai tay 'YYYY-MM-DD'
     "gather_weekdays": (MONDAY,),  # ngay thu thap: uu tien gui moi doi di thu thap
+    # P7-11 (chu du an 2026-11-24): su kien "Dang nhap hen gio" - 5 the luc moi khung; ghe moi may trong
+    # 01:00-02:00 va 15:00-16:00 gio VN = 18-19h va 8-9h UTC
+    "timed_login": True, "timed_login_windows_utc": ((18, 19), (8, 9)), "timed_login_delay_min": 2,
 })
 
 

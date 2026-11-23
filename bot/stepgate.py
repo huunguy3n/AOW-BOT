@@ -70,6 +70,9 @@ def precheck(mem, idx, step, cfg, now=None, done=None):
             return Gate(False, "warday tat")
         if c["stamina"] and W.stamina_due(now, _num(mem.fact(idx, "stamina_claim_at")), c["stamina_delay_min"]):
             return Gate(True, "moc the luc", must=True)
+        if c["timed_login"] and W.timed_login_due(now, _num(mem.fact(idx, "timed_login_at")),
+                                                   c["timed_login_windows_utc"], c["timed_login_delay_min"]):
+            return Gate(True, "dang nhap hen gio", must=True)       # P7-11
         if W.window_now(c, _num(mem.fact(idx, "war_notice_seen")), now,
                         _num(mem.fact(idx, "war_banner_seen"))) is not None:
             return Gate(True, "cua so ngay chien tranh", must=True)
