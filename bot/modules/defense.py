@@ -77,7 +77,11 @@ def _spent_today(ctx):
     return spent_today(st.get("gems_spent"))
 
 
-def _add_spent(ctx, n):
+def _add_spent(ctx, n, src="shield"):
+    """Cong kim cuong da tieu vao tran ngay (state.json) + so kim cuong memory.db (gem_ev, report_ro P6)."""
+    log.warning("KIM CUONG: may #%s tieu %d (nguon %s)", ctx.dev.idx, n, src)
+    if getattr(ctx, "mem", None):
+        ctx.mem.log_gem(ctx.dev.idx, src, n)
     if not getattr(ctx, "store", None):
         return
     st = ctx.store.inst(ctx.dev.idx)

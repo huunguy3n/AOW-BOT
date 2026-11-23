@@ -17,11 +17,20 @@ Chi so (cung cach tinh o moi lan chay de so sanh duoc):
   hq                           P4: cap nha chinh tung may (fact hq_history): dau / cuoi khoang, so cap tang, cap/ngay
   intel                        P5: ket qua moi ghim tinh bao (log 'Tinh bao: <kq>' trong logs/bot-*.log), % unknown
   combat                       P5: rebels / heal / defense - lan chay, lan co ket qua (> 0), % co ket qua, phut
+  p6                           P6 tong hop 24h (--24h = --since 24): ti le buoc khong loi (tieu chi >= 95 %),
+                               kim cuong theo nguon (bang gem_ev; chi khien duoc phep) + kim cuong giam ma so khong
+                               giai thich (observations), so may chay cung luc lon nhat (tieu chi <= 2) va theo gio,
+                               cac chi so P1-P5 gom 1 cho, ket luan DAT / KHONG DAT tung tieu chi.
 """
 import argparse, glob, json, os, re, sqlite3, statistics, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from bot.memory import DB, Memory  # noqa: E402
+from aowbot.domain import rollout  # noqa: E402
+
+GEM_ALLOWED = ("shield", "shield_war")   # ADR-0008 + chu du an 2026-11-23: chi khien (bi tan cong / ngay chien tranh)
+STEP_FAIL = ("err", "stuck")             # 'warn' (co anh) / 'miss' (thieu anh mau) khong tinh la loi
+OK_MIN_PCT = 95.0
 
 
 def parse_time(s):
@@ -101,6 +110,7 @@ def metrics(q, t0=None, t1=None, insts=None):
     out["hq"] = hq_metrics(q, t0, t1, insts)
     out["intel"] = intel_metrics(t0, t1, insts)
     out["combat"] = combat_metrics(out["steps"])
+    out["p6"] = p6_metrics(q, cond, args, out)
     out["vm_h"], out["useless_h"] = round(out["vm_h"], 2), round(out["useless_h"], 2)
     for s in out["steps"].values():
         s["min"], s["zero_min"] = round(s["min"], 1), round(s["zero_min"], 1)
@@ -218,6 +228,120 @@ def combat_metrics(steps):
     return out
 
 
+def step_health(q, cond, args):
+    """P6: buoc khong loi = ket qua khong phai err/stuck. -> {n, fail, ok_pct, worst: [(buoc, % khong loi, n)]}."""
+    rcond = cond.replace("started", "r.started").replace("inst", "r.inst")
+    per = {}
+    for step, res in q(f"SELECT step, result FROM runs r WHERE {rcond}", args):
+        p = per.setdefault(step, [0, 0])
+        p[0] += 1
+        p[1] += res in STEP_FAIL
+    n, fail = sum(v[0] for v in per.values()), sum(v[1] for v in per.values())
+    worst = sorted(((k, round(100 * (v[0] - v[1]) / v[0], 1), v[0]) for k, v in per.items() if v[1]),
+                   key=lambda x: x[1])[:5]
+    return {"n": n, "fail": fail, "ok_pct": round(100 * (n - fail) / n, 1) if n else None, "worst": worst}
+
+
+def gem_drops(obs):
+    """[(inst, at, gems)] -> {may: tong kim cuong GIAM giua 2 lan quan sat lien tiep}. Kim cuong chi giam khi tieu
+    -> can tren so da tieu (nhan qua lam tang co the che bot; OCR doc sai cung co the gay giam gia)."""
+    last, out = {}, {}
+    for inst, _at, g in sorted(obs, key=lambda r: (r[0], r[1])):
+        if g is None:
+            continue
+        if inst in last and g < last[inst]:
+            out[inst] = out.get(inst, 0) + last[inst] - g
+        last[inst] = g
+    return out
+
+
+def gem_metrics(q, cond, args):
+    """P6: kim cuong theo nguon (gem_ev) + kim cuong giam theo quan sat ma so khong giai thich duoc."""
+    by_src, by_inst = {}, {}
+    if _has_table(q, "gem_ev"):
+        for inst, src, n in q(f"SELECT inst, src, SUM(n) FROM gem_ev WHERE {cond} GROUP BY inst, src", args):
+            by_src[src] = by_src.get(src, 0) + (n or 0)
+            by_inst[inst] = by_inst.get(inst, 0) + (n or 0)
+    obs = []
+    if _has_table(q, "observations"):
+        for inst, at, res in q(f"SELECT inst, at, resources FROM observations WHERE {cond}", args):
+            try:
+                g = (json.loads(res) or {}).get("gems") if res else None
+            except (TypeError, ValueError, AttributeError):
+                g = None
+            obs.append((inst, at, g if isinstance(g, (int, float)) else None))
+    drops = gem_drops(obs)
+    unexplained = {i: d - by_inst.get(i, 0) for i, d in drops.items() if d > by_inst.get(i, 0)}
+    outside = sum(n for s, n in by_src.items() if s not in GEM_ALLOWED)
+    return {"by_src": by_src, "outside_shield": outside, "drops": drops, "unexplained": unexplained}
+
+
+def concurrency_metrics(q, cond, args):
+    """P6: so may chay cung luc tu visits (bat -> tat). Lan ghe chua dong (ended NULL) coi nhu dai 0."""
+    pairs = [(st, en or st) for st, en in q(f"SELECT started, ended FROM visits WHERE {cond}", args)]
+    peak, at = rollout.peak_concurrency(pairs)
+    hourly = {}
+    for h in sorted({int(s // 3600) for s, _ in pairs}):
+        lo, hi = h * 3600, (h + 1) * 3600
+        hourly[time.strftime("%d/%m %H:00", time.localtime(lo))] = rollout.peak_concurrency(
+            [(max(s, lo), min(e, hi)) for s, e in pairs if s < hi and e > lo])[0]
+    return {"peak": peak, "peak_at": at, "over_limit_s": round(rollout.time_over(pairs, rollout.HARD_MAX_RUNNING), 1),
+            "hourly": hourly}
+
+
+def p6_metrics(q, cond, args, m):
+    """P6: tong hop 24h + ket luan theo tieu chi (logs/pm-audit-1.txt dong P6)."""
+    health = step_health(q, cond, args)
+    gems = gem_metrics(q, cond.replace("started", "at"), args)
+    conc = concurrency_metrics(q, cond, args)
+    rebels = (m.get("combat") or {}).get("rebels")
+    indices = {
+        "idle_queue_pct": {k: v["idle_pct"] for k, v in (m.get("queues") or {}).items()},
+        "march_full_pct": (m.get("march") or {}).get("full_pct"),
+        "follow_stuck": (m.get("follow") or {}).get("stuck", 0),
+        "hq_per_day": {i: h["cap_ngay"] for i, h in (m.get("hq") or {}).items()},
+        "intel_unknown_pct": (m.get("intel") or {}).get("_pct"),
+        "rebels": f"{rebels['ok']}/{rebels['n']}" if rebels else None,
+    }
+    verdict = {
+        "buoc_khong_loi": health["ok_pct"] is not None and health["ok_pct"] >= OK_MIN_PCT,
+        "kim_cuong_ngoai_khien": gems["outside_shield"] == 0,
+        "toi_da_2_may": conc["peak"] <= rollout.HARD_MAX_RUNNING,
+    }
+    return {"steps": health, "gems": gems, "concurrency": conc, "indices": indices, "verdict": verdict}
+
+
+def _ok(b):
+    return "DAT" if b else "KHONG DAT"
+
+
+def show_p6(p):
+    v, h, g, c, i = p["verdict"], p["steps"], p["gems"], p["concurrency"], p["indices"]
+    print("   -- P6 tong hop (tieu chi chay 24h) --")
+    print(f"   buoc khong loi: {h['ok_pct']} % ({h['n'] - h['fail']}/{h['n']}; can >= {OK_MIN_PCT}) -> "
+          f"{_ok(v['buoc_khong_loi'])}")
+    if h["worst"]:
+        print("     buoc loi nhieu: " + ", ".join(f"{s} {pct} % / {n}" for s, pct, n in h["worst"]))
+    print(f"   kim cuong theo nguon {g['by_src']}; ngoai khien {g['outside_shield']} -> "
+          f"{_ok(v['kim_cuong_ngoai_khien'])}")
+    if g["unexplained"]:
+        print(f"     CAN XEM: kim cuong giam ma so khong ghi (may: so) {g['unexplained']} "
+              "(co the OCR doc sai - xem anh/log cua may do)")
+    print(f"   may chay cung luc toi da {c['peak']} (tran {rollout.HARD_MAX_RUNNING}), qua tran {c['over_limit_s']} s"
+          f" -> {_ok(v['toi_da_2_may'])}")
+    if 0 < len(c["hourly"]) <= 26:
+        print("     theo gio: " + ", ".join(f"{k} {n}" for k, n in c["hourly"].items()))
+    elif c["hourly"]:
+        dist = {}
+        for n in c["hourly"].values():
+            dist[n] = dist.get(n, 0) + 1
+        print("     so gio co N may cung luc: " + ", ".join(f"{n} may: {k} gio" for n, k in sorted(dist.items()))
+              + " (--json de xem tung gio)")
+    print(f"   P1-P5: hang cho ranh {i['idle_queue_pct']}, hanh quan day {i['march_full_pct']} %, "
+          f"follow ket {i['follow_stuck']}, nha chinh/ngay {i['hq_per_day']}, tinh bao unknown "
+          f"{i['intel_unknown_pct']} %, phan quan co ket qua {i['rebels']}")
+
+
 def hq_metrics(q, t0, t1, insts=None):
     """P4: {may: {dau, cuoi, tang, ngay, cap_ngay}} tu fact hq_history [[ts, cap], ...] (observe ghi khi cap doi)."""
     out = {}
@@ -266,6 +390,8 @@ def perf_metrics(q, cond, args):
 
 def show(title, m):
     print(f"== {title}")
+    if m.get("p6"):
+        show_p6(m["p6"])
     print(f"   lan ghe {m['visits']}, gio may {m['vm_h']}, ket qua {m['by_result']}")
     print(f"   bat may -> buoc dau: trung vi {m['start_med_s']} s, p90 {m['start_p90_s']} s")
     print(f"   lan ghe smart vo ich (buoc trigger deu tra 0): {m['useless_visits']} ({m['useless_h']} h)")
@@ -320,7 +446,10 @@ def main():
     ap.add_argument("--split", help="moc 'YYYY-mm-dd HH:MM': in 2 khoang truoc / sau")
     ap.add_argument("--inst", help="vd 0,5")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--24h", dest="day", action="store_true", help="P6: 24 gio gan nhat (= --since 24)")
     a = ap.parse_args()
+    if a.day and not a.since:
+        a.since = "24"
     if not os.path.exists(a.db):
         sys.exit(f"Khong co {a.db}")
     mem = Memory(a.db, readonly=True)

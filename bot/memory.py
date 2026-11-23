@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS march_obs (
   inst INTEGER NOT NULL, at REAL NOT NULL, used INTEGER, total INTEGER, reserve INTEGER, src TEXT);
 CREATE TABLE IF NOT EXISTS gather_ev (
   inst INTEGER NOT NULL, at REAL NOT NULL, kind TEXT NOT NULL, rtype TEXT, level INTEGER, note TEXT);
+CREATE TABLE IF NOT EXISTS gem_ev (
+  inst INTEGER NOT NULL, at REAL NOT NULL, src TEXT NOT NULL, n INTEGER NOT NULL, note TEXT);
 CREATE INDEX IF NOT EXISTS exp_tpl ON exp(tpl, x, y);
 CREATE INDEX IF NOT EXISTS runs_inst_t ON runs(inst, started);
 CREATE INDEX IF NOT EXISTS visits_inst_t ON visits(inst, started);
@@ -177,6 +179,12 @@ class Memory:
         unread, cap_table, too_big, full, no_troops) -> report_ro dem theo loai."""
         self._exec("INSERT INTO gather_ev(inst, at, kind, rtype, level, note) VALUES (?,?,?,?,?,?)",
                    (inst, time.time(), kind, rtype, level, None if note is None else str(note)[:200]))
+
+    def log_gem(self, inst, src, n, note=None):
+        """P6: so kim cuong bot da tieu (src: shield = khien khi bi tan cong, shield_war = khien ngay chien tranh).
+        report_ro tong hop theo nguon; nguon ngoai khien = vi pham ADR-0008. Khong ghi thong tin dang nhap."""
+        self._exec("INSERT INTO gem_ev(inst, at, src, n, note) VALUES (?,?,?,?,?)",
+                   (inst, time.time(), src, int(n), None if note is None else str(note)[:200]))
 
     def log_perf(self, visit, inst, step, rows):
         """A-MEAS-1: tong hop bo dem hieu nang cua 1 buoc (bot/perf.py Perf.drain())."""
