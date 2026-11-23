@@ -464,6 +464,10 @@ def remember_too_big(ctx, rtype, lv, load, min_lv):
     """Mo cap `lv` lon hon tai trong quan doan DANG CHON. Chi ghi nho cho ca loai (gather_top) khi quan doan do da la quan
     doan LON NHAT biet; quan doan nho hon chi bo qua cap nay trong lan nay."""
     m = _mem(ctx)
+    if lv <= min_lv:
+        # P7-1 (live #1 2026-11-24): cap thap nhat qua tai = quan doan dang ranh qua nho, KHONG phai thong tin ve loai mo
+        # -> khong ghi gather_top (truoc day ghi 1 -> lan sau chi thu cap 1 du quan doan lon cho het cap cao hon)
+        return
     if m and load and load >= (max_load(ctx) or 0):
         m.set_fact(ctx.dev.idx, f"gather_top:{rtype}", max(min_lv, lv - 1))
 
@@ -504,7 +508,9 @@ def run(ctx, limit=None):
         for rtype in g["priority"]:
             if mem and mem.fact(idx, f"gather_locked:{rtype}"):
                 continue                      # tri nho: loai nay chua du cap nha chinh de thu thap
-            top = min(max_lv, (mem.fact(idx, f"gather_top:{rtype}") if mem else None) or max_lv)
+            stored = mem.fact(idx, f"gather_top:{rtype}") if mem else None
+            fit = gather_rules.fit_level(g.get("mine_caps"), rtype, max_load(ctx), min_lv, max_lv)
+            top = gather_rules.start_level(stored, fit, max_lv)
             for lv in range(top, min_lv - 1, -1):
                 if (rtype, lv) in exhausted:
                     continue
@@ -534,7 +540,14 @@ def run(ctx, limit=None):
                         mem.set_fact(idx, f"gather_locked:{rtype}", True)
                     break
                 if result == TOO_BIG:   # chi nho khi quan doan nay la lon nhat biet (xem remember_too_big)
-                    remember_too_big(ctx, rtype, lv, getattr(ctx, "_gather_load", None), min_lv)
+                    load_ = getattr(ctx, "_gather_load", None)
+                    remember_too_big(ctx, rtype, lv, load_, min_lv)
+                    # P7-1: cap thap hon ma bang van > tai trong -> bo luon (khong mo ban do tung cap); het cap -> loai khac
+                    skip = gather_rules.too_big_levels(g.get("mine_caps"), rtype, load_, lv, min_lv)
+                    if skip:
+                        log.info("  %s: quan doan ranh (tai %s) khong cho het cap %s - bo qua", rtype, load_,
+                                 ",".join(map(str, skip)))
+                        exhausted.update((rtype, x) for x in skip)
                 if result in (NOT_FOUND, ERROR, TOO_BIG, UNREAD, OWN, CONTESTED, OCCUPIED):
                     exhausted.add((rtype, lv))
             if result in (OK, FULL, NO_TROOPS, NO_SEARCH):

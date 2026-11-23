@@ -11,7 +11,7 @@ Chu du an 2026-11-23 (lich tuan su kien, THAY luat khien 8h/12h cu):
   + bang thong bao / banner 'Giai doan N' (tuy chon). Khong chac -> an toan: giu khien (cua so co le truoc/sau,
   dau hieu chi THEM ngay chien tranh, khong bao gio bot).
 - Gia han khien truoc khi het it nhat vai phut (renew_before_min).
-- Thu 2 = ngay thu thap: uu tien dua tat ca doi di thu thap.
+- Thu 2 = ngay thu thap: gui TAT CA doi di thu thap (P7-1 2026-11-24: van chay CUOI luot, xem gather_last).
 Khong doc game, khong doc dong ho: moi ham nhan `now` (epoch giay) -> test offline duoc.
 """
 from __future__ import annotations
@@ -303,12 +303,17 @@ def shield_options(need_s: float, buy: bool) -> list[tuple[int, bool]]:
     return out
 
 
-GATHER_HEAD = ("warday", "tutorial")
+TAIL_STEP = "gather"
 
 
-def gather_first(order: list[str]) -> list[str]:
-    """Ngay thu thap: dua 'gather' len ngay sau buoc dau luot (warday, tutorial); con lai giu thu tu."""
-    if "gather" not in order:
+def gather_last(order: list[str]) -> list[str]:
+    """P7-1 (chu du an 2026-11-24, live #1): thu thap LUON chay CUOI luot (truoc 'observe') moi ngay - gather chay som
+    chiem 5/5 quan doan -> cuop xe, phan quan, mo lien minh, tinh bao bi bo. Cac buoc can quan doan chay truoc.
+    Thu 2 (ngay thu thap) cung cuoi luot nhung gui HET quan doan con lai (khong giu cho phan quan)."""
+    if TAIL_STEP not in order:
         return list(order)
-    head = [n for n in order if n in GATHER_HEAD]
-    return head + ["gather"] + [n for n in order if n not in GATHER_HEAD and n != "gather"]
+    rest = [n for n in order if n != TAIL_STEP]
+    if "observe" in rest:
+        i = rest.index("observe")
+        return [*rest[:i], TAIL_STEP, *rest[i:]]
+    return [*rest, TAIL_STEP]

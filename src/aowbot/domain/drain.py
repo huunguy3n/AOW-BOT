@@ -19,7 +19,7 @@ UNLOCKS = MappingProxyType({
 })
 
 
-def worked(ret) -> bool:
+def worked(ret: object) -> bool:
     """Buoc co lam viec khong? Tu gia tri tra ve cua mod.run: so > 0, hoac gia tri khac rong/khong phai so."""
     if ret in (None, "", False, 0, 0.0, [], {}):
         return False
@@ -58,7 +58,7 @@ HEAD = ("warday", "tutorial")                      # buoc dau luot: luon giu dau
 SLOT_STEPS = (("build", ("upgrade", "construct", "quests")), ("research", ("research",)), ("train", ("train",)))
 
 
-def idle_slots(queues: dict, max_builders: int = 1) -> list[str]:
+def idle_slots(queues: dict[str, tuple[int, int] | None], max_builders: int = 1) -> list[str]:
     """Hang cho nao co o RANH: {'build'|'research'|'train': (dang chay, tong) | None}. Thu tu uu tien: xay, nghien cuu,
     huan luyen. Khong doc duoc so (None) thi khong coi la ranh."""
     out = []
@@ -73,7 +73,7 @@ def idle_slots(queues: dict, max_builders: int = 1) -> list[str]:
     return out
 
 
-def prioritize(order: list[str], idle: list[str], enabled: dict | None = None) -> list[str]:
+def prioritize(order: list[str], idle: list[str], enabled: dict[str, bool] | None = None) -> list[str]:
     """Dua buoc cua cac hang cho dang ranh len ngay sau buoc dau luot (warday, tutorial); con lai giu nguyen thu tu."""
     head = [n for n in order if n in HEAD]
     front = []

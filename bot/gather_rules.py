@@ -86,3 +86,39 @@ def skip_until(kind, now, cfg):
     mins = {"occupied": cfg.get("occupied_skip_min", 30), "contested": cfg.get("contested_skip_min", 20),
             "not_found": cfg.get("notfound_skip_min", 30)}.get(kind)
     return now + mins * 60 if mins else None
+
+
+# ---------- P7-1 (live #1 2026-11-24): mo cap 1 'toobig' ----------
+def fit_level(caps, rtype, load, min_lv, max_lv):
+    """Cap CAO NHAT trong [min_lv, max_lv] co dung tich (bang) <= tai trong `load` | None (khong cap nao vua / chua biet).
+    Cap khong co trong bang (None) bo qua - khong dam chac doi cho het."""
+    if not load:
+        return None
+    for lv in range(max_lv, min_lv - 1, -1):
+        cap = table_cap(caps, rtype, lv)
+        if cap and cap <= load:
+            return lv
+    return None
+
+
+def start_level(stored_top, fit, max_lv):
+    """Cap bat dau do cho 1 loai mo: tri nho gather_top (cap cao nhat con thoa) nhung KHONG thap hon cap ma quan doan lon
+    nhat da biet (fit) cho het theo bang. Live #1 2026-11-24: gather_top:metal = 1 (ghi tu quan doan nho 8795) -> chi thu
+    mo cap 1 du quan doan lon cho het cap 4."""
+    top = stored_top or max_lv
+    if fit is not None and fit > top:
+        top = fit
+    return max(1, min(max_lv, top))
+
+
+def too_big_levels(caps, rtype, load, lv, min_lv):
+    """Mo (rtype, lv) qua tai voi quan doan dang chon (tai trong `load`) -> cac cap con lai (< lv) CUNG qua tai theo bang
+    (dung tich tang theo cap) -> bo luon, khong mo ban do tung cap. Tra ve danh sach cap can bo (khong gom lv)."""
+    if not load:
+        return []
+    out = []
+    for x in range(lv - 1, min_lv - 1, -1):
+        cap = table_cap(caps, rtype, x)
+        if cap and cap > load:
+            out.append(x)
+    return out

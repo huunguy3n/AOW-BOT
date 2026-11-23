@@ -20,12 +20,16 @@ log = logging.getLogger("aow")
 # -> (nha chinh >= rebels.min_hq_level) tan cong Phan quan tap kich, 5 luot/ngay -> gui quan thu thap -> observe.
 # Q1 - thu tu uu tien chu du an 2026-11-21: cham do -> loi choi (mo, dau truong) -> tinh bao -> phan quan -> thu thap
 # (~80 % thao tac tro choi); roi cac hang cho luon phai chay: huan luyen, xay dung, nghien cuu; cuoi: phan con lai
+# P7-1 (chu du an 2026-11-24, live #1): gather LUON CUOI luot moi ngay (chay som chiem 5/5 quan doan -> cuop xe, phan quan,
+# mo lien minh, tinh bao bi bo). Thu 2 (ngay thu thap) van cuoi nhung gui het quan doan con lai.
 ORDER = [("warday", warday), ("tutorial", tutorial),
          ("notify", notify), ("reddots", reddots), ("rewards", rewards), ("collect_city", city),
-         ("play", play), ("intel", intel), ("rebels", rebels), ("heal", heal), ("gather", gather),
+         ("play", play), ("intel", intel), ("rebels", rebels), ("heal", heal),
          ("train", train), ("upgrade", upgrade), ("mainquest", mainquest), ("construct", construct), ("quests", quests),
          ("research", research),
-         ("alliance", alliance), ("campaign", campaign), ("daily", daily)]
+         ("alliance", alliance), ("campaign", campaign), ("daily", daily), ("gather", gather)]
+# buoc xa viec (drain) chay lai TRUOC buoc nay (gather cuoi luot) - neu gather tat thi truoc observe
+DRAIN_AT = ("gather", "observe")
 
 
 class Stop(Exception):
@@ -531,19 +535,23 @@ class Runner:
                         log.info("Uu tien o rong %s: chay truoc %s", ",".join(idle0), ",".join(names[:6]))
                 except Exception as e:   # khong de doc hang cho lam hong luot ghe
                     log.warning("Uu tien o rong: loi %s", e)
+            byq = dict(queue)
+            queue = [(n, byq[n]) for n in W.gather_last([n for n, _ in queue])]   # P7-1: gather luon cuoi luot
             if enabled.get("gather") and warday.gather_day(cfg) and not forced:
-                # chu du an 2026-11-23: thu 2 = ngay thu thap -> gui moi doi di thu thap truoc cac viec khac
-                byq = dict(queue)
-                queue = [(n, byq[n]) for n in W.gather_first([n for n, _ in queue])]
-                log.info("Ngay thu thap: chay gather som (sau warday/tutorial)")
+                log.info("Ngay thu thap: gather cuoi luot, gui het quan doan con lai")
+            off = [n for n, _ in ORDER if not enabled.get(n) and n != "tutorial"]
+            if off and not forced:   # P7-5: buoc tat trong cai dat may -> ghi ro (live #1: quests tat, bo qua im lang)
+                log.info("Buoc dang tat (cai dat may / config): %s", ",".join(off))
             qi, done, rerun = 0, {}, collections.Counter()
+            drained = False
             ctx.visit_done = done   # reddots: biet buoc nao vua chay xong ma khong lam duoc gi
             dcfg = cfg.get("drain") or {}
             t_visit = time.time()
             while qi < len(queue):
                 name, mod = queue[qi]
                 qi += 1
-                if name == "observe" and dcfg.get("enabled", True) and not forced:
+                if name in DRAIN_AT and not drained and dcfg.get("enabled", True) and not forced:
+                    drained = True
                     # G2: buoc lam duoc viec co the mo khoa buoc da chay truoc no -> chay lai truoc observe
                     if time.time() - t_visit < dcfg.get("max_visit_min", 30) * 60:
                         extra = drain.followups([n for n, _ in ORDER], done, enabled, dict(rerun), dcfg.get("max_extra", 8))

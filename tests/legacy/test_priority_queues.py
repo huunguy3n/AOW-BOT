@@ -30,9 +30,10 @@ def test_idle_slots():
 # ---------------------------------------------------------------- Q1
 def test_order_follows_owner_priority():
     names = [n for n, _ in ORDER]
-    prio = ["reddots", "play", "intel", "rebels", "gather"]
+    prio = ["reddots", "play", "intel", "rebels"]
     assert [names.index(n) for n in prio] == sorted(names.index(n) for n in prio)
     assert max(names.index(n) for n in prio) < min(names.index(n) for n in ("train", "quests", "research"))
+    assert names[-1] == "gather"     # P7-1 (chu du an 2026-11-24): thu thap luon cuoi luot
 
 
 class Img:

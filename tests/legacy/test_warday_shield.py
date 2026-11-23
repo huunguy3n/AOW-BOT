@@ -158,10 +158,11 @@ def test_ensure_peace_before_war(monkeypatch):
     assert mem.f["peace_at"] == SAT - 2 * 3600 + 60
 
 
-def test_gather_first_and_monday_reserve(monkeypatch):
-    assert W.gather_first(["warday", "tutorial", "notify", "play", "gather", "train"]) == \
-        ["warday", "tutorial", "gather", "notify", "play", "train"]
-    assert W.gather_first(["notify"]) == ["notify"]
+def test_gather_last_and_monday_reserve(monkeypatch):
+    # P7-1 (chu du an 2026-11-24): thu 2 gather CUOI luot (khong con len dau), gui het quan doan
+    assert W.gather_last(["warday", "tutorial", "gather", "notify", "play", "train", "observe"]) == \
+        ["warday", "tutorial", "notify", "play", "train", "gather", "observe"]
+    assert W.gather_last(["notify"]) == ["notify"]
     monkeypatch.setattr(WM.time, "time", lambda: MON)
     assert WM.gather_day({})
     ctx = types.SimpleNamespace(cfg={"rebels": {}, "modules": {"rebels": True}}, dev=types.SimpleNamespace(idx=0),

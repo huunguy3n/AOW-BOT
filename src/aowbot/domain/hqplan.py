@@ -8,8 +8,10 @@ Khong goi thiet bi, khong doc dong ho: nhan `now` tu ngoai.
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from enum import Enum
+from typing import Any
 
 CHAIN_GRACE_S = 15 * 60        # tho vua ranh: nha chinh duoc chon truoc trong ngan nay
 WAIT_RES_S = 60 * 60           # thieu tai nguyen: thu lai sau
@@ -37,13 +39,13 @@ class HqPlan:
     last_level: int | None = None
     last_note: str = ""
 
-    def to_json(self) -> dict:
+    def to_json(self) -> dict[str, Any]:
         d = asdict(self)
         d["status"] = self.status.value
         return d
 
     @staticmethod
-    def from_json(d) -> HqPlan | None:
+    def from_json(d: Any) -> HqPlan | None:
         try:
             return HqPlan(status=Status(d["status"]), at=float(d["at"]), wake_at=float(d.get("wake_at", 0)),
                           reserve_until=float(d.get("reserve_until", 0)), none_streak=int(d.get("none_streak", 0)),
@@ -113,7 +115,7 @@ def after_construct(plan: HqPlan, now: float) -> HqPlan:
 DEFAULT_TARGETS = (9, 15)
 
 
-def next_target(level: int | None, targets=DEFAULT_TARGETS) -> int | None:
+def next_target(level: int | None, targets: Iterable[Any] | None = DEFAULT_TARGETS) -> int | None:
     """Muc tieu nha chinh ke tiep (> cap hien tai), None neu da qua het muc tieu / chua biet cap."""
     if level is None:
         return None
@@ -123,6 +125,6 @@ def next_target(level: int | None, targets=DEFAULT_TARGETS) -> int | None:
     return None
 
 
-def hq_rush(level: int | None, targets=DEFAULT_TARGETS) -> bool:
+def hq_rush(level: int | None, targets: Iterable[Any] | None = DEFAULT_TARGETS) -> bool:
     """Dang 'day nha chinh' (cap < muc tieu cuoi): nhiem vu xay nha chinh duoc lam truoc, cong trinh khac sau."""
     return next_target(level, targets) is not None
