@@ -16,6 +16,10 @@ from bot.modules import alliance
 log = logging.getLogger("aow")
 
 
+JOIN_TH = 0.9                   # btn_join khop 0,75 voi nut '+' benh vien / bang tim kiem (#1 2026-11-23)
+JOIN_ROI = (200, 220, 300, 680)  # o '+' tren the tap ket (Lien minh > Su vu, y~327); bo dai tren cung (y < 220)
+
+
 def join(ctx):
     """Tham gia tap ket Phan quan Co giap cua lien minh. MAC DINH TAT (rebels.join_mech_rally: false - chu du an chua
     quyet, PM 2026-11-23). Thieu anh mau rally_mech / btn_join -> bo qua ngay, khong mo bang lien minh."""
@@ -42,7 +46,8 @@ def join(ctx):
     else:
         for mech in sorted(ctx.v.find_all(img, "rebels/rally_mech"), key=lambda p: p[1]):
             # nut tham gia cung dong (lech doc < 45px) voi dau hieu Co giap
-            joins = [j for j in ctx.v.find_all(img, "rebels/btn_join") if abs(j[1] - mech[1]) < 45]
+            joins = [j for j in ctx.v.find_all(img, "rebels/btn_join", th=JOIN_TH, roi=JOIN_ROI)
+                     if abs(j[1] - mech[1]) < 45]
             if not joins:
                 continue
             ctx.tap(joins[0][0], joins[0][1], wait=2.0)

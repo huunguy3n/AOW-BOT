@@ -75,10 +75,10 @@ Tai khoan MFarm00 (Xuong kien truc cap 4) chua co toa nha nghien cuu; cat anh ma
 ## P2 (2026-11-23) - anh mau can chup tren #1 (chua co thi code van chay: log "thieu anh mau <ten>")
 | File | Man hinh / vung cat |
 |---|---|
-| research/btn_research.png | So Cong Nghe -> cham 1 node chua xong -> bang chi tiet node: CHI chu "Nghien cuu" o nut PHAI day bang (bot tim trong vung x 200-540, y 700-960). KHONG cat nut "Nghien cuu ngay" |
-| research/node_panel.png | Cung bang chi tiet node: dai tieu de / khung tren cung (phan khong doi giua cac node, khong cat ten node) |
+| research/btn_research.png | DA CO (2026-11-23, #1 anh 14). Chu "Nghien cuu" nut PHAI bang chi tiet node. Bang nam GIUA man (nut y~491): bot tim tu tren khung bang (node_panel) toi day man, x 200-540; khong thay khung -> 2/3 duoi (y 320-960). Khop "Nghien cuu ngay" chi 0,41 (nguong 0,85) |
+| research/node_panel.png | DA CO (2026-11-23). Nut X + icon i goc phai bang node. Nguong 0,9 (khop 0,807 voi hop thoai "Doi da du") |
 | research/msg_no_res.png | Bam "Nghien cuu" khi thieu tai nguyen -> hop thoai/thong bao thieu: cat dong tieu de (vd "Tai nguyen khong du"), KHONG cat nut mua/kim cuong |
-| train/btn_max.png | Man huan luyen nha linh (sau nut "Den") -> nut "Toi da"/MAX canh thanh so luong (bot tim trong vung y 560-890) |
+| train/btn_max.png | KHONG CAN (chu du an 2026-11-23): thanh so luong mac dinh da toi da, khong co nut MAX; `train.use_max_button: false` |
 | common/msg_insufficient.png | (dung chung research + train) hop thoai thieu tai nguyen, cat tieu de |
 
 ## P4 (2026-11-23) - nhiem vu chinh / follow
@@ -157,3 +157,10 @@ Luu y: chi cat nut o trang thai CO THE NHAN (sang mau, co cham do), khong cat nu
 `python tools/snap.py shot ten` (chup), `tap X Y ten` (cham roi chup), `tpl common/btn_x ten` (cham theo anh mau),
 `cut ten common/btn_x x1 y1 x2 y2` (cat tu logs/snap-ten.png va bao so diem khop - nen dung 1 diem).
 Quy uoc: `once_*` = nut luon hien (chi bam 1 lan); `claim_*` = nut bien mat sau khi nhan (bam den het).
+
+## P6 (2026-11-23) - anh mau cat tu #1 (data/pm-shots/adb, README trong do)
+| File | Ghi chu |
+|---|---|
+| defense/row_8h.png | Tieu de dong "Hiep uoc hoa binh" (8h MIEN PHI, chuan bi 1h, hoi 14h) - chu du an dong y dung. Bot chi bam "Dung" khi OCR thay chu "Mien phi" phia tren nut |
+| rebels/btn_join.png | O "+" tren the tap ket (Lien minh > Su vu). Nguong 0,9 + vung x 200-500, y 220-900 (khop 0,75 voi nut "+" benh vien / bang tim kiem) |
+| gather/msg_not_found.png | Dong "Khong phat hien muc tieu nay gan Xuong kien truc cua ban!" |

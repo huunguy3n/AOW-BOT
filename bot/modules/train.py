@@ -96,9 +96,10 @@ def train_once(ctx, tc):
 
 
 def use_max(ctx, tc):
-    """P2: bam nut 'Toi da' (train/btn_max) truoc khi Huan luyen. Thieu anh mau -> log 'thieu anh mau train/btn_max',
-    giu so luong mac dinh (game dat san toi da theo tai nguyen) - khong bam mo vao thanh truot."""
-    if not tc.get("use_max_button", True):
+    """P2: bam nut 'Toi da' (train/btn_max) truoc khi Huan luyen. MAC DINH TAT (chu du an 2026-11-23: thanh so luong
+    mac dinh da toi da - anh #1 03_train_after_goto, khong co nut MAX) -> khong can anh mau. Bat use_max_button ma
+    thieu anh mau -> log 'thieu anh mau train/btn_max', giu so mac dinh - khong bam mo vao thanh truot."""
+    if not tc.get("use_max_button", False):
         return False
     if not tplneed.has(ctx.v, TPL_MAX, "giu so luong mac dinh"):
         return False

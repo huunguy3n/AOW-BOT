@@ -185,7 +185,18 @@ def wait_hq(ctx):
 TPL_BTN = "research/btn_research"      # nut PHAI "Nghien cuu" o day bang chi tiet node (KHONG phai "Nghien cuu ngay")
 TPL_PANEL = "research/node_panel"      # tieu de / khung bang chi tiet node (xac nhan da mo dung bang)
 TPL_NORES = "research/msg_no_res"      # hop thoai / thong bao thieu tai nguyen sau khi bam "Nghien cuu"
-BTN_ROI = (200, 700, 340, 260)         # vung tim nut "Nghien cuu" (nua phai, day bang)
+BTN_ROI = (200, 320, 340, 640)         # vung tim nut "Nghien cuu" khi khong thay khung bang: nua phai, 2/3 duoi man
+PANEL_TH = 0.9                         # node_panel khop 0,807 voi hop thoai 'Doi da du' (#1 2026-11-23) -> nguong 0,9
+BTN_TH = 0.85                          # btn_research: 1,0 tren nut that, 0,41 voi nut "Nghien cuu ngay" (kim cuong)
+
+
+def btn_roi(panel):
+    """Vung tim nut "Nghien cuu" (ham thuan). Bang chi tiet node tren #1 nam GIUA man (nut o y~491, khung X/i o
+    (489, 282)) chu khong sat day -> tim tu tren khung bang toi day man, nua phai. Khong thay khung -> BTN_ROI."""
+    if not panel:
+        return BTN_ROI
+    top = max(0, int(panel[1]) - 60)
+    return (200, top, 340, 960 - top)
 NORES_FACT = "research_nores"          # {"until": epoch, "n": so lan lien tiep}: het tai nguyen -> khong mo lai toi moc
 SKIP_FACT = "research_skip"            # {khoa node: epoch}: node bam vao khong lam duoc gi -> bo qua toi moc
 
@@ -195,7 +206,8 @@ def start_buttons(ctx, img):
     (buttons.with_text tu chan '... ngay' / kim cuong)."""
     from bot import buttons, tplneed
     if tplneed.has(ctx.v, TPL_BTN, "dung mau + chu thay the"):
-        p = ctx.v.find(img, TPL_BTN, th=0.85, roi=BTN_ROI)
+        panel = ctx.v.find(img, TPL_PANEL, th=PANEL_TH) if ctx.v.has(TPL_PANEL) else None
+        p = ctx.v.find(img, TPL_BTN, th=BTN_TH, roi=btn_roi(panel))
         return [(p[0], p[1], "tpl")] if p else []
     return [(b.x, b.y, b.text) for b in reversed(buttons.with_text(img, RESEARCH_TXT))]
 
@@ -244,7 +256,7 @@ def node(ctx, depth=0, max_depth=4):
     -> 'started' | 'no_res' | 'wait_hq' | 'chain_long' | 'unknown'."""
     from bot import buttons, tplneed
     img = ctx.settle()
-    if tplneed.has(ctx.v, TPL_PANEL, "khong xac nhan duoc bang node bang anh") and not ctx.v.find(img, TPL_PANEL, th=0.8):
+    if tplneed.has(ctx.v, TPL_PANEL, "khong xac nhan duoc bang node bang anh") and not ctx.v.find(img, TPL_PANEL, th=PANEL_TH):
         if not start_buttons(ctx, img):          # co anh mau ma khong thay bang node va khong co nut -> khong bam gi
             build_inv(ctx)
             return "unknown"

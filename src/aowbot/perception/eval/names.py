@@ -67,7 +67,7 @@ NAMES: Mapping[str, str] = MappingProxyType({
     "daily/tab_3_daily": "Thẻ Hằng ngày",
     # --- Khiên bảo hộ
     "defense/btn_shield_icon": "Biểu tượng Khiên", "defense/btn_use_gems": "Nút dùng Kim cương",
-    "defense/row_12h": "Dòng Khiên 12 giờ", "defense/row_1h": "Dòng Khiên 1 giờ", "defense/row_3d": "Dòng Khiên 3 ngày",
+    "defense/row_8h": "Dòng Hiệp ước hòa bình (8 giờ, miễn phí)", "defense/row_12h": "Dòng Khiên 12 giờ", "defense/row_1h": "Dòng Khiên 1 giờ", "defense/row_3d": "Dòng Khiên 3 ngày",
     "defense/title": "Tiêu đề Khiên bảo hộ",
     # --- Sự kiện
     "event/btn_popup_claim": "Nút Nhận (popup sự kiện)", "event/heal_btn": "Nút Hồi phục", "event/heal_cnt0": "Hồi phục: số lượng 0",
@@ -76,7 +76,7 @@ NAMES: Mapping[str, str] = MappingProxyType({
     "gather/btn_gather": "Nút Thu thập (xe tải)", "gather/btn_level_minus": "Nút – cấp mỏ", "gather/btn_level_plus": "Nút + cấp mỏ",
     "gather/btn_march": "Nút Xuất chinh", "gather/btn_recommended": "Nút Đội hình đề xuất",
     "gather/btn_search": "Nút Tìm kiếm (kính lúp)", "gather/btn_search_go": "Nút Tìm kiếm (xác nhận)",
-    "gather/chk_full_off": "Ô chọn Đầy (tắt)", "gather/msg_type_locked": "Thông báo loại mỏ bị khóa",
+    "gather/msg_not_found": "Thông báo không tìm thấy mỏ", "gather/chk_full_off": "Ô chọn Đầy (tắt)", "gather/msg_type_locked": "Thông báo loại mỏ bị khóa",
     "gather/tab_alloy": "Thẻ Hợp kim", "gather/tab_food": "Thẻ Thực phẩm", "gather/tab_metal": "Thẻ Luyện kim",
     "gather/tab_oil": "Thẻ Lọc dầu",
     "gather/march_header": "Khung Hành quân (bản đồ thế giới)",
@@ -103,7 +103,7 @@ NAMES: Mapping[str, str] = MappingProxyType({
     # --- Nhiệm vụ
     "quest/banner_icon": "Biểu tượng nhiệm vụ", "quest/btn_go": "Nút Đến (nhiệm vụ)", "quest/duel_red": "Đối thủ lực chiến màu đỏ",
     # --- Phản quân
-    "rebels/btn_march_out": "Nút Xuất chinh (phản quân)", "rebels/btn_rally": "Nút Tập kết",
+    "rebels/btn_join": "Ô + tham gia tập kết", "rebels/btn_march_out": "Nút Xuất chinh (phản quân)", "rebels/btn_rally": "Nút Tập kết",
     "rebels/npc_attack": "Nút Tấn công (phiến quân NPC)",
     "rebels/btn_rally_confirm": "Nút Xác nhận tập kết", "rebels/btn_rally_start": "Nút Bắt đầu tập kết",
     "rebels/icon_rally": "Biểu tượng Tập kết", "rebels/label_mech": "Nhãn tên Phản quân Cơ giáp",
@@ -116,6 +116,7 @@ NAMES: Mapping[str, str] = MappingProxyType({
     "recruit/free_wait": "Chiêu mộ: chờ miễn phí", "recruit/tab_normal": "Thẻ Thường", "recruit/tab_premium": "Thẻ Cao cấp",
     "recruit/title": "Tiêu đề Chiêu mộ",
     # --- Nghiên cứu / Huấn luyện
+    "research/btn_research": "Nút Nghiên cứu (bảng node)", "research/node_panel": "Khung bảng chi tiết node",
     "research/btn_detail": "Nút Chi tiết", "research/icon_queue": "Biểu tượng Hàng chờ nghiên cứu",
     "research/title": "Tiêu đề Nghiên cứu",
     "train/btn_goto": "Nút Đến (nhà lính)", "train/btn_train": "Nút Huấn luyện", "train/queue_icon": "Biểu tượng Đội ngũ huấn luyện",

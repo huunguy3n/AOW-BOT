@@ -45,14 +45,16 @@ def test_use_max_missing_template_logs_and_never_taps(caplog):
     tplneed._last.clear()
     c = Ctx(V())
     with caplog.at_level(logging.INFO, logger="aow"):
-        assert train.use_max(c, {}) is False
+        assert train.use_max(c, {"use_max_button": True}) is False
     assert c.tapped == []
     assert any("thieu anh mau train/btn_max" in r.getMessage() for r in caplog.records)
 
 
 def test_use_max_taps_when_template_present():
     c = Ctx(V(have={train.TPL_MAX}))
-    assert train.use_max(c, {}) is True and c.tapped == [train.TPL_MAX]
+    assert train.use_max(c, {"use_max_button": True}) is True and c.tapped == [train.TPL_MAX]
+    d = Ctx(V(have={train.TPL_MAX}))
+    assert train.use_max(d, {}) is False and d.tapped == []      # mac dinh tat (chu du an 2026-11-23)
     assert train.use_max(Ctx(V(have={train.TPL_MAX})), {"use_max_button": False}) is False
 
 

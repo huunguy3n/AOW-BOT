@@ -38,6 +38,8 @@ def needed(cfg):
         names |= {"daily/open_1", "daily/claim_1", "daily/chest_1", "daily/btn_chest_claim"}
     if mods.get("rewards") or mods.get("daily"):
         names |= {"common/btn_confirm", "common/tap_to_continue"}
+    if not (cfg.get("train") or {}).get("use_max_button", False):
+        names.discard("train/btn_max")     # chu du an 2026-11-23: thanh so luong mac dinh da toi da -> khong can
     return {n for n in names if not n.endswith(("_", "/"))}
 
 

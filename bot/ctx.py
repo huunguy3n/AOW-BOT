@@ -237,11 +237,24 @@ class Ctx:
     # btn_x_red: X do goc phai man CONGRATULATIONS (ket qua chieu mo / nhan tuong) - ket ca luot #0 2026-11-19 07:41
     POPUP_CLOSERS = ["common/btn_confirm_hero", "common/btn_net_retry", "common/btn_rebuild", "common/btn_x", "common/btn_close", "common/btn_x_small", "common/btn_x_red", "common/tap_to_continue", "common/tap_to_close"]
 
+    def cancel_exit(self, img=None, why=""):
+        """Hop thoai "Roi tro choi?" dang mo -> bam HUY (khong bao gio Xac nhan). Hien do phim Back o thanh pho/ban do
+        (cua bot, nguoi choi hoac game). Goi truoc moi lan bam nut dong/xac nhan chung. -> True neu da Huy."""
+        img = img if img is not None else self.shot()
+        p = self.v.find(img, "common/btn_cancel_exit")
+        if not p:
+            return False
+        log.warning("Hop thoai thoat game dang mo (%s, buoc %s) -> Huy", why or "?", getattr(self, "step", "?"))
+        self.tap(p[0], p[1], wait=0.8, tpl="common/btn_cancel_exit")
+        return True
+
     def close_popups(self, rounds=5, settle=0):
         """settle>0: khi het popup thi doi them settle giay, xem co popup moi hien tiep khong
         (luc vao game cac popup hien noi tiep nhau)."""
         retried = False
         for _ in range(rounds):
+            if self.cancel_exit(why="close_popups"):
+                continue
             if self.tap_first(self.POPUP_CLOSERS, wait=0.8):
                 retried = False
                 continue
@@ -509,6 +522,8 @@ class Ctx:
         time.sleep(0.6)  # bang thuong con hieu ung hien ra -> doi truoc khi nhan dien
         for _ in range(rounds):
             img = self.shot()
+            if self.cancel_exit(img, "dismiss_reward"):   # REWARD_CLOSERS co 'Xac nhan' - khong duoc bam tren hop thoai thoat
+                continue
             hit = None
             for n in self.REWARD_CLOSERS:
                 if not self.v.has(n):          # btn_reward_close la tuy chon
