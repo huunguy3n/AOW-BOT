@@ -300,6 +300,9 @@ alliance:
   donate_max: 10       # so lan quyen gop (VANG) moi luot
   boss: true           # BOSS lien minh: nhan ruong muc sat thuong (cham do), khong khieu chien
   mine: true           # Mo lien minh "Den thu thap": gui 1 doi neu con doi ranh
+  territory: true      # P7-2: Lanh tho > "Tranh Doat Cu Diem" > "Nhan" loi nhuan tai nguyen moi lan dang nhap (anh mau ally/tab_territory, ally/btn_contest)
+  gifts: true          # P7-2: o "Qua tang lien minh" > Qua dac biet + Qua thuong "Nhan toan bo" LAP toi het
+  gift_rounds: 20      # toi da so lan "Nhan toan bo" o tab Qua thuong / lan
 loot:                     # Cuop boc xe khai thac (Mo khoang san) - chu du an lam mau 2026-11-21
   enabled: true
   rarity: [SSR, SR]       # chi xe CAM (SSR) va TIM (SR)
