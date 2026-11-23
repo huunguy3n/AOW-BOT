@@ -67,7 +67,7 @@ def _order(dots):
 # tien (xoa huy hieu chat chay cuoi, chi khi con thoi gian). Cung muc -> tren xuong, trai qua phai.
 KIND_PRIO = {"mail": 0, "ally_gift": 0, "vip": 1, "daily": 1, "shop_gift": 2, "intel": 2, "play": 2,
              "build": 3, "research": 3, "train": 3, "campaign": 3, "recruit": 3, "hero": 3, "alliance": 4,
-             "rally": 4, "generic": 5}
+             "rally": 4, "mission": 2, "generic": 5}
 
 
 def pick(kinded):
@@ -114,6 +114,8 @@ def _kind(ctx, img, d):
         return "rally"
     if _near(d, ctx.v.find(img, "ally/icon_gift", th=0.8, roi=(330, 600, 210, 300))):
         return "ally_gift"
+    if ctx.v.has("mission/icon") and _near(d, ctx.v.find(img, "mission/icon", roi=(440, 90, 100, 420))):
+        return "mission"                           # P7-7: icon Su menh -> module rieng (khong mo "generic")
     if _near(d, ctx.v.find(img, "rewards/mail/open_1", roi=(400, 600, 140, 300))):
         return "mail"                              # P7-3: icon thu (so do) goc phai duoi -> nhan het, lap toi khi het so
     return "generic"
@@ -133,7 +135,7 @@ def allowed(kind, cfg):
         return mods.get("notify", True) and nc.get(kind, True), f"notify.{kind}"
     if kind in ("alliance", "ally_gift"):
         return mods.get("alliance", True), "modules.alliance"
-    if kind in ("campaign", "daily", "play", "research", "train"):
+    if kind in ("campaign", "daily", "play", "research", "train", "mission"):
         return mods.get(kind, True), f"modules.{kind}"
     if kind == "build":
         return mods.get("upgrade", True), "modules.upgrade"
@@ -145,7 +147,8 @@ def allowed(kind, cfg):
 
 
 KIND_STEP = {"intel": "intel", "campaign": "campaign", "daily": "daily", "play": "play", "alliance": "alliance",
-             "research": "research", "train": "train", "build": "upgrade", "rally": "rebels"}
+             "research": "research", "train": "train", "build": "upgrade", "rally": "rebels",
+             "mission": "mission"}
 
 
 def already_idle(ctx, kind):
@@ -171,6 +174,9 @@ def _handle(ctx, kind, x, y):
             return daily.run(ctx)
         if kind == "play":
             return play.run(ctx) or 0
+        if kind == "mission":     # P7-7: Su menh -> chi tab Nhiem vu hang ngay + ruong mien phi (khong mo tab tra phi)
+            from bot.modules import mission
+            return mission.run(ctx) or 0
         if kind == "build":       # Q2: tho xay ranh -> nang nha chinh (thieu dieu kien -> cong trinh dieu kien)
             return upgrade.run(ctx) or 0
         if kind in ("research", "train"):

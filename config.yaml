@@ -32,6 +32,7 @@ modules:
   notify: true       # cham do: phuc loi, hoat dong, tinh bao, chieu mo mien phi, tang cap tuong
   construct: true    # xay cong trinh MOI theo icon bua (cham do) goc phai duoi: keo the ra cho co trong, nut "Xay dung" (khong bam "Xay dung ngay")
   quests: true       # nhiem vu Chuong/Chinh: nut Den -> nang cap cong trinh (nha chinh <= build.hq_max_level)
+  mission: true      # P7-7: su kien 'Su menh' - CHI tab Nhiem vu hang ngay + ruong mien phi Qua ky dieu (khong The thong hanh / San kho bau / goi tra phi)
   rewards: true      # nhan qua: thu, diem danh, VIP, qua mien phi (truoc nghien cuu/huan luyen de co them tai nguyen)
   research: true     # nghien cuu cong nghe nhanh thu thap
   train: true        # dao tao linh T3
@@ -312,6 +313,9 @@ alliance:
   territory: true      # P7-2: Lanh tho > "Tranh Doat Cu Diem" > "Nhan" loi nhuan tai nguyen moi lan dang nhap (anh mau ally/tab_territory, ally/btn_contest)
   gifts: true          # P7-2: o "Qua tang lien minh" > Qua dac biet + Qua thuong "Nhan toan bo" LAP toi het
   gift_rounds: 20      # toi da so lan "Nhan toan bo" o tab Qua thuong / lan
+mission:                  # P7-7 su kien "Su menh" (icon ben phai man thanh pho) - anh mau templates/mission/
+  max_claims: 12          # so nut Nhan toi da o tab Nhiem vu hang ngay
+  free_gift: true         # Qua ky dieu: ruong nho goc tren-trai (co dong ho) nhan MIEN PHI khi co cham do
 loot:                     # Cuop boc xe khai thac (Mo khoang san) - chu du an lam mau 2026-11-21
   enabled: true
   rarity: [SSR, SR]       # chi xe CAM (SSR) va TIM (SR)
