@@ -81,8 +81,18 @@ def _spent_today(ctx):
     return spent_today(st.get("gems_spent"))
 
 
+WAR_SRC = "shield_war"
+
+
+def counts_toward_cap(src):
+    """P7-12 (chu du an 2026-11-24): kim cuong mua khien NGAY CHIEN TRANH khong gioi han va KHONG an vao tran 2000/ngay
+    ngoai chien tranh (cua so keo sang 00:30 chu nhat -> truoc day bi bot mat tran cua ngay thuong)."""
+    return src != WAR_SRC
+
+
 def _add_spent(ctx, n, src="shield"):
-    """Cong kim cuong da tieu vao tran ngay (state.json) + so kim cuong memory.db (gem_ev, report_ro P6)."""
+    """Cong kim cuong da tieu vao tran ngay (state.json) + so kim cuong memory.db (gem_ev, report_ro P6).
+    Mua ngay chien tranh (src shield_war): chi ghi gem_ev + gems_spent_war, khong tinh vao tran ngay thuong."""
     log.warning("KIM CUONG: may #%s tieu %d (nguon %s)", ctx.dev.idx, n, src)
     if getattr(ctx, "mem", None):
         ctx.mem.log_gem(ctx.dev.idx, src, n)
@@ -90,6 +100,10 @@ def _add_spent(ctx, n, src="shield"):
         return
     st = ctx.store.inst(ctx.dev.idx)
     day = _day()
+    if not counts_toward_cap(src):
+        w = dict(st.get("gems_spent_war") or {})
+        ctx.store.update(ctx.dev.idx, gems_spent_war={day: (w.get(day) or 0) + n})
+        return
     d = {day: spent_today(st.get("gems_spent")) + n}  # chi giu hom nay
     ctx.store.update(ctx.dev.idx, gems_spent=d)
 
@@ -220,7 +234,7 @@ def war_shield(ctx, need_s, buy=True, cap=None):
     """Ngay chien tranh: thu lan luot cac dong khien (W.shield_options: vat pham truoc, roi mua) toi khi bat duoc.
     -> so gio khien da bat | 0. Mua bang kim cuong khong gioi han khi cap None (chu du an 2026-11-23)."""
     for hours, may_buy in W.shield_options(need_s, buy):
-        res = shield(ctx, hours=hours, allow_buy=may_buy, extend=True, cap=cap, src="shield_war")
+        res = shield(ctx, hours=hours, allow_buy=may_buy, extend=True, cap=cap, src=WAR_SRC)
         if res == "shielded":
             return hours
         log.info("Khien %dh (%s): %s -> thu dong khac", hours, "mua" if may_buy else "vat pham", res)
