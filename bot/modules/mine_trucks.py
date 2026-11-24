@@ -15,6 +15,7 @@ bam deu tim theo CHU (bot/buttons.py: mau + chu, loc nut tra phi). Khong thay ch
 """
 import logging
 import re
+import time
 
 import cv2
 import numpy as np
@@ -194,13 +195,16 @@ def run(ctx):
     if not c["enabled"]:
         return 0
     from bot.modules import play
-    if not ctx.find("play/mine_title"):
+    if not back_to_mine(ctx):
+        log.info("Xe khai thac cua toi: khong ve duoc man Mo khoang san (popup qua?) - bo, luu anh")
+        ctx.save_debug("mine_trucks_no_title")
         return 0
     ctx.tap(*TAB_MINE, wait=1.5)
     sent = 0
-    for _ in range(c["max_trucks"]):
+    for k in range(c["max_trucks"]):
         img = ctx.shot()
         left = parse_left(ocr.text(img, LEFT_ROI))
+        log.info("Xe khai thac cua toi: con %s/4 luot khai thac, %d xe trong (xe %d)", left, len(plus_marks(img)), k + 1)
         if left == 0:
             log.info("Xe khai thac cua toi: het luot (0/4)")
             break
@@ -233,4 +237,17 @@ def run(ctx):
             log.info("Xe khai thac: so luot khong giam (%s -> %s) - dung", left, after)
             break
         sent += 1
+        log.info("Xe khai thac: xe %d (%s, %s) da xuat phat - luot %s/4 -> %s/4", k + 1, rar, plan, left, after)
+    log.info("Xe khai thac cua toi: dua di %d xe", sent)
     return sent
+
+
+def back_to_mine(ctx, tries=4):
+    """P10-4 (live3 15:38:58): sau khi nhan ruong, bang "Chuc mung nhan duoc" con de len man -> find('play/mine_title')
+    hut va run() tra 0 LANG LE (khong mo tab Xe khai thac cua toi). Dong bang qua / cho toi khi thay tieu de."""
+    for _ in range(tries):
+        if ctx.find("play/mine_title"):
+            return True
+        ctx.dismiss_reward()
+        time.sleep(0.8)
+    return bool(ctx.find("play/mine_title"))
