@@ -364,6 +364,11 @@ warday:
   timed_login: true         # P7-11: su kien "Dang nhap hen gio" (5 the luc / khung) - lich keo moi may len trong khung
   timed_login_windows_utc: [[18, 19], [8, 9]]   # = 01:00-02:00 va 15:00-16:00 gio VN
   timed_login_delay_min: 2  # ghe sau dau khung N phut
+  # P8-3 (chu du an 2026-11-24): khung 1 gio DU cho ca 7 may -> runner bat may NGAY dau khung, toi da 2 may cung luc,
+  # luot NGAN: ruong "Dang nhap hen gio" DAU TIEN roi cac buoc duoi neu con thoi gian, tat may nhuong cho may sau
+  timed_login_visit_max_min: 12          # luot ngan: qua N phut (tinh tu luc bat may) thi bo cac buoc con lai
+  timed_login_steps: [warday, notify, rewards]   # buoc chay sau ruong trong luot ngan (buoc tat o may van tat)
+  timed_login_yield: true   # may dang chay luot dai khi khung mo: nhan ruong o buoc ke tiep, con may cho -> ket thuc som
   lead_h: 2                 # mo cua so (bat khien) truoc gio reset N gio
   tail_min: 30              # giu cua so them N phut sau khi het ngay (khong chac -> giu khien)
   renew_before_min: 20      # khien con <= N phut thi gia han

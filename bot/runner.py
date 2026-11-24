@@ -108,6 +108,7 @@ class Runner:
                     self.ld.quit(i)
             except Exception as e:
                 log.warning("Khong tat duoc may con sot: %s", e)
+        self._t_started = time.time()
         self.thread = threading.Thread(target=self._loop, daemon=True, name="runner")
         self.thread.start()
         self.store.runner(state="running", since=time.time())
@@ -166,6 +167,106 @@ class Runner:
         for th in list(self._busy.values()):
             th.join()
 
+    # ---------- P8-3: dang nhap hen gio cho ca 7 may (chu du an 2026-11-24) ----------
+    TIMED_WHY = "dang nhap hen gio"
+
+    def _timed_cfg(self, idx=None):
+        return W.wcfg(self.store.cfg_for(self.base_cfg, idx).get("warday"))
+
+    def _timed_lasts(self, ids):
+        out = {}
+        for i in ids:
+            c = self._timed_cfg(i)
+            if c["enabled"] and c["timed_login"]:
+                out[i] = scheduler._fnum(self.mem.fact(i, "timed_login_at"))
+        return out
+
+    def _timed_pending(self, now=None, exclude=None):
+        """May bat auto chua nhan ruong trong khung dang mo (ke ca may dang ban), sap theo idx."""
+        c = self._timed_cfg()
+        if not (c["enabled"] and c["timed_login"]):
+            return []
+        ids = [i for i in self._auto_ids() if i != exclude]
+        return W.timed_login_pending(now or time.time(), self._timed_lasts(ids), c["timed_login_windows_utc"])
+
+    def _timed_ready(self, now=None):
+        """May cho nhan ma DANG RANH va chua thu qua 2 lan trong khung nay -> co the bat luot ngan."""
+        now = now or time.time()
+        w = W.login_window(now, self._timed_cfg()["timed_login_windows_utc"])
+        tries = getattr(self, "_timed_tries", {})
+        return [i for i in self._timed_pending(now) if i not in self._busy and w and tries.get((i, w[0]), 0) < 2]
+
+    def _timed_spawn(self, now=None):
+        """Khung dang mo: may cho nhan + ranh -> luot NGAN (ruong truoc, roi warday/notify/rewards neu con thoi gian).
+        -> True neu da bat may."""
+        now = now or time.time()
+        ready = self._timed_ready(now)
+        if not ready:
+            return False
+        i = ready[0]
+        w = W.login_window(now, self._timed_cfg()["timed_login_windows_utc"])
+        self._timed_tries = getattr(self, "_timed_tries", {})
+        self._timed_tries[(i, w[0])] = self._timed_tries.get((i, w[0]), 0) + 1
+        cfg = self.store.cfg_for(self.base_cfg, i)
+        steps = [n for n in self._timed_cfg(i)["timed_login_steps"] if cfg["modules"].get(n)]
+        log.info("Dang nhap hen gio: ghe may %d (luot ngan: ruong -> %s), con cho %s", i, ",".join(steps) or "-",
+                 ",".join(str(x) for x in ready[1:]) or "-")
+        self.store.runner(state="running")
+        self._spawn(i, modules=set(steps), why=self.TIMED_WHY, mode="timed")
+        return True
+
+    def _timed_report(self, now=None):
+        """Khung vua dong (trong luc runner chay): may nao lo khung -> canh bao. -> [idx lo khung]."""
+        now = now or time.time()
+        c = self._timed_cfg()
+        if not (c["enabled"] and c["timed_login"]):
+            return []
+        w = W.last_closed_window(now, c["timed_login_windows_utc"])
+        if w is None or w[1] <= getattr(self, "_t_started", now) or getattr(self, "_timed_reported", None) == w[0]:
+            return []
+        self._timed_reported = w[0]
+        miss = W.timed_login_missed(w[0], self._timed_lasts(self._auto_ids()))
+        if miss:
+            log.warning("Dang nhap hen gio: may %s LO khung %s UTC (khong nhan duoc ruong the luc)",
+                        ",".join(str(i) for i in miss), time.strftime("%H:%M", time.gmtime(w[0])))
+        else:
+            log.info("Dang nhap hen gio: khung %s UTC du may", time.strftime("%H:%M", time.gmtime(w[0])))
+        return miss
+
+    def _timed_wait_cap(self, now, wait):
+        """Ngu khong qua luc mo khung ke tiep (vong fixed nghi 30 phut co the trum dau khung)."""
+        s = W.next_window_start(now, self._timed_cfg()["timed_login_windows_utc"])
+        return wait if s is None else max(1.0, min(wait, s - now + 1))
+
+    def _timed_due(self, idx, cfg):
+        return scheduler.timed_login_due(self.mem, idx, cfg, time.time())
+
+    def _timed_claim(self, ctx, idx, cfg):
+        """Nhan ruong "Dang nhap hen gio" NGAY (dau luot ngan / buoc ke tiep cua luot dai). Chua qua delay dau khung
+        -> cho toi luc do. Ghi fact timed_login_at (1 lan / khung; buoc notify van quet tab Hoat dong lan nua)."""
+        c = W.wcfg(cfg.get("warday"))
+        now = time.time()
+        w = W.login_window(now, c["timed_login_windows_utc"])
+        if w is None:
+            return 0
+        wait = w[0] + c["timed_login_delay_min"] * 60 - now
+        if wait > 0:
+            self._stop.wait(min(wait, 300))
+        self._check()
+        n = 0
+        try:
+            n = notify.timed_login_chest(ctx)
+        except Exception as e:   # khong lam hong luot ghe
+            log.warning("Dang nhap hen gio may %d: loi %s", idx, e)
+            try:
+                ctx.ensure_city()
+            except Exception:
+                pass
+        self.mem.set_fact(idx, "timed_login_at", time.time())
+        log.info("Dang nhap hen gio may %d (khung %s UTC): %s", idx, time.strftime("%H:%M", time.gmtime(w[0])),
+                 "da nhan ruong" if n else "khong thay ruong (notify se quet lai)")
+        return n
+
     def effective_settings(self):
         """Gia tri DANG DUNG (config.yaml + settings.json trong bo nho tien trinh nay). A-REL-4: data/settings.json
         tren dia co the khac gia tri tien trinh web dang giu (2026-11-21: file ghi parallel 1, log ghi 2)."""
@@ -193,8 +294,14 @@ class Runner:
                 t0 = time.time()
                 ids = self._auto_ids()
                 todo = list(ids)
-                while (todo or self.queue or self._busy) and not self._stop.is_set():
-                    while len(self._busy) < self._parallel() and (self.queue or todo) and not self._stop.is_set():
+                while (todo or self.queue or self._busy or self._timed_ready()) and not self._stop.is_set():
+                    self._timed_report()
+                    while (len(self._busy) < self._parallel() and (self.queue or todo or self._timed_ready())
+                           and not self._stop.is_set()):
+                        if not self.queue and self._timed_spawn():   # P8-3: khung Dang nhap hen gio -> luot ngan truoc
+                            continue
+                        if not (self.queue or todo):
+                            break
                         idx = self.queue.popleft() if self.queue else todo.pop(0)
                         if idx in todo:
                             todo.remove(idx)
@@ -213,7 +320,7 @@ class Runner:
                 log.info("Xong 1 vong %d tai khoan - nghi %d phut", len(ids), pause // 60)
                 self._wake.clear()
                 if not (self._stop.is_set() or self.queue):  # Dung / Chay ngay bam luc dang chay: khong ngu
-                    self._wake.wait(pause)  # "Chay ngay" / Dung se danh thuc som
+                    self._wake.wait(self._timed_wait_cap(time.time(), pause))  # P8-3: thuc dung dau khung hen gio
                 if not self._stop.is_set():
                     self.store.runner(state="running")
         finally:
@@ -284,6 +391,9 @@ class Runner:
                         self._spawn(idx, why="chay ngay")
                     continue
                 now = time.time()
+                self._timed_report(now)
+                if free and self._timed_spawn(now):   # P8-3: khung Dang nhap hen gio -> luot ngan cho may chua nhan
+                    continue
                 if free and self.agent and self._spawn_agent():
                     continue
                 visits = [v for v in self.plan_visits(now) if v.idx not in self._busy]
@@ -303,6 +413,7 @@ class Runner:
                     nxt = min([nxt] + [t for t in (self.agent.next_at(i) for i in self.base_cfg["instances"]
                                                    if i not in self._busy) if t])
                 wait = max(30, min(nxt - now, scheduler.sched_cfg(cfg)["idle_check_min"] * 60))
+                wait = self._timed_wait_cap(now, wait)
                 if self._busy:
                     wait = min(wait, 15)  # may xong se danh thuc (_wake) - van xem lai lich thuong xuyen
                 else:
@@ -441,6 +552,9 @@ class Runner:
         explicit = modules is not None and why is None
         if mode in ("smart", "agent") and rollout.agent_active(cfg):
             enabled["gather"] = False   # SCH-X: hanh quan may agent do agent lo (ke ca lan ghe 'tran an toan' du buoc)
+        short = mode == "timed"         # P8-3: luot NGAN trong khung Dang nhap hen gio
+        tcfg = W.wcfg(cfg.get("warday"))
+        t_visit0 = time.time()
         st = self.store
         st.update(idx, status="starting", step="bat may", started=time.time(), last_error=None)
         log.info("===== Instance %d =====", idx)
@@ -519,11 +633,15 @@ class Runner:
                 if pf:
                     self.mem.log_perf(visit, idx, "agent", pf.drain())
                 # sau agent: cac buoc cu den han (modules) van chay - lan ghe agent khong con bo qua cham do
+            if short or (not forced and self._timed_due(idx, cfg)):
+                st.update(idx, step="dang nhap hen gio")
+                with span("timed_login"):
+                    self._timed_claim(ctx, idx, cfg)   # P8-3: ruong "Dang nhap hen gio" DAU TIEN
             restarts = 0
             blind = 0  # so buoc lien tiep khong chup duoc man hinh (may treo du adb van 'device')
             lost = 0   # so buoc lien tiep goto() khong ve duoc thanh pho/ban do (vd canh tan thu toi den, #4 2026-11-19)
             queue = list(ORDER) + [("observe", observe)]
-            if (cfg.get("priority") or {}).get("idle_first", True) and not forced:
+            if (cfg.get("priority") or {}).get("idle_first", True) and not forced and not short:
                 try:   # o rong (tho 0/2, nghien cuu 0/1, huan luyen x/3) -> lam truoc (chu du an 2026-11-22)
                     ctx.ensure_city()
                     qs0 = queues.read(self.vision, ctx.shot(), observe.known_totals(ctx))
@@ -543,7 +661,8 @@ class Runner:
             if off and not forced:   # P7-5: buoc tat trong cai dat may -> ghi ro (live #1: quests tat, bo qua im lang)
                 log.info("Buoc dang tat (cai dat may / config): %s", ",".join(off))
             ctx.quests_claim_only = False
-            if quest_rules.quests_mode(bool(enabled.get("quests")), cfg.get("quests"), forced or explicit) == "claim":
+            if not short and quest_rules.quests_mode(bool(enabled.get("quests")), cfg.get("quests"),
+                                                     forced or explicit) == "claim":
                 enabled["quests"] = True        # P7-5: tat 'quests' = khong xay theo "Den", van nhan thuong nhiem vu
                 ctx.quests_claim_only = True
                 log.info("Buoc quests tat -> chi nhan thuong nhiem vu (quests.claim_when_off)")
@@ -555,7 +674,24 @@ class Runner:
             while qi < len(queue):
                 name, mod = queue[qi]
                 qi += 1
-                if name in DRAIN_AT and not drained and dcfg.get("enabled", True) and not forced:
+                if not short and name != "observe" and not forced and self._timed_due(idx, cfg):
+                    # P8-3: may dang chay luot dai khi khung mo -> nhan ruong NGAY o buoc ke tiep
+                    st.update(idx, step="dang nhap hen gio")
+                    with span("timed_login"):
+                        self._timed_claim(ctx, idx, cfg)
+                    others = self._timed_ready()      # may khac dang CHO luong (ranh, chua nhan)
+                    if tcfg["timed_login_yield"] and W.timed_login_yield(time.time(), tcfg["timed_login_windows_utc"],
+                                                                         len(others)):
+                        log.info("Dang nhap hen gio: may %s con cho -> ket thuc luot som, nhuong luong (bo %s)",
+                                 ",".join(str(i) for i in others), ",".join(n for n, _ in queue[qi - 1:] if n != "observe"))
+                        queue[qi - 1:] = [("observe", observe)]
+                        name, mod = queue[qi - 1]
+                        drained = True                 # khong xa viec them - nhuong luong ngay
+                if short and name != "observe" and time.time() - t_visit0 > tcfg["timed_login_visit_max_min"] * 60:
+                    log.info("-- Bo buoc %s: luot ngan dang nhap hen gio da qua %d phut", name,
+                             tcfg["timed_login_visit_max_min"])
+                    continue
+                if name in DRAIN_AT and not drained and dcfg.get("enabled", True) and not forced and not short:
                     drained = True
                     # G2: buoc lam duoc viec co the mo khoa buoc da chay truoc no -> chay lai truoc observe
                     if time.time() - t_visit < dcfg.get("max_visit_min", 30) * 60:

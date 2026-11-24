@@ -146,8 +146,49 @@ def hub(ctx, cards):
     return total
 
 
+TIMED_CHEST = (285, 500)   # ruong "Dang nhap hen gio" giua tab (giong claim_content)
+
+
+def timed_login_chest(ctx, pages=3):
+    """P8-3: luot ghe trong khung "Dang nhap hen gio" -> nhan ruong 5 the luc DAU TIEN (truoc moi buoc khac).
+    Thanh pho -> icon Hoat dong tro choi (badge/activity) -> chi cham cac tab CO CHAM DO, tab nao hien ruong
+    (event/timed_login) thi cham ruong + dong thuong, KHONG nhan cac tab khac (de notify lam sau neu con thoi gian).
+    -> 1 da nhan | 0 khong thay (chua toi gio / da nhan / thieu anh mau)."""
+    if not (ctx.v.has("badge/activity") and ctx.v.has("event/timed_login")):
+        log.info("Dang nhap hen gio: thieu anh mau badge/activity hoac event/timed_login - de notify lam")
+        return 0
+    ctx.ensure_city()
+    p = ctx.find("badge/activity")
+    if not p:
+        log.info("Dang nhap hen gio: khong thay icon Hoat dong")
+        return 0
+    ctx.tap(p[0], p[1], wait=2.5)
+    try:
+        for page in range(pages):
+            tried = set()
+            for _ in range(8):
+                if ctx.find("event/timed_login"):
+                    ctx.tap(TIMED_CHEST[0], TIMED_CHEST[1], wait=1.5)
+                    ctx.dismiss_reward()
+                    log.info("Dang nhap hen gio: da nhan ruong the luc")
+                    return 1
+                dots = [d for d in red_dots(ctx.shot(), TAB_STRIP) if (d[0] // 40) not in tried]
+                if not dots:
+                    break
+                x, y = dots[0]
+                tried.add(x // 40)
+                ctx.tap(x - 30, y + 40, wait=1.5)
+            if page + 1 < pages:
+                ctx.dev.swipe(460, 120, 120, 120, 500)   # cuon hang tab sang phai
+                time.sleep(1.0)
+        log.info("Dang nhap hen gio: khong thay ruong (chua toi gio / da nhan)")
+        return 0
+    finally:
+        leave(ctx)
+
+
 # ---------- tinh bao ----------
-ENERGY_ROI = (440, 22, 52, 22)   # nang luong tinh bao (goc phai tren man Tinh bao)
+ENERGY_ROI =(440, 22, 52, 22)   # nang luong tinh bao (goc phai tren man Tinh bao)
 INTEL_COST = 5
 
 

@@ -121,6 +121,63 @@ def timed_login_next_at(now: float, last: float | None, windows: Iterable[Iterab
     return None
 
 
+# ---------- P8-3: du 7 may trong khung 1 gio (chu du an 2026-11-24) ----------
+# Khung 1 gio la DU cho ca 7 may: luot ghe trong khung la luot NGAN (mo game -> ruong "Dang nhap hen gio" DAU TIEN ->
+# notify/rewards ngan neu con thoi gian -> tat may), <= ~12 phut / may; 7 may / 2 luong = 4 dot trong 60 phut.
+def timed_login_pending(now: float, lasts: Mapping[int, float | None], windows: Iterable[Iterable[float]]) -> list[int]:
+    """Khung dang mo: cac may CHUA nhan tu dau khung (bat may NGAY dau khung, khong cho delay - khoi dong da > delay).
+    lasts: idx -> luc nhan gan nhat (fact timed_login_at) | None. Sap theo idx (thu tu on dinh, de doan truoc)."""
+    w = login_window(now, windows)
+    if w is None:
+        return []
+    return sorted(i for i, t in lasts.items() if t is None or t < w[0])
+
+
+def timed_login_missed(start: float, lasts: Mapping[int, float | None]) -> list[int]:
+    """Het khung bat dau luc `start`: may nao chua nhan trong khung do (de log canh bao)."""
+    return sorted(i for i, t in lasts.items() if t is None or t < start)
+
+
+def last_closed_window(now: float, windows: Iterable[Iterable[float]]) -> tuple[float, float] | None:
+    """Khung gan nhat DA dong (ket thuc <= now)."""
+    done = [(s, e) for s, e in _spans(now, windows) if e <= now]
+    return max(done) if done else None
+
+
+def next_window_start(now: float, windows: Iterable[Iterable[float]]) -> float | None:
+    """Dau khung ke tiep (> now)."""
+    nxt = [s for s, _ in _spans(now, windows) if s > now]
+    return min(nxt) if nxt else None
+
+
+def simulate_waves(insts: Iterable[int], start: float, parallel: int, visit_s: float,
+                   free_at: Iterable[float] = ()) -> list[tuple[int, float, float]]:
+    """Xep tham lam: moi may vao luong ranh som nhat -> [(idx, bat dau, ket thuc)].
+    free_at: luc cac luong dang ban se ranh (may dang chay luot dai); thieu thi luong ranh tu `start`."""
+    slots = sorted([max(start, float(t)) for t in free_at][:parallel])
+    slots += [start] * (max(1, parallel) - len(slots))
+    out = []
+    for i in insts:
+        k = min(range(len(slots)), key=lambda j: slots[j])
+        b = slots[k]
+        slots[k] = b + visit_s
+        out.append((i, b, b + visit_s))
+    return out
+
+
+def waves_fit(insts: Iterable[int], window: tuple[float, float], parallel: int, visit_s: float,
+              free_at: Iterable[float] = ()) -> bool:
+    """Moi may nhan ruong TRONG khung? (ruong nhan dau luot ghe -> du khi bat dau + thoi gian toi ruong < ket thuc;
+    o day doi hoi CA luot ghe xong trong khung cho chac)."""
+    return all(e <= window[1] for _, _, e in simulate_waves(insts, window[0], parallel, visit_s, free_at))
+
+
+def timed_login_yield(now: float, windows: Iterable[Iterable[float]], others_pending: int) -> bool:
+    """May dang chay luot DAI trong khung: da nhan ruong cua minh ma con may khac cho nhan -> ket thuc luot som
+    (nhuong luong). Ngoai khung / khong ai cho -> chay tiep binh thuong."""
+    return others_pending > 0 and login_window(now, windows) is not None
+
+
 # ---------- cau hinh (mot cho cho runner / lich / stepgate / module) ----------
 MODES = ("auto", "on", "off")
 DEFAULTS: Mapping[str, Any] = MappingProxyType({
@@ -141,6 +198,9 @@ DEFAULTS: Mapping[str, Any] = MappingProxyType({
     # P7-11 (chu du an 2026-11-24): su kien "Dang nhap hen gio" - 5 the luc moi khung; ghe moi may trong
     # 01:00-02:00 va 15:00-16:00 gio VN = 18-19h va 8-9h UTC
     "timed_login": True, "timed_login_windows_utc": ((18, 19), (8, 9)), "timed_login_delay_min": 2,
+    # P8-3: luot NGAN trong khung (moi may <= visit_max_min), cac buoc chay sau ruong neu con thoi gian; may dang chay
+    # luot dai trong khung -> nhan ruong o buoc ke tiep roi nhuong luong neu may khac con cho (yield)
+    "timed_login_visit_max_min": 12, "timed_login_steps": ("warday", "notify", "rewards"), "timed_login_yield": True,
 })
 
 
