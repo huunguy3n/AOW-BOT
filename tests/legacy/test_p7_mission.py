@@ -86,6 +86,7 @@ def test_run_daily_tab_claims_only_safe(monkeypatch):
     ok = buttons.Button(450, 400, 100, 40, buttons.CLAIM, 88, "Nhan")
     bad = buttons.Button(268, 213, 100, 40, buttons.CLAIM, 88, "Nhan")       # khop nham o hang tab -> ngoai vung
     monkeypatch.setattr(buttons, "claims", _claims([[bad, ok], [bad]]))
+    monkeypatch.setattr(mission, "daily_chests", lambda ctx: 0)     # P9-4: ruong moc - test rieng test_p9_mission
     c = Ctx(v)
     assert mission.run(c) == 1
     assert c.taps == [(512, 305), (437, 213), (450, 400), "back"]

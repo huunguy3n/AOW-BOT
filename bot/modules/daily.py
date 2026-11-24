@@ -36,25 +36,74 @@ def ready_chests(img, band=CHEST_BAND):
     return sorted(out)
 
 
-def claim_chests(ctx, by_color=False):
+# P9-4 (chu du an 2026-11-24, anh nhiem_vu_hang_ngay_ruong_50_phat_sang: 55 diem, ruong 50 sang): moc diem
+MILESTONES = (10, 30, 50, 80, 120)
+MILESTONE_X = (180, 249, 319, 388, 458)   # tam ruong moc tren thanh tien do (do tren anh chu du an)
+SCORE_ROI = (70, 295, 45, 30)            # so diem nang dong duoi huy hieu (anh chu du an: "55")
+
+
+def read_score(img, roi=SCORE_ROI):
+    from bot import ocr
+    t = ocr.text(img, roi, "0123456789")
+    return int(t) if t.isdigit() and int(t) <= 300 else None
+
+
+def milestone_of(x, xs=MILESTONE_X, ms=MILESTONES, tol=30):
+    """Moc diem cua ruong o hoanh do x | None."""
+    best = min(range(len(xs)), key=lambda i: abs(xs[i] - x))
+    return ms[best] if abs(xs[best] - x) <= tol else None
+
+
+def sparkle(img, p, r=22):
+    """So diem anh vang sang (tia lap lanh) quanh ruong - ruong 'phat sang' co ~25+, ruong thuong ~4."""
+    x, y = int(p[0]), int(p[1])
+    hsv = cv2.cvtColor(img[max(0, y - r - 10):y + r - 10, max(0, x - r):x + r], cv2.COLOR_BGR2HSV)
+    return int(((hsv[..., 0] >= 18) & (hsv[..., 0] <= 35) & (hsv[..., 1] >= 80) & (hsv[..., 2] >= 200)).sum())
+
+
+def milestone_targets(pts, score, img=None):
+    """P9-4: ruong can bam = ruong mau (du diem) co moc <= diem (diem None -> moi ruong mau). Ruong phat sang truoc,
+    roi trai -> phai. Ham thuan."""
+    out = []
+    for p in pts:
+        m = milestone_of(p[0])
+        if m is not None and score is not None and m > score:
+            continue
+        out.append(p)
+    glow = (lambda p: sparkle(img, p)) if isinstance(img, np.ndarray) else (lambda p: 0)
+    return sorted(out, key=lambda p: (-(glow(p) >= 12), p[0]))
+
+
+def claim_chests(ctx, by_color=False, tap=None):
+    """Ruong moc diem: bam LAN LUOT moi ruong du diem toi khi het ruong sang (P9-4: truoc day ruong dau khong co nut
+    nhan (da nhan) -> break, ruong 50 dang sang bi bo). tap(x, y): ham cham (Su menh truyen ham co vung cho phep)."""
     chests = ctx.v.list(P + "chest_")
-    n = 0
-    for _ in range(6):  # moi lan nhan thi bang ve lai -> chup lai
+    n, tried = 0, set()
+    tap = tap or (lambda x, y: ctx.tap(x, y, wait=1.2) or True)
+    for _ in range(8):  # moi lan nhan thi bang ve lai -> chup lai
         img = ctx.shot()
-        pts = [p for c in chests for p in ctx.v.find_all(img, c)]
+        pts = [p[:2] for c in chests for p in ctx.v.find_all(img, c)]
         if not pts and by_color:
             pts = ready_chests(img)
+        pts = [p for p in milestone_targets(pts, read_score(img) if by_color else None, img)
+               if (p[0] // 30) not in tried]
         if not pts:
             break
-        pts.sort(key=lambda p: p[0])  # trai sang phai
-        ctx.tap(pts[0][0], pts[0][1], wait=1.2)
+        x, y = pts[0]
+        tried.add(x // 30)
+        if not tap(x, y):
+            continue
+        from bot import screens
+        if isinstance(img, np.ndarray) and screens.same(img, ctx.shot()):
+            continue                     # cham khong mo bang nao (ruong da nhan) -> KHONG bam nut dong (dong ca bang)
         # cham ruong -> hien bang chi tiet co nut "Nhan"
-        if not ctx.tap_tpl(P + "btn_chest_claim", wait=1.5):
-            log.info("Khong thay nut nhan ruong - dong bang")
-            ctx.tap_first(ctx.POPUP_CLOSERS, wait=0.8)
-            break
-        ctx.dismiss_reward()
-        n += 1
+        if ctx.tap_tpl(P + "btn_chest_claim", wait=1.5) or ctx.claim_buttons(max_taps=1):
+            ctx.dismiss_reward()
+            n += 1
+            log.info("Ruong moc %s diem: nhan", milestone_of(x))
+            continue
+        log.info("Ruong @%d,%d: khong co nut nhan (da nhan / chua du) - dong, thu ruong ke", x, y)
+        ctx.tap_first(ctx.POPUP_CLOSERS, wait=0.8)
     return n
 
 

@@ -752,10 +752,28 @@ def _pred_win(v, img):
 GUIDE_WHY = ("ban tay", "mui ten V", "o do duoi", "V chi")
 
 
+# P9-4 (live-run-2 11:03:07): man Su menh (o "+" xanh / ban xuc xac) bi doc nham la "ban tay xanh (cot sang)" -> follow
+# cham (211,401), (163,589)... chiem man Su menh. Man nay KHONG co huong dan tan thu -> khong bao gio follow.
+NO_FOLLOW = ("mission/title", "mission/shop_title")   # Su menh + cua hang xuc xac (goi ₫)
+
+
+def no_follow_screen(v, img):
+    """Man khong bao gio co huong dan cua game (Su menh...) -> ten anh mau khop | None."""
+    for t in NO_FOLLOW:
+        try:
+            if v.has(t) and v.find(img, t, roi=(90, 0, 450, 64)):
+                return t
+        except Exception:
+            continue
+    return None
+
+
 def guide_visible(v, img):
     """Man dang co huong dan cua game (ban tay xanh, mui ten V, o do duoi muc tieu) -> ly do, hoac None.
     Chu du an 2026-11-21: huong dan hien ra GIUA cac buoc khac (quet cham do, quan sat) va phai cham tay
     (logs/human/20261121 anh 9-12) -> runner kiem tra sau moi buoc va lam theo."""
+    if no_follow_screen(v, img):
+        return None
     try:
         act, _, _, why = decide(v, img, state={"follow": True})
     except Exception:
@@ -827,6 +845,9 @@ def run(ctx, max_steps=600, idle_limit=10, max_retry=5, follow=False, no_battle=
     trace = ctx.cfg.get("tutorial", {}).get("trace_dir")   # luu anh + quyet dinh tung buoc de xem lai
     for step in range(max_steps):
         img = ctx.shot()
+        if follow and no_follow_screen(ctx.v, img):
+            log.info("Lam theo huong dan: dang o man %s (khong co huong dan) -> dung", no_follow_screen(ctx.v, img))
+            return "idle"
         act, x, y, why = decide(ctx.v, img, idle, state)
         log.info("tan thu #%d: %s (%d,%d) %s", step, act, x, y, why)
         if act == "done":

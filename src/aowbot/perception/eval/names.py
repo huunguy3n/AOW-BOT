@@ -106,6 +106,7 @@ NAMES: Mapping[str, str] = MappingProxyType({
     "intel/potion_10": "Hàng Thuốc thể lực 10 điểm", "intel/btn_buy_potion": "Nút Mua thuốc (không bấm)",
     "mission/icon": "Biểu tượng Sứ mệnh", "mission/title": "Tiêu đề Sứ mệnh", "mission/tab_daily": "Thẻ Nhiệm vụ hằng ngày",
     "mission/gift_icon": "Biểu tượng Quà kỳ diệu", "mission/free_chest": "Rương miễn phí Quà kỳ diệu",
+    "mission/cart": "Biểu tượng xe đẩy (cửa hàng xúc xắc)", "mission/shop_title": "Tiêu đề Cửa hàng xúc xắc",
     "play/btn_refresh": "Nút làm mới xe khai thác", "play/item_crystal": "Vật phẩm Pha lê xanh",
     "play/btn_arena_refresh": "Nút Làm mới (đấu trường)",
     # --- Nhiệm vụ
