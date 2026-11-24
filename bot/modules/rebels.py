@@ -173,6 +173,7 @@ def launch_rally(ctx, rc, rec, lv, rec_pw="", record=True):
     tab = ctx.find("rebels/tab_odin", th=0.75)                 # hang tab quan doan (y theo anh mau)
     ty = tab[1] if tab else 424
     ctx.tap(LEGION_TABS.get(legion, 125), ty, wait=1.5)
+    recommend(ctx)                                             # P9-7: "Doi hinh de xuat" TRUOC "Xuat chinh"
     img = ctx.shot()
     if not pred_win(img):
         rec.setdefault("fail", {})[str(lv)] = time.time()
@@ -186,6 +187,9 @@ def launch_rally(ctx, rc, rec, lv, rec_pw="", record=True):
         ctx.back_out(3)
         return 0
     ctx.march_sent()
+    ctx.ensure_world()
+    if not rally_started(ctx):
+        log.info("Phan quan Lv.%d: chua thay 'Dang tap ket' tren khung Hanh quan (co the da di / khung an)", lv)
     if record:
         rec["best"] = max(rec.get("best") or 0, lv)
         rec["legion"] = legion
@@ -194,6 +198,39 @@ def launch_rally(ctx, rc, rec, lv, rec_pw="", record=True):
              lv, rec_pw or "?", legion, f" -> lan sau thu Lv.{lv + 1}" if record else " [tinh bao]")
     ctx.ensure_world()
     return 1
+
+
+RECOMMEND_ROI = (0, 840, 300, 120)      # nut "Doi hinh de xuat" goc trai duoi man "Cai dat Quan doan" (anh rally_*)
+MARCH_PANEL_ROI = (0, 120, 260, 160)    # khung "Hanh quan x/y" ben trai ban do (dong "Dang tap ket")
+
+
+def recommend(ctx):
+    """P9-7 (chu du an 2026-11-24, anh rally_doi_hinh_de_xuat_xuat_chinh): man "Cai dat Quan doan" -> bam "Doi hinh de
+    xuat" (anh mau dung chung voi dau truong / cuop xe; khong co thi tim theo chu) roi moi "Xuat chinh"."""
+    if ctx.tap_tpl("play/btn_arena_recommend", wait=1.5, th=0.85, roi=RECOMMEND_ROI):
+        return True
+    from bot import buttons
+    bs = buttons.with_text(ctx.shot(), r"de\s*xu\w{0,2}t", RECOMMEND_ROI)
+    if bs:
+        ctx.tap(bs[0].x, bs[0].y, wait=1.5)
+        return True
+    log.info("Tap ket: khong thay 'Doi hinh de xuat' - giu doi hinh hien tai")
+    return False
+
+
+def rally_started_text(text):
+    """Chu khung Hanh quan co 'Dang tap ket' (OCR mat dau) -> True. Ham thuan."""
+    from bot import buttons
+    t = buttons._norm(text)
+    return bool(re.search(r"t\w{0,2}p\s*k\w{0,2}t", t))
+
+
+def rally_started(ctx):
+    """P9-7 (anh rally_dang_tap_ket): sau Xuat chinh, khung Hanh quan hien dong "Dang tap ket" = tap ket da xuat phat."""
+    try:
+        return rally_started_text(ocr.text(ctx.shot(), MARCH_PANEL_ROI, psm=6))
+    except Exception:   # noqa: BLE001 - chi de log
+        return False
 
 
 RALLY_TICKS = (("rebels/chk_3min_off", "o tick 3Phut chua chon"),

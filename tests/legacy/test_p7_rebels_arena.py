@@ -38,7 +38,8 @@ def test_type_level_taps_field_and_types(monkeypatch):
     c = LvCtx(12)
     monkeypatch.setattr(gather, "read_level", lambda ctx: ctx.after)
     assert gather.type_level(c, 12)
-    assert c.taps == [(270, 600)] and c.dev.typed == [12]
+    # P9-7: cham O "Cap" (nut - + (239, 50)), KHONG cham giua - va + (270,600 = thanh truot, live-run-2 doi cap)
+    assert c.taps == [(180 + 239, 600 + 50)] and c.dev.typed == [12]
 
 
 def test_type_level_falls_back_to_plus_minus(monkeypatch):

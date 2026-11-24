@@ -7,7 +7,7 @@ Tri nho (chu du an 2026-11-21): cap cao nhat con thoa cua tung loai (gather_top:
 nha chinh (gather_locked:<loai>) duoc NHO lai, lan sau bat dau thang tu do. Chi do lai tu cap 8 khi doi "chu ky"
 (gather_sig) = [cap nha chinh, so lan tuong tang cap] thay doi (nha chinh len cap / tuong trong quan doan len cap).
 """
-import time, logging
+import re, time, logging
 from bot import gather_rules, ocr, screens, tplneed
 
 log = logging.getLogger("aow")
@@ -48,11 +48,37 @@ def _has_msg(ctx, img, name, why):
 TAB_TH = 0.72  # chu tren thanh tab bi lech nua pixel khi cuon -> diem ~0.80; tab khac <= 0.65
 
 
+LEVEL_BOX_DX = (204, 39, 72, 24)   # P9-7: o "Cap: NN" so voi nut "-" (live2 s110928: nut - 68,758 -> o 272..344,797..821)
+LEVEL_TAP_DX = (239, 50)           # tam o "Cap" so voi nut "-" (truoc P9 cham GIUA - va + = THANH TRUOT -> doi cap)
+
+
+def level_box(minus, cfg_box=None):
+    """Vung chu so o 'Cap' (2 chu so). Biet nut '-' -> theo nut; khong -> cau hinh (mo rong cho 2 chu so)."""
+    if minus:
+        dx, dy, w, h = LEVEL_BOX_DX
+        return (int(minus[0]) + dx, int(minus[1]) + dy, w, h)
+    x, y, w, h = cfg_box or (292, 798, 30, 20)
+    return (x - 20, y - 1, max(w, 72), max(h, 24))
+
+
+def parse_level(text):
+    """'20' / '30' / ' 9' -> int (1..60) | None."""
+    d = re.sub(r"\D", "", text or "")
+    return int(d) if d and 1 <= int(d) <= 60 else None
+
+
 def read_level(ctx):
-    """Doc so trong o 'Cap:' bang anh mau gather/lv/1..9 (chon so khop nhat)."""
+    """Doc so trong o 'Cap:'. P9-7 (live-run-2: go 10/9/8 deu 'doc None'): anh mau gather/lv/1..9 chi co 1 chu so trong
+    o rong 30 px -> cap >= 10 (phan quan 20/30) KHONG BAO GIO doc duoc. Nay: OCR chu so o rong (theo nut '-'), roi
+    moi den anh mau 1 chu so."""
     g = ctx.cfg["gather"]
+    img = ctx.shot()
+    minus = ctx.v.find(img, "gather/btn_level_minus", roi=(0, 600, 200, 300)) if hasattr(ctx.v, "find") else None
+    lv = parse_level(ocr.text(img, level_box(minus, g.get("level_box")), "0123456789", scale=3, psm=7))
+    if lv is not None:
+        return lv
     x, y, w, h = g.get("level_box", [292, 798, 30, 20])
-    box = ctx.shot()[y:y + h, x:x + w]
+    box = img[y:y + h, x:x + w]
     best, score = None, 0.0
     for n in range(1, 10):
         if not ctx.v.has(f"gather/lv/{n}"):
@@ -93,11 +119,15 @@ def type_level(ctx, level):
     plus = ctx.find("gather/btn_level_plus", fresh=False)
     if not (minus and plus) or not hasattr(ctx.dev, "type_digits"):
         return set_level(ctx, level)
-    ctx.tap((minus[0] + plus[0]) // 2, (minus[1] + plus[1]) // 2, wait=0.8)
+    ctx.tap(minus[0] + LEVEL_TAP_DX[0], minus[1] + LEVEL_TAP_DX[1], wait=0.8)   # o "Cap" (KHONG phai thanh truot)
     ctx.dev.type_digits(int(level))
     time.sleep(0.8)
-    if read_level(ctx) == level:
+    got = read_level(ctx)
+    if got == level:
         log.info("O Cap: go truc tiep %d", level)
+        return True
+    if got is None:   # P9-7: khong doc lai duoc -> giu so da go (bam +/- mu khi khong doc duoc cung vo ich)
+        log.info("O Cap: go %d (khong doc lai duoc o Cap - giu so da go)", level)
         return True
     log.info("O Cap: go %d khong an (doc %s) -> bam +/-", level, read_level(ctx))
     return set_level(ctx, level)
