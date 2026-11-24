@@ -83,6 +83,14 @@ def detect(img):
                 parts = max(1, int(round(w / (h * 1.2)))) if w > 1.7 * h else 1
                 for j in range(parts):
                     out["buff"].append((x + int(w * (2 * j + 1) / (2 * parts)), y0 + y + h // 2, w // parts))
+    # P9-10 (anh chu du an runner_ne_vat_can: "+5" linh tren MUI TEN XANH LA, mau nhat H 38-75 S 90-180): khoi mui ten
+    # rong ~85x60, do dac thap (0.3-0.4, hinh mui ten) -> loc rieng, khong trung buff da co.
+    ga = cv2.morphologyEx(((H >= 38) & (H <= 75) & (S >= 90) & (V >= 140)).astype(np.uint8), cv2.MORPH_CLOSE, k)
+    for x, y, w, h, a, fill in _blobs(ga, 1500):
+        cx, cy = x + w // 2, y0 + y + h // 2
+        if (0.3 <= fill < 0.45 and 50 <= w <= 140 and 40 <= h <= 120
+                and all(abs(cx - a2) >= 50 or abs(cy - b2) >= 50 for a2, b2, _ in out["buff"])):
+            out["buff"].append((cx, cy, w))
     gm = cv2.morphologyEx(green.astype(np.uint8), cv2.MORPH_CLOSE, k)
     rm = cv2.morphologyEx(red.astype(np.uint8), cv2.MORPH_CLOSE, k)
     for x, y, w, h, a, fill in _blobs(rm, 700):
@@ -291,6 +299,35 @@ def template_buffs(v, img, names=None, th=0.8):
     return out
 
 
+# P9-10 (chu du an 2026-11-24, runner_ne_vat_can.png: live #1 thua chien dich vi khong ne con lan gai): CON LAN GAI
+# (truc kim loai + 5 dia rang cua, ~160x80) - lua / khoi che mat mau nen nhan bang ANH MAU, them vao det['block'] (ne manh
+# nhat, -2.5). Mau cat lech trai con lan -> dx = tam con lan - tam mau.
+#   steer/block_roller      : logs/steer/1795203553_024.jpg (540x960 cua bot) 17,415,150,492 - con lan sach
+#   steer/block_roller_fire : anh chu du an (dien thoai 541x956 -> 540x960) 142,388,235,465 - nua trai, nua phai chay
+# Khop >= 0.62 tren 8817 khung logs/steer: deu la con lan that (kiem bang mat 6 khung), nen p99 ~0.59.
+BLOCK_TH = 0.62
+ROLLER_W = 170
+BLOCK_DX = {"steer/block_roller": 14, "steer/block_roller_fire": 28}
+
+
+def template_blocks(v, img, names=None, th=BLOCK_TH):
+    """Vat can theo anh mau (templates/steer/block_*.png) trong dai phia truoc doi quan -> [(cx, cy, w)]."""
+    out = []
+    y0, y1 = AHEAD
+    for n in (names if names is not None else v.list("steer/block_")):
+        for x, y, _ in v.find_all(img, n, th=th, roi=(0, y0, img.shape[1], y1 - y0), min_dist=60):
+            out.append((int(x) + BLOCK_DX.get(n, 0), int(y), ROLLER_W))
+    return out
+
+
+def merge_blocks(det, extra, dist=80):
+    """Them vat can tu anh mau, bo trung (gan nhau < dist px) voi vat can theo mau / mau khac."""
+    for cx, cy, w in extra:
+        if all(abs(cx - a) >= dist or abs(cy - b) >= dist for a, b, _ in det["block"]):
+            det["block"].append((cx, cy, w))
+    return det
+
+
 def merge_buffs(det, extra, dist=50):
     """Them buff tu anh mau, bo trung voi buff theo mau (gan nhau < dist px)."""
     for cx, cy, w in extra:
@@ -386,6 +423,7 @@ def _run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None
             log.warning("Khong xac nhan duoc dang trong tran sau %ss - khong lai (anh %s)", enter_wait, save_enter_fail(img))
             return "error"
         tbuffs = vision.list("steer/buff_")       # P7-9: buff theo anh mau (neu chu du an da cat)
+        tblocks = vision.list("steer/block_")     # P9-10: con lan gai theo anh mau
         time.sleep(0.8)          # cho het hieu ung vao tran / dem nguoc: cham dat xuong luc nay game bo qua
         fg.down(270, SQUAD_Y)
         est = 270.0              # uoc luong x cua doi quan (cong don theo do keo, hieu chinh bang anh khi hop ly)
@@ -409,6 +447,8 @@ def _run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None
             det = detect(img)
             if tbuffs:
                 merge_buffs(det, template_buffs(vision, img, tbuffs))
+            if tblocks:
+                merge_blocks(det, template_blocks(vision, img, tblocks))
             if det["nerf"]:
                 classify_gates(det, img, gates, time.time() - t0)   # P7-8: cong do lat duoc -> lao vao
             sx = squad_x(img)

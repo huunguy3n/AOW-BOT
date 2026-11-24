@@ -18,7 +18,7 @@ GROUPS: Mapping[str, str] = MappingProxyType({
     "gather": "Thu thập", "hero": "Tướng", "intel": "Tình báo", "notify": "Thông báo", "play": "Lối chơi",
     "quest": "Nhiệm vụ", "rebels": "Phản quân", "recruit": "Chiêu mộ", "research": "Nghiên cứu",
     "train": "Huấn luyện", "tutorial": "Tân thủ", "welfare": "Phúc lợi", "mission": "Sứ mệnh",
-    "map": "Bản đồ", "menu": "Menu", "ui": "Giao diện",
+    "map": "Bản đồ", "menu": "Menu", "ui": "Giao diện", "steer": "Lái quân trong trận",
 })
 
 NAMES: Mapping[str, str] = MappingProxyType({
@@ -42,6 +42,8 @@ NAMES: Mapping[str, str] = MappingProxyType({
     "build/title_hq": "Tiêu đề Nhà chính",
     "build/hq_emblem_a": "Huy hiệu cánh Nhà chính (kiểu mái vòm)",
     "build/hq_emblem_b": "Huy hiệu cánh Nhà chính (kiểu cửa gara)",
+    "steer/block_roller": "Con lăn gai (vật cản trận chạy đường)",
+    "steer/block_roller_fire": "Con lăn gai bị lửa che (vật cản trận chạy đường)",
     "build/hq_emblem_halloween": "Nhà chính skin bí ngô Halloween (sân tròn tím)",
     # --- Chiến dịch
     "campaign/battle_hud": "Giao diện trận đánh", "campaign/btn_attack": "Nút Tấn công",
