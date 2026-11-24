@@ -6,6 +6,7 @@ import types
 import pytest
 import yaml
 
+from bot import device as device_mod
 from bot.device import Device
 from bot.modules import gather, play, rebels
 
@@ -50,12 +51,16 @@ def test_type_level_falls_back_to_plus_minus(monkeypatch):
     assert gather.type_level(LvCtx(9), 12) and called == [12]
 
 
-def test_type_digits_only_digits():
+def test_type_digits_only_digits(monkeypatch):
+    monkeypatch.setattr(device_mod.time, "sleep", lambda s: None)
     d = Device.__new__(Device)
     sent = []
     d._cmd = lambda *a: sent.append(a)
     d.type_digits(15)
     assert ("shell", "input", "text", "15") in sent
+    assert sent[0] == ("shell", "input", "keyevent", "123")             # P10-3: con tro cuoi o truoc khi xoa
+    assert sent.count(("shell", "input", "keyevent", "67")) == 4       # xoa sach o (so cu 2 chu so)
+    assert ("shell", "input", "keyevent", "66") not in sent             # khong Enter - bam OK ban phim
     with pytest.raises(ValueError):
         d.type_digits("abc; rm")
 

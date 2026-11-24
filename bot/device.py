@@ -261,17 +261,21 @@ class Device:
         self._mine(x1, y1, time.time())
         self._cmd("shell", "input", "swipe", int(x1), int(y1), int(x2), int(y2), int(ms))
 
-    def type_digits(self, s, clear=3):
-        """P7-10: go SO vao o nhap dang co tieu diem (o "Cap" tim kiem). Chi chu so (khong bao gio go chu tu do):
-        xoa `clear` ky tu cu (DEL) -> 'input text' -> Enter dong ban phim."""
+    def type_digits(self, s, clear=4, enter=False):
+        """P7-10/P10-3: go SO vao o nhap dang co tieu diem (o "Cap" tim kiem). Chi chu so (khong bao gio go chu tu do).
+        Live3 15:43 (s154328/s154354): o con "1" sau khi go 9/8 - DEL gui don dap bi mat, so go khong vao -> nay:
+        MOVE_END, xoa `clear` ky tu cu TUNG phim mot (co nghi), 'input text', khong Enter (nguoi goi bam "OK" ban phim)."""
         s = str(s)
         if not s.isdigit():
             raise ValueError("type_digits: chi nhan chu so")
         self.act_seq = getattr(self, "act_seq", 0) + 1
+        self._cmd("shell", "input", "keyevent", "123")         # KEYCODE_MOVE_END: con tro cuoi o
         for _ in range(clear):
-            self._cmd("shell", "input", "keyevent", "67")
+            self._cmd("shell", "input", "keyevent", "67")      # KEYCODE_DEL
+            time.sleep(0.12)
         self._cmd("shell", "input", "text", s)
-        self._cmd("shell", "input", "keyevent", "66")
+        if enter:
+            self._cmd("shell", "input", "keyevent", "66")
 
     def back(self):
         self.act_seq = getattr(self, "act_seq", 0) + 1

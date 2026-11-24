@@ -110,6 +110,23 @@ def target_ok(rec, lv, fail_h=12, now=None):
     return best == 0 or lv <= best + 1
 
 
+def target_why(rec, lv, fail_h=12, want=None, now=None):
+    """Ly do bo muc tieu Lv.lv (ham thuan, de log dung)."""
+    now = now or time.time()
+    if lv is None:
+        return "khong doc duoc cap tren popup"
+    parts = []
+    if want is not None and lv != want:
+        parts.append(f"muon cap {want} nhung popup Lv.{lv} - o Cap khong doi")
+    f = rec.get("fail", {}).get(str(lv))
+    if f and now - f < fail_h * 3600:
+        parts.append(f"Lv.{lv} vua du doan thua (cho {fail_h} gio)")
+    best = rec.get("best") or 0
+    if best and lv > best + 1:
+        parts.append(f"cao hon cap da thang {best} + 1")
+    return "; ".join(parts) or "khong dat dieu kien"
+
+
 def intel_rally_ok(mem, idx, rc):
     """P5-2: ghim tinh bao Phan quan Co giap (tu mo tap ket) tren may nha chinh thap. rebels.intel_rally_min_hq = 0 ->
     moi cap (hanh vi tu 2026-11-22, chu du an chua quyet lai); > 0 -> chi khi biet nha chinh >= gia tri do."""
@@ -145,7 +162,9 @@ def search_target(ctx, level):
         return False
     setter = gather.type_level if ctx.cfg.get("rebels", {}).get("type_level", True) else gather.set_level
     if not setter(ctx, level):          # P7-10: go so truc tiep vao o "Cap"
-        log.info("Phan quan: khong dat duoc cap %d trong o tim kiem", level)
+        log.info("Phan quan: khong dat duoc cap %d trong o tim kiem - khong tim (tranh ra lai cap cu)", level)
+        ctx.back_out()
+        return None
     ctx.tap_tpl("gather/btn_search_go", wait=3.0)
     if ctx.find("gather/msg_not_found") or ctx.find("gather/btn_search_go"):
         log.info("Phan quan: khong tim thay Co giap cap %d", level)
@@ -322,7 +341,9 @@ def try_target(ctx, rc, rec, tap, want=None):
     lv = popup_level(img, title)
     rec_pw = re.sub(r"\D", "", ocr.text(img, (title[0] + 81, title[1] + 387, 95, 22), "0123456789,", scale=4) or "")
     if lv is None or not target_ok(rec, lv, rc.get("fail_h", 12)):
-        log.info("Phan quan Lv.%s: bo (cap da thang cao nhat %s)", lv, rec.get("best"))
+        # P10-3: ly do THAT (live3 log "cap da thang cao nhat None" gay hieu nham: thuc ra o Cap khong doi -> lai ra
+        # Lv.10 vua du doan thua). Ha cap KHONG doi hoi lich su thang (target_ok: best None -> moi cap duoc).
+        log.info("Phan quan Lv.%s: bo (%s)", lv, target_why(rec, lv, rc.get("fail_h", 12), want))
         ctx.tap_first(["common/btn_close", "common/btn_x"], wait=0.8)
         return -1
     r = launch_rally(ctx, rc, rec, lv, rec_pw)

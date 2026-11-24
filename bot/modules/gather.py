@@ -8,6 +8,7 @@ nha chinh (gather_locked:<loai>) duoc NHO lai, lan sau bat dau thang tu do. Chi 
 (gather_sig) = [cap nha chinh, so lan tuong tang cap] thay doi (nha chinh len cap / tuong trong quan doan len cap).
 """
 import re, time, logging
+import cv2
 from bot import gather_rules, ocr, screens, tplneed
 
 log = logging.getLogger("aow")
@@ -89,39 +90,71 @@ def read_level(ctx):
     return best if score >= 0.9 else None
 
 
-def set_level(ctx, level):
-    """Bam +/- tung buoc (cham nhanh qua game bo qua) cho toi khi o 'Cap' = level.
-    Tra ve False neu khong dat duoc (vd mo hop kim thap nhat la cap 3)."""
+KB_BAR_Y = (870, 950)              # P10-3: thanh nhap lieu trang cua ban phim ao (live3 s154354: "1|" ... "OK")
+KB_OK = (511, 910)                 # nut "OK" ben phai thanh nhap lieu
+
+
+def keyboard_bar(img):
+    """Thanh nhap lieu ban phim ao (nen trang day man) dang mo? -> toa do nut OK | None. Ham thuan."""
+    if img is None or img.shape[0] < KB_BAR_Y[1]:
+        return None
+    g = cv2.cvtColor(img[KB_BAR_Y[0]:KB_BAR_Y[1]], cv2.COLOR_BGR2GRAY)
+    return KB_OK if float(g.mean()) > 200 else None
+
+
+def plus_minus_plan(cur, level):
+    """Ham thuan: so lan bam va nut ('+' / '-') de tu cur toi level. -> (nut, so lan) | None (da dung / khong biet)."""
+    if cur is None or cur == level:
+        return None
+    return ("+" if cur < level else "-", abs(level - cur))
+
+
+def set_level(ctx, level, misses=2):
+    """Bam +/- tung buoc (cham nhanh qua game bo qua) cho toi khi o 'Cap' = level, DOC LAI sau moi lan bam.
+    P10-3: bam ma so khong doi `misses` lan lien tiep -> da cham tran/san (truoc: 1 lan la bo - lan cham dau co the chi
+    dong ban phim). Tra ve False neu khong dat duoc (vd mo hop kim thap nhat la cap 3)."""
     minus = ctx.find("gather/btn_level_minus")
     plus = ctx.find("gather/btn_level_plus", fresh=False)
     if not (minus and plus):
         log.debug("Khong thay nut +/- cap, dung cap mac dinh cua game")
         return True
-    for _ in range(12):
+    miss = 0
+    for _ in range(40):
         cur = read_level(ctx)
         if cur is None:
             log.debug("Khong doc duoc cap - dung cap hien tai")
             return True
-        if cur == level:
+        plan = plus_minus_plan(cur, level)
+        if plan is None:
             return True
-        btn = plus if cur < level else minus
+        btn = plus if plan[0] == "+" else minus
         ctx.dev.tap(btn[0], btn[1])
-        time.sleep(0.5)
-        if read_level(ctx) == cur:  # bam ma khong doi -> da cham tran/san
-            return False
+        time.sleep(0.6)
+        if read_level(ctx) == cur:  # bam ma khong doi
+            miss += 1
+            if miss >= misses:
+                return False
+        else:
+            miss = 0
     return False
 
 
 def type_level(ctx, level):
     """P7-10 (chu du an 2026-11-24): GO SO truc tiep vao o "Cap" (giua nut - va +) thay vi bam +/- tung buoc.
-    Doc lai khong ra dung cap -> bam +/- (set_level). -> True neu o 'Cap' = level."""
+    P10-3 (live3 15:43: go 9/8 'khong an (doc 1)'): xoa sach o (MOVE_END + DEL tung phim), go so, bam "OK" cua ban phim
+    ao, roi OCR xac nhan; sai -> bam +/- co doc lai (set_level). -> True neu o 'Cap' = level."""
     minus = ctx.find("gather/btn_level_minus")
     plus = ctx.find("gather/btn_level_plus", fresh=False)
     if not (minus and plus) or not hasattr(ctx.dev, "type_digits"):
         return set_level(ctx, level)
     ctx.tap(minus[0] + LEVEL_TAP_DX[0], minus[1] + LEVEL_TAP_DX[1], wait=0.8)   # o "Cap" (KHONG phai thanh truot)
     ctx.dev.type_digits(int(level))
-    time.sleep(0.8)
+    time.sleep(0.5)
+    shot = getattr(ctx, "shot", None)
+    ok_btn = keyboard_bar(shot()) if callable(shot) else None
+    if ok_btn:
+        ctx.tap(ok_btn[0], ok_btn[1], wait=0.8)            # "OK" ban phim ao -> game nhan so
+    time.sleep(0.5)
     got = read_level(ctx)
     if got == level:
         log.info("O Cap: go truc tiep %d", level)
@@ -129,8 +162,10 @@ def type_level(ctx, level):
     if got is None:   # P9-7: khong doc lai duoc -> giu so da go (bam +/- mu khi khong doc duoc cung vo ich)
         log.info("O Cap: go %d (khong doc lai duoc o Cap - giu so da go)", level)
         return True
-    log.info("O Cap: go %d khong an (doc %s) -> bam +/-", level, read_level(ctx))
-    return set_level(ctx, level)
+    log.info("O Cap: go %d khong an (doc %s) -> bam +/- co doc lai", level, got)
+    ok = set_level(ctx, level)
+    log.info("O Cap: +/- -> %s (doc %s)", level if ok else "KHONG dat", read_level(ctx))
+    return ok
 
 
 def select_tab(ctx, rtype, name=None):
