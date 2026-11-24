@@ -17,7 +17,7 @@ GROUPS: Mapping[str, str] = MappingProxyType({
     "common": "Chung", "daily": "Nhiệm vụ hằng ngày", "defense": "Khiên bảo hộ", "event": "Sự kiện",
     "gather": "Thu thập", "hero": "Tướng", "intel": "Tình báo", "notify": "Thông báo", "play": "Lối chơi",
     "quest": "Nhiệm vụ", "rebels": "Phản quân", "recruit": "Chiêu mộ", "research": "Nghiên cứu",
-    "train": "Huấn luyện", "tutorial": "Tân thủ", "welfare": "Phúc lợi",
+    "train": "Huấn luyện", "tutorial": "Tân thủ", "welfare": "Phúc lợi", "mission": "Sứ mệnh",
     "map": "Bản đồ", "menu": "Menu", "ui": "Giao diện",
 })
 
@@ -100,6 +100,14 @@ NAMES: Mapping[str, str] = MappingProxyType({
     "play/btn_open": "Nút mở Lối chơi", "play/btn_result_close": "Nút đóng bảng kết quả", "play/card_arena": "Thẻ Đấu trường",
     "play/card_mine": "Thẻ Mỏ khoáng sản", "play/mine_chest": "Rương Mỏ khoáng sản", "play/mine_title": "Tiêu đề Mỏ khoáng sản",
     "play/res_arena_win": "Kết quả Thắng (đấu trường)", "play/res_fail": "Kết quả Thất bại", "play/tab_others": "Thẻ Khác",
+    # --- P8 (ảnh ADB #1, 2026-11-24)
+    "ally/tab_territory": "Thẻ Lãnh thổ (liên minh)", "ally/btn_contest": "Nút Tranh Đoạt Cứ Điểm",
+    "ally/btn_contest_claim": "Nút Nhận lợi nhuận cứ điểm", "ally/tech_vinh_cuu": "Nhãn Liên minh vĩnh cửu",
+    "intel/potion_10": "Hàng Thuốc thể lực 10 điểm", "intel/btn_buy_potion": "Nút Mua thuốc (không bấm)",
+    "mission/icon": "Biểu tượng Sứ mệnh", "mission/title": "Tiêu đề Sứ mệnh", "mission/tab_daily": "Thẻ Nhiệm vụ hằng ngày",
+    "mission/gift_icon": "Biểu tượng Quà kỳ diệu", "mission/free_chest": "Rương miễn phí Quà kỳ diệu",
+    "play/btn_refresh": "Nút làm mới xe khai thác", "play/item_crystal": "Vật phẩm Pha lê xanh",
+    "play/btn_arena_refresh": "Nút Làm mới (đấu trường)",
     # --- Nhiệm vụ
     "quest/banner_icon": "Biểu tượng nhiệm vụ", "quest/btn_go": "Nút Đến (nhiệm vụ)", "quest/duel_red": "Đối thủ lực chiến màu đỏ",
     # --- Phản quân

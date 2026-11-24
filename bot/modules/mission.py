@@ -11,6 +11,9 @@ Thieu anh mau -> bo qua em (log "thieu anh mau", bot/tplneed.py).
 import logging
 import re
 
+import cv2
+import numpy as np
+
 from bot import buttons, tplneed
 from bot.badges import red_dots
 
@@ -69,6 +72,24 @@ def claim_safe(ctx, screen, roi, max_taps=10):
     return n
 
 
+def chest_dot(img, c):
+    """P8-1: cham do cua ruong mien phi Qua ky dieu (goc tren-phai ruong). Do tren anh ADB #1 (mis2, 2026-11-24): tam
+    ~81,285 khi ruong ~43,311, 17x17 px, H ~8, S 255, V 130-170 -> TOI va CAM hon cham thong bao thuong (red_dots
+    H <= 6, V >= 190 khong thay). Chi xet hop canh ruong (x c..c+65, y c-50..c) de khong lay mau do cua anh nen."""
+    near = any(abs(dx - c[0]) <= 60 and abs(dy - c[1]) <= 60 for dx, dy in red_dots(img, FREE_CHEST_ROI))
+    if near or not isinstance(img, np.ndarray):
+        return near
+    x0, y0 = max(0, int(c[0])), max(0, int(c[1]) - 50)
+    box = img[y0:int(c[1]), x0:x0 + 65]
+    if box.size == 0:
+        return False
+    hsv = cv2.cvtColor(box, cv2.COLOR_BGR2HSV)
+    H, S, V = hsv[..., 0], hsv[..., 1], hsv[..., 2]
+    m = (((H <= 10) | (H >= 172)) & (S >= 170) & (V >= 110)).astype(np.uint8)
+    n, _, st, _ = cv2.connectedComponentsWithStats(m)
+    return any(10 <= st[k][2] <= 26 and 10 <= st[k][3] <= 26 and st[k][4] >= 0.6 * st[k][2] * st[k][3] for k in range(1, n))
+
+
 def free_chest(ctx):
     """Qua ky dieu: ruong goc tren-trai co CHAM DO -> cham (mien phi) -> nhan."""
     if not tplneed.has(ctx.v, "mission/free_chest", "ruong mien phi Qua ky dieu (goc tren-trai, co dong ho)"):
@@ -77,7 +98,7 @@ def free_chest(ctx):
     c = ctx.v.find(img, "mission/free_chest", roi=FREE_CHEST_ROI)
     if not c:
         return 0
-    if not any(abs(dx - c[0]) <= 60 and abs(dy - c[1]) <= 60 for dx, dy in red_dots(img, FREE_CHEST_ROI)):
+    if not chest_dot(img, c):
         log.info("Su menh: ruong Qua ky dieu chua co cham do (chua toi gio mien phi)")
         return 0
     if not _tap(ctx, "gift", c):

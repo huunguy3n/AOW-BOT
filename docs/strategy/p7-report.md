@@ -89,33 +89,35 @@ Lần cuối: **1047 test pass**, ruff sạch, mypy sạch (72 file), `lint-impo
 
 ## Ảnh mẫu cần chủ dự án cắt (ADB 540×960)
 
+> **Cập nhật P8 (2026-11-24):** 14 ảnh đã cắt bằng ADB trên #1 (commit 9cc0c25) và được kiểm trên chính ảnh ADB gốc (`tests/legacy/test_p8_templates.py`). Cột "Trạng thái (P8)" bên dưới. Xem thêm `docs/strategy/p8-report.md`.
+
 Cắt bằng `python main.py --capture <idx>` rồi `python tools/snap.py cutmany SRC tên=x1,y1,x2,y2`. Tọa độ là **gợi ý** từ ảnh crop lệch vài px — kiểm lại trên ảnh ADB. Thiếu ảnh nào thì bước đó bỏ qua êm và log "thieu anh mau …".
 
-| File | Màn hình | Vùng gợi ý (x1,y1,x2,y2) | Mô tả |
-|---|---|---|---|
-| `ally/tab_territory.png` | Liên minh | hàng tab trên | Tab "Lãnh thổ" (P7-2) |
-| `ally/btn_contest.png` | Liên minh > Lãnh thổ | mục giữa | Mục "Tranh Đoạt Cứ Điểm" (P7-2) |
-| `ally/btn_contest_claim.png` | Tranh Đoạt Cứ Điểm | nút dưới | Nút "Nhận" lợi nhuận (P7-2) |
-| `ally/tech_vinh_cuu.png` | Khoa học liên minh | thẻ công nghệ | "Liên minh vĩnh cửu" (tùy chọn, P7-2) |
-| `defense/alert_attack.png` | Thành phố khi bị đánh | cảnh báo | Biểu tượng/khung cảnh báo bị tấn công (P7-3) |
-| `gather/msg_march_full.png` | Bản đồ | thông báo nổi giữa | "Hàng hành quân đã đầy" (P7-3) |
-| `gather/msg_no_troops.png` | Bản đồ | thông báo nổi giữa | "Không đủ quân" (P7-3) |
-| `intel/potion_10.png` | Bảng "Thuốc Thể Lực" | icon/chữ hàng bình 10 điểm (~40,y,140,y+60) | Xác định hàng bình 10 điểm (P7-4) |
-| `intel/btn_buy_potion.png` | Bảng "Thuốc Thể Lực" | nút "Mua" bên phải (~400,y,530,y+45) | Chỉ để **loại trừ**, bot không bao giờ bấm (P7-4) |
-| `play/btn_refresh.png` | Mỏ khoáng sản, tab xe người khác | ~465,180,515,228 | Nút làm mới mũi tên tròn (P7-6) |
-| `play/item_crystal.png` | Popup xe (Tới cướp bóc) | ô vật phẩm đầu (~50,665,110,720) | Pha lê xanh, không gồm số (P7-6) |
-| `play/res_loot_win.png` | Kết quả cướp | tiêu đề | Chữ "Thắng lợi" (P7-6) |
-| `mission/icon.png` | Thành phố | ~488,280,536,330 | Icon "Sứ mệnh" cột phải, không gồm số đỏ (P7-7) |
-| `mission/title.png` | Sứ mệnh | ~210,12,330,48 | Tiêu đề "Sứ mệnh" (P7-7) |
-| `mission/tab_daily.png` | Sứ mệnh | ~360,195,520,232 | Tab "Nhiệm vụ hàng ngày" chưa chọn (P7-7) |
-| `mission/gift_icon.png` | Sứ mệnh | ~150,80,230,160 | Icon hộp quà "Quà kỳ diệu" (P7-7) |
-| `mission/free_chest.png` | Quà kỳ diệu | góc trên-trái trong 0,200,280,460 | Rương nhỏ có đồng hồ, không gồm chấm đỏ (P7-7) |
-| `campaign/battle_hud_2.png` | Trong trận chiến dịch #1 | icon cố định HUD (vd ~10,30,75,95) | Chỉ khi vẫn log "Khong xac nhan duoc dang trong tran"; lấy từ `logs/inv/steer_no_battle/` (P7-9) |
-| `steer/buff_soldiers.png`, `steer/buff_ammo.png` | Trong trận chạy đường | ~70×60 | Tùy chọn: icon buff lính "+N" / đạn "+%" (P7-9) |
-| `rebels/chk_3min_off.png` | Bảng "Thời gian tập kết" | ô tick cạnh "3Phút" | Trạng thái **chưa chọn** (P7-10) |
-| `rebels/chk_full_start_off.png` | Bảng "Thời gian tập kết" | ô tick "Đủ thành viên sẽ xuất phát" | Trạng thái **chưa chọn** (P7-10) |
-| `play/btn_arena_refresh.png` | Đấu trường | nút "Làm mới" | Kiểm xem nút có số/kim cương không (P7-10) |
-| `rebels/rally_mech.png` | Liên minh > Sự vụ | dòng tập kết | Chỉ cần nếu bật `join_mech_rally` |
+| File | Màn hình | Vùng gợi ý (x1,y1,x2,y2) | Mô tả | Trạng thái (P8) |
+|---|---|---|---|---|
+| `ally/tab_territory.png` | Liên minh | hàng tab trên | Tab "Lãnh thổ" (P7-2) | **ĐÃ CÓ** (9cc0c25, ADB #1, kiểm P8-1) |
+| `ally/btn_contest.png` | Liên minh > Lãnh thổ | mục giữa | Mục "Tranh Đoạt Cứ Điểm" (P7-2) | **ĐÃ CÓ** (9cc0c25, ADB #1, kiểm P8-1) |
+| `ally/btn_contest_claim.png` | Tranh Đoạt Cứ Điểm | nút dưới | Nút "Nhận" lợi nhuận (P7-2) | **ĐÃ CÓ** (9cc0c25, ADB #1, kiểm P8-1) |
+| `ally/tech_vinh_cuu.png` | Khoa học liên minh | thẻ công nghệ | "Liên minh vĩnh cửu" (tùy chọn, P7-2) | **ĐÃ CÓ** (9cc0c25, ADB #1, kiểm P8-1) |
+| `defense/alert_attack.png` | Thành phố khi bị đánh | cảnh báo | Biểu tượng/khung cảnh báo bị tấn công (P7-3) | còn thiếu |
+| `gather/msg_march_full.png` | Bản đồ | thông báo nổi giữa | "Hàng hành quân đã đầy" (P7-3) | còn thiếu |
+| `gather/msg_no_troops.png` | Bản đồ | thông báo nổi giữa | "Không đủ quân" (P7-3) | còn thiếu |
+| `intel/potion_10.png` | Bảng "Thuốc Thể Lực" | icon/chữ hàng bình 10 điểm (~40,y,140,y+60) | Xác định hàng bình 10 điểm (P7-4) | **ĐÃ CÓ** (9cc0c25, ADB #1, kiểm P8-1) |
+| `intel/btn_buy_potion.png` | Bảng "Thuốc Thể Lực" | nút "Mua" bên phải (~400,y,530,y+45) | Chỉ để **loại trừ**, bot không bao giờ bấm (P7-4) | **ĐÃ CÓ** (9cc0c25, ADB #1, kiểm P8-1) |
+| `play/btn_refresh.png` | Mỏ khoáng sản, tab xe người khác | ~465,180,515,228 | Nút làm mới mũi tên tròn (P7-6) | **ĐÃ CÓ** (9cc0c25, ADB #1, kiểm P8-1) |
+| `play/item_crystal.png` | Popup xe (Tới cướp bóc) | ô vật phẩm đầu (~50,665,110,720) | Pha lê xanh, không gồm số (P7-6) | **ĐÃ CÓ** (9cc0c25, ADB #1, kiểm P8-1) |
+| `play/res_loot_win.png` | Kết quả cướp | tiêu đề | Chữ "Thắng lợi" (P7-6) | còn thiếu |
+| `mission/icon.png` | Thành phố | ~488,280,536,330 | Icon "Sứ mệnh" cột phải, không gồm số đỏ (P7-7) | **ĐÃ CÓ** (9cc0c25, ADB #1, kiểm P8-1) |
+| `mission/title.png` | Sứ mệnh | ~210,12,330,48 | Tiêu đề "Sứ mệnh" (P7-7) | **ĐÃ CÓ** (9cc0c25, ADB #1, kiểm P8-1) |
+| `mission/tab_daily.png` | Sứ mệnh | ~360,195,520,232 | Tab "Nhiệm vụ hàng ngày" chưa chọn (P7-7) | **ĐÃ CÓ** (9cc0c25, ADB #1, kiểm P8-1) |
+| `mission/gift_icon.png` | Sứ mệnh | ~150,80,230,160 | Icon hộp quà "Quà kỳ diệu" (P7-7) | **ĐÃ CÓ** (9cc0c25, ADB #1, kiểm P8-1) |
+| `mission/free_chest.png` | Quà kỳ diệu | góc trên-trái trong 0,200,280,460 | Rương nhỏ có đồng hồ, không gồm chấm đỏ (P7-7) | **ĐÃ CÓ** (9cc0c25, ADB #1, kiểm P8-1) |
+| `campaign/battle_hud_2.png` | Trong trận chiến dịch #1 | icon cố định HUD (vd ~10,30,75,95) | Chỉ khi vẫn log "Khong xac nhan duoc dang trong tran"; lấy từ `logs/inv/steer_no_battle/` (P7-9) | còn thiếu |
+| `steer/buff_soldiers.png`, `steer/buff_ammo.png` | Trong trận chạy đường | ~70×60 | Tùy chọn: icon buff lính "+N" / đạn "+%" (P7-9) | còn thiếu |
+| `rebels/chk_3min_off.png` | Bảng "Thời gian tập kết" | ô tick cạnh "3Phút" | Trạng thái **chưa chọn** (P7-10) | còn thiếu |
+| `rebels/chk_full_start_off.png` | Bảng "Thời gian tập kết" | ô tick "Đủ thành viên sẽ xuất phát" | Trạng thái **chưa chọn** (P7-10) | còn thiếu |
+| `play/btn_arena_refresh.png` | Đấu trường | nút "Làm mới" | Kiểm xem nút có số/kim cương không (P7-10) | **ĐÃ CÓ** (9cc0c25, ADB #1, kiểm P8-1) |
+| `rebels/rally_mech.png` | Liên minh > Sự vụ | dòng tập kết | Chỉ cần nếu bật `join_mech_rally` | còn thiếu |
 
 Còn thiếu từ trước P7 (không đổi): `ally/btn_help_all`, `common/btn_help`, `common/btn_reward_close`, `common/msg_insufficient`, `gather/mine_occupied`, `hero/btn_exchange`, `research/btn_research_building`, `research/btn_research_enter`, `research/msg_no_res`, `rewards/city/claim_1`. Hướng dẫn chi tiết: `templates/mission/README.md`, `templates/steer/README.md`.
 
