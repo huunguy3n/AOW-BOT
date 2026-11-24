@@ -216,6 +216,10 @@ def run(ctx):
                     go, kind, module = row_plan(titles[k])
                     if go:
                         keep.append((k, p))
+                    elif quest_rules.forbidden(kind):
+                        tried.add(k)
+                        log.info("Nhiem vu %s dong %d: %s (%r) -> KHONG AN TOAN (tra phi / kim cuong / nguoi choi), "
+                                 "khong bam Den", (tab or "chuong").split("/")[-1], k + 1, kind, titles[k][:40])
                     else:
                         tried.add(k)
                         log.info("Nhiem vu %s dong %d: %s -> viec cua buoc %s, khong bam Den",

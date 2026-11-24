@@ -22,7 +22,14 @@ from aowbot.domain.blockers import normalize
 
 # (loai, cac cum tu khoa da bo dau, buoc phu trach). THU TU QUAN TRONG: cum dac hieu truoc.
 # buoc None = mainquest/quests tu lam (xay qua build.upgrade_here, tuong/sua chua/don phe tich qua follow).
+# P8-4 (chu du an 2026-11-24, bat lai quests tren #1): nhom CAM dat DAU - khong bao gio bam "Den" (mua / nap / tieu kim
+# cuong / tan cong nguoi choi). Khop nham (vd tu "mua" cua "Cap mua") -> chi la khong bam, an toan.
+FORBIDDEN = "forbidden"
 RULES: tuple[tuple[str, tuple[str, ...], str | None], ...] = (
+    ("paid", ("mua", "nap", "kim cuong", "thanh toan", "the thang", "goi qua", "dac quyen"), FORBIDDEN),
+    ("pvp", ("nguoi choi", "tan cong can cu", "tan cong thanh", "pha huy", "danh bai chi huy", "chien thang chi huy"),
+     FORBIDDEN),
+    ("loot", ("cuop",), "play"),                             # "Cuop boc xe khai thac" - buoc play (so luc chien P8-2)
     ("alliance", ("lien minh",), "alliance"),                # truoc 'rally': "Tham gia lien minh" la viec lien minh
     ("rally", ("tap ket", "tham gia"), "rebels"),            # "Tham gia tap ket tan cong 1 lan phan quan Co giap"
     ("rebels", ("phan quan",), "rebels"),                    # "Kich sat 1 lan phan quan Lv.3"
@@ -72,6 +79,11 @@ def classify(text: str) -> tuple[str, str | None]:
 
 def delegated(kind: str) -> bool:
     return kind in DELEGATED
+
+
+def forbidden(kind: str) -> bool:
+    """Loai nhiem vu KHONG BAO GIO bam "Den" (tra phi / kim cuong / tan cong nguoi choi) - ke ca khi buoc khac bat."""
+    return any(k == kind and m == FORBIDDEN for k, _, m in RULES)
 
 
 def text_key(text: str) -> str:
