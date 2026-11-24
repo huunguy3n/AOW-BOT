@@ -328,7 +328,9 @@ alliance:
   mine: true           # Mo lien minh "Den thu thap": gui 1 doi neu con doi ranh
   territory: true      # P7-2: Lanh tho > "Tranh Doat Cu Diem" > "Nhan" loi nhuan tai nguyen moi lan dang nhap (anh mau ally/tab_territory, ally/btn_contest)
   gifts: true          # P7-2: o "Qua tang lien minh" > Qua dac biet + Qua thuong "Nhan toan bo" LAP toi het
-  gift_rounds: 20      # toi da so lan "Nhan toan bo" o tab Qua thuong / lan
+  gift_loop_rounds: 30 # P11: qua lien minh LAP den het (2 tab): toi da N vong nhan -> lam moi tab -> doc lai so do
+  gift_loop_max_s: 180 # ... hoac N giay cho ca buoc; cham tran -> log con bao nhieu, thoat ve thanh pho
+  gift_stall_rounds: 2 # so khong giam + khong nhan duoc N vong lien tiep -> anh logs/shots + dung tab (chong ket)
 mission:                  # P7-7 su kien "Su menh" (icon ben phai man thanh pho) - anh mau templates/mission/
   max_claims: 12          # so nut Nhan toi da o tab Nhiem vu hang ngay
   free_gift: true         # Qua ky dieu: ruong nho goc tren-trai (co dong ho) nhan MIEN PHI khi co cham do

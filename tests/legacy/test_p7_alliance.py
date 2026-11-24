@@ -83,25 +83,7 @@ def test_gift_more_stops_when_empty_or_no_progress():
     assert alliance.gift_more(None, None, 1, 20)            # khong doc duoc so: lap toi khi nut bien mat
 
 
-def test_gift_panel_repeats_claim_all_until_zero(monkeypatch):
-    monkeypatch.setattr(alliance, "lv_chest", lambda ctx: 0)              # P9-3: ruong Lv / tung mon (test rieng P9)
-    monkeypatch.setattr(alliance.buttons, "with_text", lambda *a, **k: [])
-    cans = [103, 83, 63, 0]
-    monkeypatch.setattr(alliance, "gift_can_claim", lambda img: cans.pop(0) if cans else 0)
-    monkeypatch.setattr(alliance, "gift_sent", lambda img: None)
-    ctx = Ctx(V(), claim_all=10)
-    n = alliance.gift_panel(ctx)
-    # 1 lan tab dac biet + 3 lan tab thuong (103 -> 83 -> 63 -> 0)
-    assert n == 4
-
-
-def test_gift_panel_skips_normal_when_zero(monkeypatch):
-    monkeypatch.setattr(alliance, "lv_chest", lambda ctx: 0)              # P9-3: ruong Lv / tung mon (test rieng P9)
-    monkeypatch.setattr(alliance.buttons, "with_text", lambda *a, **k: [])
-    monkeypatch.setattr(alliance, "gift_can_claim", lambda img: 0)
-    monkeypatch.setattr(alliance, "gift_sent", lambda img: None)
-    ctx = Ctx(V(), claim_all=5)
-    assert alliance.gift_panel(ctx) == 1                     # chi tab dac biet
+# gift_panel lap 2 tab: P11 thay vong "Nhan toan bo" 1 trang -> tests/legacy/test_p11_ally_gift_loop.py
 
 
 # ---------- Lanh tho > Tranh Doat Cu Diem ----------

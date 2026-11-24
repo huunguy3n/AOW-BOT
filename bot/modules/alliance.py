@@ -170,12 +170,12 @@ def lv_chest(ctx):
     return max(got, 1)
 
 
-def special_claim(ctx, max_taps=30):
+def special_claim(ctx, max_taps=30, claim_all=True):
     """Tab "Qua dac biet": "Nhan toan bo" (neu co) roi bam "Nhan" TUNG MON (nut xanh co chu Nhan, khong dau hieu tra
     phi - buttons.with_text) toi khi het. Nut bam ma man khong doi -> khong bam lai. -> so lan nhan."""
     from bot import buttons, screens
     n = 0
-    if ctx.tap_tpl("ally/btn_gift_claim_all", wait=1.5):
+    if claim_all and ctx.tap_tpl("ally/btn_gift_claim_all", wait=1.5, roi=CLAIM_ALL_ROI):
         ctx.dismiss_reward()
         n += 1
         log.info("Qua lien minh dac biet: nhan toan bo")
@@ -219,38 +219,206 @@ def gifts_tile(ctx):
 
 
 def gift_panel(ctx):
-    """Bang "Qua tang lien minh":
-    - tab "Qua dac biet": nhan toan bo
-    - tab "Qua thuong": CHI nhan khi "Co the nhan" > 0 (het gioi han thi cham do van hien nhung khong nhan duoc);
-      P7-2 (chu du an 2026-11-24): "Nhan toan bo" LAP toi khi het.
-    -> so lan bam "Nhan toan bo"."""
+    """Bang "Qua tang lien minh" - MOI duong vao (icon thanh pho / reddots / rewards / o Lien minh) di qua day
+    -> gift_loop (P11). -> so lan nhan."""
     if not ctx.wait_for("ally/gift_title", timeout=3):
         return 0
-    n = lv_chest(ctx)                      # P9-3: Ruong Lv.N goc phai tren co cham do -> nhan
-    ctx.tap(*TAB_SPECIAL, wait=1.5)
-    n += special_claim(ctx)
-    ctx.tap(*TAB_NORMAL, wait=1.5)
-    img = ctx.shot()
-    can = gift_can_claim(img)
+    return gift_loop(ctx)
+
+
+# ---------- P11 (chu du an t52u 2026-11-24): nhan qua lien minh LAP DEN HET ----------
+# Live3 #1: nhan 1 trang roi bo di, qua phat sinh lien tuc -> cuoi luot badge Lien minh van 26. So THAT dang cho nhan
+# la SO DO TREN TAB (s152956: Qua dac biet 8, Qua thuong 43); "Co the nhan:243" la TRAN NHAN TRONG NGAY (243 -> 200
+# sau khi nhan 43), khong phai so qua dang cho. Vong: nhan -> chuyen tab di roi ve (lam moi) -> doc lai -> lap.
+TABS = {"special": TAB_SPECIAL, "normal": TAB_NORMAL}
+TAB_NAME = {"special": "dac biet", "normal": "thuong"}
+TAB_DOT_ROI = {"special": (200, 212, 80, 40), "normal": (470, 212, 70, 40)}   # so do goc phai-tren moi tab (~258/530,230)
+TAB_FILL = {"special": (10, 235, 30, 23), "normal": (285, 235, 30, 23)}       # mau nen tab (dang chon = xanh ngoc)
+CLAIM_ALL_ROI = (150, 860, 240, 90)          # "Nhan toan bo" (s152956 ~269,905); dong "Gui Qua Thuong" la chu, khong nut
+EMPTY_ROI = (150, 545, 240, 50)              # "Chua co qua" giua bang (s153334)
+EMPTY_RX = r"ch\w{0,2}a\s*c\w?\s*qu"
+
+
+def active_tab(img):
+    """Tab dang chon theo mau nen: xanh ngoc (BGR ~97,111,36) vs toi (~36,27,26). -> 'special' | 'normal' | None."""
+    for k, (x, y, w, h) in TAB_FILL.items():
+        b, g, r = (float(v) for v in img[y:y + h, x:x + w].reshape(-1, 3).mean(axis=0))
+        if g > 80 and b > 65 and r < 70:
+            return k
+    return None
+
+
+def tab_dot(img, tab):
+    """Cham do (so) tren tab -> (x, y) | None."""
+    from bot.badges import red_dots
+    d = red_dots(img, TAB_DOT_ROI[tab])
+    return d[0] if d else None
+
+
+# (w, h, scale, bright, psm) - bo chon tren live3: s152939 13/43, s152956 8/43, s153301 8, s153326 2, s153309 (5) -> None
+BADGE_OCR = ((24, 22, 6, 180, 8), (20, 20, 8, 190, 10), (24, 22, 6, None, 10), (22, 20, 7, None, 10), (24, 22, 6, 150, 10))
+
+
+def badge_number(img, dot):
+    """So trang trong cham do tab. OCR chu nho de sai (s153309 so 5 doc ra '3') -> chi nhan khi >= 2 cach doc trung
+    nhau. -> int | None."""
+    if not dot:
+        return None
+    x, y = dot
+    votes = {}
+    for w, h, sc, br, psm in BADGE_OCR:
+        roi = (max(0, x - w // 2), max(0, y - h // 2), w, h)
+        t = ocr.text(img, roi, "0123456789", scale=sc, psm=psm, bright=br, pad=6)
+        if t and t.isdigit() and 0 < int(t) < 1000:
+            votes[int(t)] = votes.get(int(t), 0) + 1
+    best = max(votes.items(), key=lambda kv: kv[1], default=(None, 0))
+    return best[0] if best[1] >= 2 else None
+
+
+def list_buttons(img):
+    """So nut xanh (Nhan) trong cot phai danh sach qua (dem theo mau, khong OCR)."""
+    return len(buttons.find(img, GIFT_LIST_ROI))
+
+
+def gift_empty(img):
+    """Danh sach rong: khong nut nao trong danh sach + chu "Chua co qua" giua bang (s153334)."""
+    if list_buttons(img):
+        return False
+    return bool(re.search(EMPTY_RX, buttons._norm(ocr.text(img, EMPTY_ROI))))
+
+
+def gift_count(img, tab):
+    """So qua DANG CHO tren tab dang mo (ham thuan tren anh). 0 = "Chua co qua" / khong nut + khong so do;
+    so do doc duoc -> max(so do, so nut thay); khong doc duoc so -> so nut thay; co so do ma chua thay nut -> None."""
+    btn = list_buttons(img)
+    dot = tab_dot(img, tab)
+    if not btn and (not dot or gift_empty(img)):
+        return 0
+    num = badge_number(img, dot)
+    if num is not None:
+        return max(num, btn)
+    return btn or None
+
+
+def show_tab(ctx, tab):
+    """Mo tab va LAM MOI: tab dang chon -> chuyen sang tab kia roi ve (game tai lai danh sach). -> anh."""
+    if active_tab(ctx.shot()) == tab:
+        other = next(t for t in TABS if t != tab)
+        ctx.tap(*TABS[other], wait=1.0)
+    ctx.tap(*TABS[tab], wait=1.5)
+    return ctx.shot()
+
+
+def claim_all_once(ctx):
+    """"Nhan toan bo" (anh mau, chi vung day bang CLAIM_ALL_ROI) -> True neu bam va man doi."""
+    from bot import screens
+    before = ctx.shot()
+    if not ctx.tap_tpl("ally/btn_gift_claim_all", wait=1.5, roi=CLAIM_ALL_ROI):
+        return False
+    after = ctx.shot()
+    ctx.dismiss_reward()
+    return not screens.same(before, after)
+
+
+def claim_tab(ctx, tab):
+    """Nhan tren tab dang mo: uu tien "Nhan toan bo"; khong co thi "Nhan" tung mon. -> (so lan nhan, cach)."""
+    if claim_all_once(ctx):
+        return 1, "Nhan toan bo"
+    return special_claim(ctx, claim_all=False), "Nhan tung mon"
+
+
+def gift_progress(before, after, got):
+    """Vong co tien trien: nhan duoc (man doi) hoac so giam. Ham thuan."""
+    if got:
+        return True
+    return before is not None and after is not None and after < before
+
+
+def gift_loop(ctx):
+    """P11: Qua dac biet + Qua thuong (+ Ruong Lv co cham do): nhan -> lam moi tab -> doc lai so -> lap toi khi CA HAI
+    tab rong ("Chua co qua" / khong so do / khong nut Nhan). Tran: alliance.gift_loop_rounds (30) vong HOAC
+    gift_loop_max_s (180) giay; so khong giam + khong nhan duoc gift_stall_rounds (2) vong lien tiep -> anh + bo tab.
+    KHONG bam "Gui Qua Thuong", "Tang qua an danh", goi tra phi (chi nut Nhan xanh / Nhan toan bo). -> so lan nhan."""
+    a = ctx.cfg.get("alliance") or {}
+    max_rounds = int(a.get("gift_loop_rounds", 30))
+    max_s = float(a.get("gift_loop_max_s", 180))
+    stall_n = int(a.get("gift_stall_rounds", 2))
+    t0 = time.time()
+    total = lv_chest(ctx)                  # P9-3: Ruong Lv.N goc phai tren co cham do -> nhan
+    stall = {t: 0 for t in TABS}
+    left = {t: None for t in TABS}
+    off = {}                               # tab da bo: 'het luot' (Co the nhan 0) / 'ket'
+    sent_done, clear, r, idle = False, False, 0, 0
+    while r < max_rounds and time.time() - t0 < max_s:
+        r += 1
+        busy = False
+        for tab in TABS:
+            if tab in off:
+                continue
+            if time.time() - t0 >= max_s:
+                busy = True
+                break
+            img = show_tab(ctx, tab)
+            if tab == "normal":
+                if not sent_done:
+                    sent_done = True
+                    _gift_sent_fact(ctx, img)
+                if gift_can_claim(img) == 0:
+                    off[tab], left[tab] = "het luot", 0
+                    log.info("Qua lien minh thuong: het luot nhan hom nay (Co the nhan: 0) - bo qua tab")
+                    continue
+            before = gift_count(img, tab)
+            if before == 0:
+                left[tab] = 0
+                continue
+            busy = True
+            got, how = claim_tab(ctx, tab)
+            after = gift_count(show_tab(ctx, tab), tab)      # lam moi (chuyen tab di roi ve) roi DOC LAI
+            left[tab] = after
+            total += got
+            log.info("Qua lien minh %s vong %d: con %s -> %s (%s, nhan %d)", TAB_NAME[tab], r,
+                     "?" if before is None else before, "?" if after is None else after, how, got)
+            if gift_progress(before, after, got):
+                stall[tab] = 0
+                continue
+            stall[tab] += 1
+            if stall[tab] >= stall_n:
+                off[tab] = "ket"
+                path = ctx.save_debug(f"ally_gift_stall_{tab}")
+                log.warning("Qua lien minh %s: %d vong so khong giam (con %s) - nut khong an / OCR sai, dung tab (%s)",
+                            TAB_NAME[tab], stall[tab], after, path)
+        if len(off) == len(TABS):
+            break
+        if busy:
+            idle = 0
+            continue
+        idle += 1
+        img = ctx.shot()                   # doc lai so do 2 tab truoc khi dung (qua moi co the vua toi)
+        dots = [t for t in TABS if t not in off and tab_dot(img, t)]
+        if not dots or idle >= 2:          # 2 vong lien danh sach rong ma so do van hien -> so do cu, dung
+            if dots:
+                log.info("Qua lien minh: so do tab %s con nhung danh sach rong 2 vong - dung",
+                         ", ".join(TAB_NAME[t] for t in dots))
+            clear = True
+            break
+    total += lv_chest(ctx)                 # ruong Lv co the vua du diem sau khi nhan
+    dt = time.time() - t0
+    if clear:
+        log.info("Qua lien minh: het qua sau %d vong (%.0f s), nhan %d lan", r, dt, total)
+    elif len(off) < len(TABS):
+        log.warning("Qua lien minh: cham tran (%d/%d vong, %.0f/%.0f s) - con dac biet %s, thuong %s; thoat",
+                    r, max_rounds, dt, max_s, left["special"], left["normal"])
+    else:
+        log.info("Qua lien minh: dung sau %d vong (%s), nhan %d lan", r,
+                 ", ".join(f"{TAB_NAME[t]} {why}" for t, why in off.items()), total)
+    return total
+
+
+def _gift_sent_fact(ctx, img):
     sent = gift_sent(img)
     if sent and getattr(ctx, "mem", None):
         ctx.mem.set_fact(ctx.dev.idx, "rebels_attacks_game", sent[1] - sent[0])
         log.info("Gui Qua Thuong %d/%d -> da tan cong phan quan %d luot hom nay", sent[0], sent[1], sent[1] - sent[0])
-    if can == 0:
-        log.info("Qua lien minh thuong: het luot nhan hom nay (Co the nhan: 0) - bo qua")
-        return n
-    mx = (ctx.cfg.get("alliance") or {}).get("gift_rounds", 20)
-    r = 0
-    while ctx.tap_tpl("ally/btn_gift_claim_all", wait=1.5):
-        ctx.dismiss_reward()
-        n += 1
-        r += 1
-        after = gift_can_claim(ctx.shot())
-        log.info("Qua lien minh thuong: nhan toan bo lan %d (co the nhan %s -> %s)", r, can, after)
-        if not gift_more(can, after, r, mx):
-            break
-        can = after
-    return n
 
 
 # ---------- Lanh tho > Tranh Doat Cu Diem (P7-2, chu du an 2026-11-24) ----------
