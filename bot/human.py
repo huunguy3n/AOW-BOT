@@ -87,6 +87,9 @@ class HumanWatch:
                     if code == "KEY_BACK" and getattr(self.dev, "backs", 0) > 0                             and time.time() - getattr(self.dev, "back_t", 0) < 8:
                         self.dev.backs -= 1          # phim Back do bot gui
                         continue
+                    hp = getattr(self.ctx, "human_pause", None)
+                    if hp is not None:
+                        hp.note()
                     before = self._shot()
                     self._finish({"type": "key", "key": KEYS[code]}, before)
                 continue
@@ -110,6 +113,9 @@ class HumanWatch:
                         self.dev.perf.add("bot_touch_seen", 0.0, "human")
                     down = None
                     continue
+                hp = getattr(self.ctx, "human_pause", None)
+                if hp is not None:            # P9-1: dem thao tac tay -> ctx.tap / runner tam dung khi chu dang choi
+                    hp.note(down["ts"])
                 dur = round(time.time() - down["ts"], 2)
                 moved = max(abs(x2 - x1), abs(y2 - y1))
                 kind = ("tap" if dur < LONG_PRESS_S else "long_press") if moved <= TAP_MAX_MOVE else "swipe"

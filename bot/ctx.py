@@ -111,7 +111,21 @@ class Ctx:
             prev = img
         return prev
 
+    human_pause = None   # P9-1: bot.hang.HumanPause (runner gan khi bat HumanWatch)
+
+    def human_gate(self, why=""):
+        """P9-1: chu du an dang cham tay lien tiep -> cho tay yen roi moi cham (khong giam len thao tac cua chu)."""
+        hp = self.human_pause
+        if hp is None:
+            return 0.0
+        waited = hp.wait(why or f"o buoc {self.step}")
+        if waited:
+            self.wd_reset(self.step_limit)   # thoi gian cho chu khong tinh vao watchdog cua buoc
+            self._img = None
+        return waited
+
     def tap(self, x, y, wait=1.0, tpl=None):
+        self.human_gate()
         self._exp_begin("tap", x, y, tpl)
         self.dev.tap(x, y)
         self._after_tap(wait * self.wait_scale)

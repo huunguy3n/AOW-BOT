@@ -9,7 +9,7 @@ from bot.device import LDConsole, Device
 from bot.ctx import Ctx, Stuck
 from bot import ocr
 from bot.memory import Memory
-from bot import perf, quest_rules, queues, scheduler, stepgate
+from bot import hang, perf, quest_rules, queues, scheduler, stepgate
 from aowbot.domain import drain, rollout
 from aowbot.domain import warday as W
 from bot.modules import tutorial, mainquest, construct, city, rewards, alliance, quests, campaign, notify, research, train, rebels, gather, daily, observe, defense, intel, reddots, play, upgrade, heal, warday, mission
@@ -475,6 +475,48 @@ class Runner:
         ctx.wd_reset(300)
         ctx.close_popups(rounds=10, settle=3)
 
+    def _recover_device(self, ctx, idx, pkg, cfg, done, name):
+        """P9-1: may treo (screencap hong ca sau khi do lai dia chi). ldconsole list2 -> may khong chay: bat lai;
+        dang chay ma treo: quit + launch. Roi cho ADB, mo game, dong popup. KHONG pm clear / uninstall / xoa du lieu.
+        -> True neu may chup duoc man hinh tro lai (runner chay tiep buoc ke tiep)."""
+        rc = hang.recover_cfg(cfg)
+        if not rc["enabled"]:
+            return False
+        try:
+            running = idx in self.ld.running()
+        except Exception as e:
+            log.warning("Cuu may #%d: ldconsole list2 loi %s", idx, e)
+            running = True
+        plan = hang.recover_plan(running, None, done, rc["max"])
+        log.warning("May #%d treo o buoc %s (list2: %s) -> %s", idx, name, "dang chay" if running else "KHONG chay",
+                    {"launch": "bat lai may", "reboot": "khoi dong lai may (khong xoa du lieu)",
+                     "give_up": f"het luot cuu ({done}/{rc['max']})"}[plan])
+        if plan == "give_up":
+            return False
+        st = self.store
+        st.update(idx, step="khoi dong lai may treo", device_recovers=st.inst(idx).get("device_recovers", 0) + 1)
+        try:
+            if plan == "reboot":
+                self.ld.quit(idx)
+            if not self.ld.launch(idx):
+                log.error("Cuu may #%d: khong bat lai duoc", idx)
+                return False
+            boot = cfg["ldplayer"].get("boot_timeout", 120)
+            if not ctx.dev.wait_ready(boot):
+                log.error("Cuu may #%d: ADB khong tra loi sau %d s", idx, boot)
+                return False
+            ctx.dev.dead = False
+            self.ld.runapp(idx, pkg)
+            self._wait_game(ctx, cfg, pkg)
+            ctx.wd_reset(300)
+            ctx.close_popups(rounds=10, settle=3)
+            ctx.shot()
+        except (Exception, Stuck) as e:
+            log.error("Cuu may #%d that bai: %s", idx, e)
+            return False
+        log.info("May #%d da chay lai sau khi treo -> tiep tuc tu buoc ke tiep (sau %s)", idx, name)
+        return True
+
     def _backoff(self, cfg, idx, name, res, note):
         """Loi/ket lien tiep -> tam bo buoc (chi co tac dung o che do smart). warn/miss khong tinh."""
         if name == "observe":
@@ -588,6 +630,8 @@ class Runner:
             ctx.wd_enabled = cfg.get("watchdog", {}).get("enabled", True)
             if demo_mode or (cfg.get("learn") or {}).get("watch_human", True):
                 from bot.human import HumanWatch
+                if not demo_mode:   # P9-1: chu cham tay lien tiep -> tam dung (hoc mau: bot von khong cham gi)
+                    ctx.human_pause = hang.HumanPause.from_cfg(cfg)
                 ctx.human = HumanWatch(ctx, cfg["ldplayer"]["adb"]).start()   # chup anh khi chu du an thao tac tay
             st.update(idx, status="running", step="mo game")
             pkg = cfg["ldplayer"].get("game_package") or dev.find_package("warpath")
@@ -638,6 +682,7 @@ class Runner:
                 with span("timed_login"):
                     self._timed_claim(ctx, idx, cfg)   # P8-3: ruong "Dang nhap hen gio" DAU TIEN
             restarts = 0
+            recovers = 0  # P9-1: so lan da khoi dong lai may treo trong luot nay
             blind = 0  # so buoc lien tiep khong chup duoc man hinh (may treo du adb van 'device')
             lost = 0   # so buoc lien tiep goto() khong ve duoc thanh pho/ban do (vd canh tan thu toi den, #4 2026-11-19)
             queue = list(ORDER) + [("observe", observe)]
@@ -731,6 +776,7 @@ class Runner:
                         log.info("-- Bo buoc %s: %s", name, g_.why)
                         continue
                 self._check()
+                ctx.human_gate(f"truoc buoc {name}")   # P9-1: chu dang thao tac tay -> cho
                 if not ctx.dev.app_alive(pkg):  # game tu thoat / bi tat giua chung -> mo lai truoc khi lam buoc ke
                     log.warning("Game khong con chay truoc buoc %s -> mo lai", name)
                     st.update(idx, game_restarts=st.inst(idx).get("game_restarts", 0) + 1)
@@ -786,11 +832,15 @@ class Runner:
                     blind = 0
                 st.step_result(idx, name, res, time.time() - t0, shot, note)
                 self.mem.log_run(visit, idx, name, t0, time.time() - t0, res, note, ret if name != "observe" else None)
-                if getattr(ctx.dev, "dead", False):
-                    # A-OPT-3: ADB/screencap khong cuu duoc (da do lai dia chi) -> bo may NGAY, khong tinh loi cho buoc
-                    # (khong backoff), khong chay tiep cac buoc con lai (moi buoc se mat thoi gian cho vo ich)
+                if getattr(ctx.dev, "dead", False) or blind >= 2:
+                    # A-OPT-3: ADB/screencap khong cuu duoc (da do lai dia chi). P9-1: thu khoi dong lai MAY + game
+                    # (ldconsole list2 -> launch/reboot; KHONG pm clear) roi chay tiep buoc KE TIEP; het luot cuu -> bo may
                     if pf:
                         self.mem.log_perf(visit, idx, name, pf.drain())
+                    if self._recover_device(ctx, idx, pkg, cfg, recovers, name):
+                        recovers += 1
+                        blind = 0
+                        continue
                     raise RuntimeError(f"May khong phan hoi o buoc {name} (khong chup duoc man hinh) - bo luot may nay")
                 if ctx.nav:
                     self.mem.log_nav(visit, idx, name, ctx.nav)
@@ -810,8 +860,7 @@ class Runner:
                 if lost >= 3:
                     raise RuntimeError("3 buoc lien tiep khong ve duoc thanh pho (man cuoi %s) - bo luot may nay"
                                        % (ctx.nav[-1][0] if ctx.nav else "?"))
-                if blind >= 2:  # lan dau thay o #2 2026-11-19: moi buoc mat ~3 phut roi loi, ca luot ~40 phut vo ich
-                    raise RuntimeError("May khong phan hoi (2 buoc lien tiep khong chup duoc man hinh) - bo luot may nay")
+                # (blind >= 2: lan dau thay o #2 2026-11-19 - P9-1 xu ly cung cho voi Device.dead o tren)
             sk, ck = getattr(ctx, "city_skips", 0), getattr(ctx, "city_checks", 0)
             if sk or ck:   # G3: do hieu qua bo kiem tra thanh pho
                 avg = getattr(ctx, "city_check_s", 0.0) / ck if ck else 0.0

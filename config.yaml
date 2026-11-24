@@ -9,11 +9,14 @@ ldplayer:
   max_running: 2           # toi da so may LDPlayer chay cung luc (ke ca may khong do bot bat)
   wait_slot_min: 60        # cho toi da N phut de co cho trong, qua thi bo qua may do
   screencap:               # A-OPT-3 (P1): phat hien may treo som - truoc day 1 lan chup hong mat ~190 s
-    timeout_s: 8           # giay / 1 lenh screencap (binh thuong ~0,5 s)
+    timeout_s: 5           # giay / 1 lenh screencap (binh thuong ~0,5 s). P9-1: 8 -> 5
     tries: 3               # so lan thu mac dinh moi lan chup
-    budget_s: 30           # tong thoi gian toi da 1 lan chup (ke ca thu lai)
+    budget_s: 15           # tong thoi gian toi da 1 lan chup (ke ca thu lai). P9-1: 30 -> 15
     max_timeouts: 2        # timeout lien tiep = may treo -> thoi thu
-    reconnect_wait_s: 15   # do lai dia chi adb 1 lan; van hong -> bo luot may nay, sang may ke tiep
+    reconnect_wait_s: 10   # do lai dia chi adb 1 lan; van hong -> cuu may (recover). P9-1: 15 -> 10
+  recover: true            # P9-1: may treo (screencap hong sau do lai dia chi) -> ldconsole list2, khoi dong lai MAY + game
+                           # (chi quit/launch/runapp - KHONG pm clear / uninstall / xoa du lieu) roi chay tiep buoc KE TIEP
+  recover_max: 1           # so lan cuu toi da / luot; het -> bo luot may nay nhu truoc
 
 # adb_serials: {0: '127.0.0.1:5555'}   # (tuy chon) dia chi adb rieng cho may; mac dinh emulator-(5554 + 2 x idx)
 guide_follow: true         # sau moi buoc: game dang hien huong dan (ban tay / V) -> lam theo ngay
@@ -298,6 +301,12 @@ learn:                     # giai doan E+F (docs/bot/05-ke-hoach-hoc-may-mini.md
   knn_max: 6000            # so mau kNN man hinh toi da nap tu memory.db
   dup_sim: 0.985           # mau moi giong mau cu cung nhan hon muc nay -> khong luu (giu kNN gon)
   watch_human: true        # chu du an cham/keo tay tren may bot dang chay -> chup anh truoc/sau -> logs/human/ (buoc 'co anh loi')
+human_pause:               # P9-1 (live-run-2): chu cham tay lien tiep -> bot TAM DUNG, khong giam len thao tac cua chu
+  enabled: true
+  taps: 3                  # >= 3 thao tac tay (da loc cham cua bot) ...
+  window_s: 20             # ... trong 20 giay -> tam dung
+  quiet_s: 30              # chay lai khi tay yen 30 giay
+  max_wait_min: 10         # cho toi da 10 phut / lan tam dung
 battle:
   steer: true         # giu ngon tay tren doi quan: nhat buff, ne bang do/vong do/vet xe lao
   debug_dir: 'logs/steer'  # luu khung hinh + trace.csv moi tran (bat 2026-11-20 de xem loi 'khong di chuyen trai phai'; '' = tat)

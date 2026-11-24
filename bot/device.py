@@ -3,6 +3,7 @@ import subprocess, time, logging, threading
 import cv2, numpy as np
 
 from aowbot.domain import rollout
+from bot import hang
 
 log = logging.getLogger("aow")
 
@@ -142,11 +143,12 @@ class Device:
     # + do lai dia chi 30 s + 4 lan nua), roi save_debug chup them lan nua. Nay: timeout ngan, ngan sach tong,
     # 2 lan timeout lien tiep = may treo (khong thu PNG sau khi raw timeout), do lai dia chi 1 lan ngan; khong cuu
     # duoc -> dead = True: moi lan chup sau nem loi NGAY de runner bo may sang may ke tiep. Tham so: ldplayer.screencap.
-    shot_timeout = 8.0       # giay / 1 lenh screencap (binh thuong ~0,4-0,6 s)
+    # P9-1 (live-run-2 treo 11:11): rut ngan 8/30/15 -> 5/15/10 (bot.hang) - may treo phat hien sau <= ~30 s
+    shot_timeout = hang.SHOT_TIMEOUT_S      # giay / 1 lenh screencap (binh thuong ~0,4-0,6 s)
     shot_tries = 3           # so lan thu mac dinh
-    shot_budget = 30.0       # tong thoi gian toi da 1 lan screencap() (ke ca thu lai, chua tinh do lai dia chi)
+    shot_budget = hang.SHOT_BUDGET_S        # tong thoi gian toi da 1 lan screencap() (ke ca thu lai)
     shot_max_timeouts = 2    # timeout lien tiep -> coi nhu may treo, thoi thu
-    reconnect_wait = 15.0    # wait_ready khi het luot (doi dia chi adb)
+    reconnect_wait = hang.RECONNECT_WAIT_S  # wait_ready khi het luot (doi dia chi adb)
     dead = False             # may khong phan hoi: moi lan chup sau nem ScreencapError ngay
 
     def configure(self, lc):
