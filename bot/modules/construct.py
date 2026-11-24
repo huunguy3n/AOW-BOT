@@ -239,16 +239,94 @@ def _place(ctx, x, tries):
     return "no_spot"
 
 
+# ---------- P12-5 (t56u): xay DUONG cho cong trinh thieu duong ----------
+ROAD_ICON = "build/road_icon"          # icon vien gach tron vang canh cong trinh thieu duong (vd Cho den)
+ROAD_CONFIRM = "build/road_confirm"    # nut "Xac nhan" hop xay duong (chi phi 20 thoi vang)
+ROAD_CANCEL = "build/road_cancel"      # nut "Huy" ben trai
+ROAD_ZONE = (0, 130, 540, 680)         # vung thanh pho (bo HUD tren / thanh duoi)
+
+
+def gold_cost(img, btn):
+    """Ham thuan P12-5: icon chi phi duoi chu 'Xac nhan' la THOI VANG (mau vang cam, H 10-30) -> True. Kim cuong
+    (xanh) / khong chac -> False (KHONG bam Xac nhan). Vung: nua duoi nut, ben trai so."""
+    x, y = int(btn[0]), int(btn[1])
+    roi = img[max(0, y + 8):y + 34, max(0, x - 40):x]
+    if roi.size == 0:
+        return False
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    gold = (hsv[..., 0] >= 10) & (hsv[..., 0] <= 30) & (hsv[..., 1] >= 100) & (hsv[..., 2] >= 150)
+    return int(gold.sum()) >= 40
+
+
+def confirm_dialog(img, v):
+    """Ham thuan P12-5: hop xay duong = nut 'Xac nhan' (th 0.93) + nut 'Huy' ben trai cung hang -> toa do Xac nhan |
+    None (s192252: mot nut xanh khac khop 0.88 nhung khong co 'Huy')."""
+    b = v.find(img, ROAD_CONFIRM, th=0.93)
+    c = v.find(img, ROAD_CANCEL, th=0.9) if b else None
+    return b if b and c and c[0] < b[0] and abs(c[1] - b[1]) < 40 else None
+
+
+def road_icon(img, v):
+    """Ham thuan P12-5: icon vien gach (thieu duong) trong vung thanh pho -> (x, y) | None."""
+    x1, y1, x2, y2 = ROAD_ZONE
+    p = v.find(img, ROAD_ICON, th=0.85, roi=(x1, y1, x2 - x1, y2 - y1))
+    return (int(p[0]), int(p[1])) if p else None
+
+
+def roads(ctx, max_n=3):
+    """P12-5 (chu du an t56u): cong trinh thieu duong co icon vien gach -> bam icon -> hop 'Xac nhan' 20 thoi vang ->
+    bam Xac nhan. Chi phi kim cuong / khong nhan ra -> Huy, log ro. Thieu anh mau -> bo qua em. -> so duong da xay."""
+    from bot import tplneed
+    if not (ctx.cfg.get("construct", {}) or {}).get("roads", True):
+        return 0
+    if not (tplneed.has(ctx.v, ROAD_ICON, "icon xay duong (vien gach) canh cong trinh")
+            and tplneed.has(ctx.v, ROAD_CONFIRM, "nut Xac nhan hop xay duong")):
+        return 0
+    n = 0
+    for _ in range(max_n):
+        ctx.ensure_city()
+        img = ctx.shot()
+        p = road_icon(img, ctx.v)
+        if not p:
+            break
+        log.info("Xay duong: icon thieu duong @%d,%d -> bam", p[0], p[1])
+        ctx.tap(p[0], p[1], wait=1.8)
+        img = ctx.shot()
+        b = confirm_dialog(img, ctx.v)
+        if not b:
+            log.info("Xay duong: khong thay hop Xac nhan - bo")
+            ctx.save_debug("road_no_confirm")
+            ctx.tap_first([ROAD_CANCEL, "common/btn_x", "common/btn_close"], wait=1.0)
+            break
+        if not gold_cost(img, b):
+            log.warning("Xay duong: chi phi KHONG phai thoi vang (kim cuong / khong nhan ra) - HUY, khong bam Xac nhan")
+            ctx.save_debug("road_gem_cost")
+            if not ctx.tap_first([ROAD_CANCEL, "common/btn_x", "common/btn_close"], wait=1.0):
+                ctx.press_back()
+            break
+        ctx.tap(b[0], b[1], wait=2.0)
+        n += 1
+        log.info("Xay duong: Xac nhan (20 thoi vang) -> da xay duong lan %d", n)
+    ctx.ensure_city()
+    return n
+
+
 def run(ctx):
     bc = ctx.cfg.get("construct", {})
+    try:
+        nr = roads(ctx)                 # P12-5: duong truoc (khong ton tho xay)
+    except Exception as e:              # noqa: BLE001 - khong de xay duong lam hong buoc xay moi
+        log.warning("Xay duong: loi %s", e)
+        nr = 0
+        ctx.ensure_city()
     from bot import hqplan
     if hqplan.yield_builder(ctx, "construct"):   # G1: tho ranh dang danh cho nha chinh
-        return 0
+        return nr
     bu = block_until(ctx)
     if bu:
         log.info("Xay moi: moi the co cham do deu khong dat duoc (het cho/thieu tai nguyen) - bo toi %s, tho danh cho"
                  " nang cap", time.strftime("%H:%M", time.localtime(bu)))
-        return 0
+        return nr
     m = getattr(ctx, "mem", None)
     skips = (m.fact(ctx.dev.idx, SKIP_FACT) if m else None) or {}
     hq = _hq(ctx)
@@ -330,4 +408,4 @@ def run(ctx):
         if hqplan.after_construct(ctx):   # G1: vua xay cong trinh moi (co the la dieu kien cua nha chinh) -> thu lai ngay
             from bot.modules import upgrade
             upgrade.run(ctx)
-    return built
+    return built + nr

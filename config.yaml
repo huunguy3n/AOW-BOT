@@ -244,6 +244,7 @@ recruit:
   use_tickets: false   # chi chieu mo mien phi; true = dung ca phieu (KHONG BAO GIO kim cuong)
 construct:            # xay cong trinh MOI qua icon bua (bot/modules/construct.py)
   max_per_run: 6      # toi da so lan xay moi moi luot
+  roads: true         # P12-5 (t56u): icon vien gach canh cong trinh thieu duong -> bam -> 'Xac nhan' 20 thoi vang; chi phi kim cuong -> Huy
   # P2 (PM 2026-11-23): the khong dat duoc (construct_no_spot / khong tick / thieu tai nguyen) -> nho, sang the/nhom khac
   max_fail_per_run: 2   # toi da so lan keo the that bai trong 1 luot (moi lan ~30 s), sau do nhuong tho cho nang cap
   nospot_backoff_h: 2   # the hong bi bo qua 2 gio, hong lai thi gap doi (thieu tai nguyen/tho: 1 gio)

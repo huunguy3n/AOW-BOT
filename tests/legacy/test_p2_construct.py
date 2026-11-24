@@ -64,7 +64,9 @@ def test_run_returns_fast_while_blocked(monkeypatch):
     monkeypatch.setattr("bot.hqplan.yield_builder", lambda ctx, step: False)
     ctx = ctx_with({c.BLOCK_FACT: {"until": time.time() + 600, "hq": 7}, "hq_level": 7})
     ctx.ensure_city = lambda: (_ for _ in ()).throw(AssertionError("khong duoc mo thanh pho/bang"))
-    assert c.run(ctx) == 0
+    seen = []
+    monkeypatch.setattr(c, "roads", lambda ctx: seen.append("roads") or 0)   # P12-5: duong khong ton tho
+    assert c.run(ctx) == 0 and seen == ["roads"]
 
 
 def test_block_lifted_when_hq_levels_up():

@@ -117,6 +117,9 @@ NAMES: Mapping[str, str] = MappingProxyType({
     # --- Phản quân
     "rebels/btn_join": "Ô + tham gia tập kết", "rebels/btn_march_out": "Nút Xuất chinh (phản quân)", "rebels/btn_rally": "Nút Tập kết",
     "rebels/npc_attack": "Nút Tấn công (phiến quân NPC)",
+    "build/road_icon": "Icon xây đường (viên gạch, công trình thiếu đường)",
+    "build/road_confirm": "Nút Xác nhận (hộp xây đường, 20 thỏi vàng)",
+    "build/road_cancel": "Nút Hủy (hộp xây đường)",
     "rebels/npc_btn_search": "Nút Tìm kiếm (phiến quân vượt cấp tối đa)",
     "rebels/npc_max_text": "Dòng \"Tối đa có thể tấn công phản quân cấp X!\"",
     "rebels/btn_rally_confirm": "Nút Xác nhận tập kết", "rebels/btn_rally_start": "Nút Bắt đầu tập kết",
