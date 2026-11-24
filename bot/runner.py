@@ -798,6 +798,14 @@ class Runner:
                         done["defense"] = 1   # P5-3: lan ghe co bi danh -> heal bat buoc (stepgate.FIGHT_STEPS)
                         st.update(idx, step=name)
                     ctx.visit_pending = {n for n, _ in queue[qi:]}   # P10-5: reddots de cham do cho buoc con cho
+                    if name == "observe" and not short and not forced and enabled.get("shield"):
+                        try:   # P10-7: khien CUOI luot - tat / con < 1h -> gia han (dau luot da chay buoc shield)
+                            with span("shield_end"):
+                                log.info("Khien cuoi luot: kiem lai")
+                                shield.run(ctx)
+                        except Exception as e:
+                            log.warning("Khien cuoi luot: loi %s", e)
+                            ctx.ensure_city()
                     if name == "observe" and not short and not forced and enabled.get("reddots", True):
                         try:   # P10-5: nhan qua cuoi luot (thu bao cao moi, qua lien minh, chieu mo) truoc observe
                             with span("final_claims"):

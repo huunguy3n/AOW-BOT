@@ -405,6 +405,8 @@ warday:
 shield:                   # P9-2 (chu du an 2026-11-24): khien som ngay thuong, doc lap voi warday (thu 7 warday lo)
   buy_gems: true          # het Hiep uoc + vat pham -> mua bang kim cuong TRONG tran defense.gem_cap_daily (2000/ngay)
   peace_prep_min: 60      # Hiep uoc vua dung (chuan bi 1h) -> khong bat/mua khien khac trong N phut
+  renew_below_min: 60     # P10-7: dau + cuoi luot, khien con < N phut -> gia han (vat pham > kim cuong trong tran);
+                          # Hiep uoc chi khi khien con >= peace_prep_min (khong ho luc chuan bi); con >= N -> khong chong
 defense:
   shield_on_attack: true  # bi tan cong -> bat khien
   shield_hours: 1
