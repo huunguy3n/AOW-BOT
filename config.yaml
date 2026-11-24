@@ -28,6 +28,7 @@ match_threshold: 0.82
 modules:
   warday: true       # ngay chien tranh SVS (khien 8h/12h, cam thu thap) + moc the luc 0h/8h/15h UTC
   tutorial: false    # chi bat cho tai khoan moi
+  shield: true       # P9-2: ngay thuong khien TAT -> bat som (Hiep uoc mien phi > vat pham > kim cuong trong tran 2000/ngay)
   mainquest: true    # UU TIEN: thanh nhiem vu chinh -> danh / xay / chien dich theo noi no dan toi
   collect_city: true # cham bieu tuong tai nguyen noi tren cong trinh
   alliance: true     # dong gop cong nghe lien minh bang vang, tro giup
@@ -230,7 +231,8 @@ reddots:
   skip_idle_steps: true  # cham do cua icon ma buoc rieng vua chay trong lan ghe nay va tra 0 -> khong mo lai
   dead_h: 2            # cham do mo ra khong nhan duoc gi -> bo qua vi tri do N gio (lap lai thi gap doi...)
   dead_cap_h: 24       # ... toi da N gio (lam duoc viec o vi tri do -> dem lai tu dau)
-  max_s: 90            # A-OPT-1 (PM 2026-11-23): toi da N giay moi lan quet (0 = khong gioi han)
+  max_s: 240           # A-OPT-1 (PM 2026-11-23): toi da N giay moi lan quet (0 = khong gioi han). P9-2: 90 -> 240
+                       # (live-run-2: het 90 s con 14 cham do; P9-3 nhan HET cham do moi man - can them thoi gian)
   min_interval_min: 30 # moi may toi da 1 lan / N phut, tru khi notify vua nhan duoc qua hoac co cham do MOI
   chat_clear: true      # mo roi thoat bang Tro chuyen de mat huy hieu tin nhan chua doc (chi doc, khong gui) - chu du an 2026-11-22
 recruit:
@@ -390,6 +392,9 @@ warday:
   banner_ocr: false         # doc banner 'Giai doan N' tren ban do the gioi (vung OCR chua kiem tren may 540x960)
   dates: []                 # ngay chien tranh khai tay "YYYY-MM-DD" (them vao lich, khong thay lich)
 
+shield:                   # P9-2 (chu du an 2026-11-24): khien som ngay thuong, doc lap voi warday (thu 7 warday lo)
+  buy_gems: true          # het Hiep uoc + vat pham -> mua bang kim cuong TRONG tran defense.gem_cap_daily (2000/ngay)
+  peace_prep_min: 60      # Hiep uoc vua dung (chuan bi 1h) -> khong bat/mua khien khac trong N phut
 defense:
   shield_on_attack: true  # bi tan cong -> bat khien
   shield_hours: 1

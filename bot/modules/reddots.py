@@ -267,7 +267,7 @@ def _open_dot(ctx, x, y):
 
 def rcfg(cfg):
     """A-OPT-1 (PM 2026-11-23): reddots khong chay moi lan ghe - gioi han thoi gian / tan suat, nho icon vo ich."""
-    return {"max_rounds": 6, "skip_idle_steps": True, "dead_h": 2, "dead_cap_h": 24, "max_s": 90,
+    return {"max_rounds": 6, "skip_idle_steps": True, "dead_h": 2, "dead_cap_h": 24, "max_s": 240,
             "min_interval_min": 30, **(cfg.get("reddots") or {})}
 
 

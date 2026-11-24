@@ -12,7 +12,7 @@ from bot.memory import Memory
 from bot import hang, perf, quest_rules, queues, scheduler, stepgate
 from aowbot.domain import drain, rollout
 from aowbot.domain import warday as W
-from bot.modules import tutorial, mainquest, construct, city, rewards, alliance, quests, campaign, notify, research, train, rebels, gather, daily, observe, defense, intel, reddots, play, upgrade, heal, warday, mission
+from bot.modules import tutorial, mainquest, construct, city, rewards, alliance, quests, campaign, notify, research, train, rebels, gather, daily, observe, defense, intel, reddots, play, upgrade, heal, warday, mission, shield
 
 log = logging.getLogger("aow")
 # Thu tu (chu du an 2026-11-18): tan thu -> CHAM DO (thong bao, qua, nhiem vu) -> TINH BAO -> THU THAP -> phan con lai
@@ -22,12 +22,14 @@ log = logging.getLogger("aow")
 # (~80 % thao tac tro choi); roi cac hang cho luon phai chay: huan luyen, xay dung, nghien cuu; cuoi: phan con lai
 # P7-1 (chu du an 2026-11-24, live #1): gather LUON CUOI luot moi ngay (chay som chiem 5/5 quan doan -> cuop xe, phan quan,
 # mo lien minh, tinh bao bi bo). Thu 2 (ngay thu thap) van cuoi nhung gui het quan doan con lai.
-ORDER = [("warday", warday), ("tutorial", tutorial),
+# P9-2 (chu du an 2026-11-24, live-run-2): khien SOM (ngay thuong, doc lap voi warday) + lien minh TRUOC cham do /
+# tinh bao (live-run-2 treo 11:11 truoc khi toi khien / lien minh); gather van CUOI (W.gather_last).
+ORDER = [("warday", warday), ("tutorial", tutorial), ("shield", shield), ("alliance", alliance),
          ("notify", notify), ("reddots", reddots), ("rewards", rewards), ("mission", mission), ("collect_city", city),
          ("play", play), ("intel", intel), ("rebels", rebels), ("heal", heal),
          ("train", train), ("upgrade", upgrade), ("mainquest", mainquest), ("construct", construct), ("quests", quests),
          ("research", research),
-         ("alliance", alliance), ("campaign", campaign), ("daily", daily), ("gather", gather)]
+         ("campaign", campaign), ("daily", daily), ("gather", gather)]
 # buoc xa viec (drain) chay lai TRUOC buoc nay (gather cuoi luot) - neu gather tat thi truoc observe
 DRAIN_AT = ("gather", "observe")
 

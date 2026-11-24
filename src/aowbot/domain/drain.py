@@ -54,7 +54,7 @@ def followups(order: list[str], done: dict[str, object], enabled: dict[str, bool
 
 
 # ---- uu tien o rong (chu du an 2026-11-22): tho 0/2 xay truoc, nghien cuu 0/1, huan luyen x/3
-HEAD = ("warday", "tutorial")                      # buoc dau luot: luon giu dau
+HEAD = ("warday", "tutorial", "shield")            # buoc dau luot: luon giu dau (P9-2: khien som)
 SLOT_STEPS = (("build", ("upgrade", "construct", "quests")), ("research", ("research",)), ("train", ("train",)))
 
 

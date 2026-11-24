@@ -192,7 +192,13 @@ def peace_free(text):
     return bool(FREE_RX.search((text or "").lower()))
 
 
-def peace(ctx):
+def panel_active(img):
+    """Bang Bao Ho Chien Tranh dang mo: dong 'Thoi gian co hieu luc' co so khac 0 -> dang con bao ho."""
+    digits = re.findall(r"\d", ocr.text(img, ACTIVE_ROI, "0123456789d:"))
+    return any(c != "0" for c in digits)
+
+
+def peace(ctx, skip_if_active=False):
     """Hiep uoc hoa binh (dong 8h, chu du an 2026-11-23 dong y dung): MIEN PHI, chuan bi 1h roi bao ho 8h, hoi 14h.
     Chi bam 'Dung' khi phia tren nut co chu 'Mien phi' (dang hoi / khong doc duoc -> khong bam). Kiem lai: sau khi
     bam chu 'Mien phi' phai mat. -> 'peace' | 'cooldown' | 'missing_tpl' | 'error'."""
@@ -208,6 +214,10 @@ def peace(ctx):
     def label(img, row):
         return ocr.text(img, (400, row[1] + PEACE_LABEL_DY[0], 130, PEACE_LABEL_DY[1]))
     img = ctx.shot()
+    if skip_if_active and panel_active(img):   # P9-2 khien som: dang con bao ho -> khong dung Hiep uoc
+        log.info("Dang con bao ho (%s) - khong dung Hiep uoc", ocr.text(img, ACTIVE_ROI))
+        ctx.back_out()
+        return "active"
     row = ctx.v.find(img, ROWS[8], th=0.9)
     if not row:
         log.warning("Khong thay dong Hiep uoc hoa binh")

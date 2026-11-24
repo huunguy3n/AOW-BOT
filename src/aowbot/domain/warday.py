@@ -416,6 +416,28 @@ def shield_options(need_s: float, buy: bool) -> list[tuple[int, bool]]:
     return out
 
 
+def daily_shield_options(buy: bool) -> list[tuple[int, bool]]:
+    """P9-2 (chu du an 2026-11-24, live-run-2: #1 khong co khien): NGAY THUONG khien dang tat -> bat SOM trong luot.
+    Thu tu: Hiep uoc hoa binh dong 8h (MIEN PHI) truoc, roi vat pham khien khac (khong ton kim cuong), roi mua bang
+    kim cuong trong tran ngay (defense.gem_cap_daily 2000 - kiem o policy.shield_decision). Dong 8h la Hiep uoc nen
+    phan vat pham / mua lay tu shield_options(8 gio)."""
+    return [(8, False), *shield_options(8 * 3600, buy)]
+
+
+# P9-2: thu tu dau luot (chu du an 2026-11-24): khien + lien minh (Tranh Doat, Qua thuong, quyen gop vang) TRUOC
+# cham do / tinh bao; gather van CUOI (gather_last).
+EARLY_STEPS = ("shield", "alliance")
+LATE_AFTER_EARLY = ("notify", "reddots", "intel")
+
+
+def early_ok(order: list[str]) -> bool:
+    """Kiem thu tu P9-2: moi buoc EARLY_STEPS co mat dung truoc moi buoc LATE_AFTER_EARLY co mat."""
+    pos = {n: i for i, n in enumerate(order)}
+    early = [pos[n] for n in EARLY_STEPS if n in pos]
+    late = [pos[n] for n in LATE_AFTER_EARLY if n in pos]
+    return not early or not late or max(early) < min(late)
+
+
 TAIL_STEP = "gather"
 
 
