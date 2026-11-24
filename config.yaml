@@ -340,6 +340,12 @@ loot:                     # Cuop boc xe khai thac (Mo khoang san) - chu du an la
   power_margin: 0.0       # P8-2: chi bam "Chien dau" khi luc chien ta (man doi hinh, sau "Doi hinh de xuat") > ho ve
                           #       va ta >= ho ve x (1 + power_margin); doc khong duoc so nao -> bo xe (khong danh mo)
   max_attempts: 2         # P8-2: bo xe o man doi hinh (ho ve manh hon) -> ve Mo khoang san thu xe khac, toi da N lan / luot
+mine_trucks:              # P9-6 (chu du an 2026-11-24): Mo khoang san > "Xe khai thac cua toi" - dua xe cua minh di toi het X/4
+  enabled: true
+  min_support_power: 400000000   # xe SR/SSR co tinh the: chi moi ho tro lien minh luc chien > 400M; khong ai -> de xe trong
+  refresh_max: 3          # lam moi (vong vang) toi da N lan / xe, CHI khi "Mien phi" hoac con luot (a/b, a < b); "1/0" = het
+  max_trucks: 4
+  support_pages: 4        # so trang luot danh sach Doi quan ho tro lien minh
 arena:                    # Dau truong (Loi choi) - chu du an 2026-11-21
   enabled: true
   max_fights: 3           # 3 luot "Khieu chien mien phi" / ngay; khong bao gio mua luot

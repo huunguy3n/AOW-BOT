@@ -34,7 +34,15 @@ def mine(ctx):
             ctx.dismiss_reward()
             n += 1
             log.info("Mo khoang san: nhan ruong xe khai thac @%d,%d", p[0], p[1])
-        if ctx.cfg.get("loot", {}).get("enabled", True):
+        from bot.modules import mine_trucks            # P9-6: xe khai thac CUA TOI truoc khi cuop xe nguoi khac
+        try:
+            n += mine_trucks.run(ctx)
+        except Exception as e:                           # loi xe cua toi khong lam hong cuop xe / dau truong
+            log.warning("Xe khai thac cua toi: loi %s", e)
+            ctx.save_debug("mine_trucks")
+        if not ctx.find("play/mine_title"):
+            ctx.back_out(1)
+        if ctx.cfg.get("loot", {}).get("enabled", True) and ctx.find("play/mine_title"):
             n += loot(ctx)
             if not ctx.find("play/mine_title"):
                 return n                                # da di cuop (ve thanh pho) -> khong back_out them
