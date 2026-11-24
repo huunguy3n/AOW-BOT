@@ -210,14 +210,97 @@ def _loot_result(ctx, timeout=120):
     return "unknown"
 
 
+GUARD_ROI = (155, 634, 120, 24)    # luc chien ho ve canh icon kiem duoi ten nguoi choi (popup xe; anh ADB truck1 98565656)
+LEGION_ROI = (68, 360, 120, 26)    # luc chien quan doan minh tren man doi hinh "Chien dau" (fixture loot_legion_i1 220020045)
+LEGION_BAND = (60, 330, 220, 140)  # vung do du phong khi LEGION_ROI khong doc duoc (doi hinh lech vai px)
+SKIP_H = 12                        # xe da bo vi ho ve manh hon: khong xet lai trong N gio
+
+
+def _n(v):
+    return f"{v:,}" if v else str(v)
+
+
+def guard_power(img):
+    """Luc chien ho ve xe (popup xe "Toi cuop boc") | None."""
+    return _digits(img, GUARD_ROI)
+
+
+def own_power(img):
+    """Luc chien doi hinh cua ta tren man "Chien dau" (sau "Doi hinh de xuat") | None. Vung co dinh truoc, khong doc
+    duoc thi quet cac dong trong LEGION_BAND (so 8-11 chu so dau tien tu tren xuong)."""
+    v = _digits(img, LEGION_ROI)
+    if v:
+        return v
+    x, y0, w, h = LEGION_BAND
+    for y in range(y0, y0 + h - 24, 12):
+        d = re.sub(r"\D", "", ocr.text(img, (x, y, w, 26), "0123456789", scale=4) or "")
+        if 8 <= len(d) <= 11:
+            return int(d)
+    return None
+
+
+def power_check(guard, ours, margin=0.0):
+    """P8-2 (chu du an 2026-11-24, lan cuop xe SR thua: ho ve 243.560.931 > ta 222.749.681). Ham thuan -> (ok, ly do).
+    Chi danh khi DOC DUOC ca hai so, ho ve < ta va ta >= ho ve x (1 + margin). Khong doc duoc -> khong danh mo."""
+    if not guard:
+        return False, "khong doc duoc luc chien ho ve"
+    if not ours:
+        return False, "khong doc duoc luc chien ta"
+    if guard >= ours:
+        return False, f"ho ve {guard:,} >= ta {ours:,}"
+    if ours < guard * (1 + (margin or 0.0)):
+        return False, f"ta {ours:,} < ho ve {guard:,} x {1 + margin:.2f}"
+    return True, "ok"
+
+
+def _skipped(lm, name, power, now=None):
+    """Xe (ten / luc chien +-1 %) da bo vi ho ve manh hon trong SKIP_H gio."""
+    now = now or time.time()
+    for x in lm.get("skip", []):
+        if now - x.get("at", 0) > SKIP_H * 3600:
+            continue
+        if (name and x.get("name") == name) or (power and x.get("power") and abs(power - x["power"]) <= 0.01 * power):
+            return True
+    return False
+
+
+def _mark_skip(lm, name, power, now=None):
+    now = now or time.time()
+    lm["skip"] = [x for x in lm.get("skip", []) if now - x.get("at", 0) <= SKIP_H * 3600][-30:]
+    lm["skip"].append({"name": name, "power": power, "at": now})
+
+
+def _reopen_mine(ctx):
+    """Sau khi bo xe o man doi hinh (dang o ban do) -> ve Loi choi > Mo khoang san de thu xe khac."""
+    ctx.ensure_city()
+    if not open_menu(ctx) or not ctx.tap_tpl("play/card_mine", wait=2.5, th=0.85):
+        return False
+    return bool(ctx.wait_for("play/mine_title", timeout=3))
+
+
 def loot(ctx):
     """Dang o man Mo khoang san. -> so lan cuop da danh (0/1).
     P7-6 (chu du an 2026-11-24): doc "So lan cuop boc con lai X/4" (0 -> bo); KHONG BAO GIO danh xe dang chay; chi xe
     SR/SSR cho vat pham PHA LE XANH (loot.crystal_only); chua co -> nut lam moi (toi da loot.refresh_max).
+    P8-2: so luc chien ho ve (popup) voi luc chien ta (man doi hinh, sau "Doi hinh de xuat"); ho ve >= ta -> KHONG bam
+    "Chien dau", thoat, danh dau xe da bo, thu xe khac (toi da loot.max_attempts lan mo man doi hinh).
     Luong: popup xe "Toi cuop boc" -> ban do "Cuop boc" -> doi hinh "Chien dau" -> "Thang loi"/"That bai" -> "Dong"."""
     lc = ctx.cfg.get("loot", {})
     if not lc.get("enabled", True):
         return 0
+    tries = max(1, lc.get("max_attempts", 2))
+    for k in range(tries):
+        r = _loot_once(ctx, lc)
+        if r != "retry":
+            return r
+        if k + 1 >= tries or not _reopen_mine(ctx):
+            break
+    ctx.ensure_city()
+    return 0
+
+
+def _loot_once(ctx, lc):
+    """1 lan chon xe + mo man doi hinh. -> 0 | 1 | "retry" (bo xe o man doi hinh vi ho ve manh hon -> thu xe khac)."""
     # anh mau tab cat luc DANG CHON (nen xanh); chua chon nen toi -> khong khop (2026-11-21: bot lang le bo qua) -> cham toa do
     if not ctx.tap_tpl("play/tab_others", wait=2.0, th=0.85):
         ctx.tap(365, 90, wait=2.0)
@@ -236,6 +319,7 @@ def loot(ctx):
         return 0
     lm = _loot_mem(ctx)
     legion = lm.get("legion")
+    pmargin = lc.get("power_margin", 0.0)
     rar = tuple(lc.get("rarity", ["SSR", "SR"]))
     crystal_only = lc.get("crystal_only", True)
     cands = []                                          # doc tung xe cam/tim -> chon doi thu YEU NHAT dat nguong
@@ -250,13 +334,17 @@ def loot(ctx):
                 ctx.tap(270, 150, wait=0.8)
                 continue
             r = popup_rarity(p)
-            pw = _digits(p, (155, 634, 120, 24))
+            pw = guard_power(p)
             name = (ocr.text(p, (133, 585, 170, 26)) or "").strip()
             ok, why = loot_ok(lm, pw, name, legion, lc.get("margin", 0.97))
             if r not in rar:
                 ok, why = False, f"do hiem {r}"
             elif crystal_only and not has_crystal(ctx, p):
                 ok, why = False, "khong cho pha le xanh"
+            elif _skipped(lm, name, pw):
+                ok, why = False, f"da bo trong {SKIP_H}h (ho ve manh hon)"
+            elif ok and legion:                         # P8-2 loc som theo luc chien ta doc o man doi hinh lan truoc
+                ok, why = power_check(pw, legion, pmargin)
             log.info("Cuop boc: xe %s %s '%s' luc chien %s -> %s", col, r, name, pw, "CHON DUOC" if ok else why)
             if ok:
                 cands.append((pw, x, y, name))
@@ -283,17 +371,22 @@ def loot(ctx):
         ctx.save_debug("loot_no_legion")
         ctx.ensure_city()
         return 0
-    lg = _digits(ctx._img, (68, 360, 120, 26))
+    # P8-2: "Doi hinh de xuat" TRUOC roi moi doc luc chien ta (doi hinh de xuat doi luc chien); CHUA bam Chien dau
+    ctx.tap_tpl("play/btn_arena_recommend", wait=1.5, th=0.85, fresh=False)
+    lg = own_power(ctx.shot())
     if lg:
         lm["legion"] = legion = lg
-    ok, why = loot_ok(lm, pw, name, legion, lc.get("margin", 0.97))
+    ok, why = power_check(pw, lg, lc.get("power_margin", 0.0))
+    if ok:
+        ok, why = loot_ok(lm, pw, name, legion, lc.get("margin", 0.97))
     if not ok:
-        log.info("Cuop boc: quan doan %s, doi thu %s -> bo (%s)", lg, pw, why)
+        if not lg:
+            ctx.save_debug("loot_own_power")
+        log.info("Cuop boc: ho ve %s > ta %s -> bo ('%s': %s)", _n(pw), _n(lg), name, why)
+        _mark_skip(lm, name, pw)
         _loot_save(ctx, lm)
-        ctx.back_out(3)
-        ctx.ensure_city()
-        return 0
-    ctx.tap_tpl("play/btn_arena_recommend", wait=1.5, th=0.85, fresh=False)   # "Doi hinh de xuat" truoc khi danh
+        ctx.back_out(3)                                 # thoat man doi hinh, KHONG bam Chien dau
+        return "retry"
     ctx.tap_tpl("play/btn_battle", wait=3.0)
     r = _loot_result(ctx)
     ratio = pw / legion if legion else None

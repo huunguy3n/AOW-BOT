@@ -326,6 +326,9 @@ loot:                     # Cuop boc xe khai thac (Mo khoang san) - chu du an la
   crystal_only: true      # P7-6: chi cuop xe cho vat pham PHA LE XANH (anh mau play/item_crystal; chua co -> theo mau)
   refresh_max: 3          # P7-6: chua co xe SR/SSR pha le -> bam lam moi (mui ten tron, play/btn_refresh) toi da N lan / luot;
                           #       bam ma hien hop thoai khac (ton phi?) -> dong, khong xac nhan, dung lam moi
+  power_margin: 0.0       # P8-2: chi bam "Chien dau" khi luc chien ta (man doi hinh, sau "Doi hinh de xuat") > ho ve
+                          #       va ta >= ho ve x (1 + power_margin); doc khong duoc so nao -> bo xe (khong danh mo)
+  max_attempts: 2         # P8-2: bo xe o man doi hinh (ho ve manh hon) -> ve Mo khoang san thu xe khac, toi da N lan / luot
 arena:                    # Dau truong (Loi choi) - chu du an 2026-11-21
   enabled: true
   max_fights: 3           # 3 luot "Khieu chien mien phi" / ngay; khong bao gio mua luot
