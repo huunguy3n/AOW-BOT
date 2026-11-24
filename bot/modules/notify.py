@@ -748,10 +748,23 @@ def hero_detail(ctx, max_rounds=6):
     n = 0
     for _ in range(max_rounds):
         got = _hero_levelup(ctx) + _hero_star(ctx) + hero_story(ctx)
+        if not got:
+            got = _hero_exp(ctx)          # P9-8: Tang cap het cham do vi THIEU EXP -> dung EXP roi tang cap tiep
         n += got
         if not got:
             break
     return n
+
+
+def _hero_exp(ctx):
+    """P9-8: nut Tang cap co so EXP mau do (thieu EXP) -> o EXP -> bang EXP Tuong -> Dung / Dung tat ca (khong bao gio
+    'Dung dao cu' kim cuong) -> neu nut Tang cap co cham do lai thi _hero_levelup lam tiep. -> so lan bam."""
+    from bot.modules import hero_up
+    b = ctx.v.find(ctx.shot(), "hero/btn_levelup")
+    if not b or _dot_near(ctx._img, b):
+        return 0
+    used = hero_up.refill_and_level(ctx, b)
+    return used + (_hero_levelup(ctx) if used else 0)
 
 
 def _hero_levelup(ctx):
@@ -881,12 +894,16 @@ def heroes(ctx, max_heroes=6):
         img = ctx.shot()
         if not ctx.v.find(img, "hero/title"):
             break
-        dots = [d for d in red_dots(img, (0, 55, 540, 800)) if (d[0] // 60, d[1] // 60) not in done]
-        if not dots:
+        from bot.modules import hero_up
+        # cham do goc tren-phai the -> tam the (x-55, y+90); P9-8: mui ten xanh LON goc phai duoi the -> tam the
+        cards = [(d[0] - 55, d[1] + 90) for d in red_dots(img, (0, 55, 540, 800))]
+        cards += [hero_up.card_center(a) for a in hero_up.big_arrows(img)]
+        cards = [c for c in cards if (c[0] // 90, c[1] // 110) not in done]
+        if not cards:
             break
-        x, y = min(dots, key=lambda d: (d[1] // 60, d[0]))
-        done.add((x // 60, y // 60))
-        ctx.tap(x - 55, y + 90, wait=2.0)          # giua the tuong (cham do o goc tren-phai)
+        x, y = min(cards, key=lambda c: (c[1] // 110, c[0]))
+        done.add((x // 90, y // 110))
+        ctx.tap(x, y, wait=2.0)                    # giua the tuong
         n += hero_detail(ctx)
         ctx.tap_first(["common/btn_back"], wait=1.5)
     return n

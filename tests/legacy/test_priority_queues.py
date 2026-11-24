@@ -133,6 +133,7 @@ def test_hero_detail_rechecks_levelup_after_star(monkeypatch):
     monkeypatch.setattr(notify, "_hero_levelup", lambda ctx: seq["lv"].pop(0))
     monkeypatch.setattr(notify, "_hero_star", lambda ctx: seq["star"].pop(0))
     monkeypatch.setattr(notify, "hero_story", lambda ctx: seq["story"].pop(0))
+    monkeypatch.setattr(notify, "_hero_exp", lambda ctx: 0)       # P9-8: khong thieu EXP
     assert notify.hero_detail(None) == 6        # truoc: 2 (tang sao roi bo, nut Tang cap con cham do)
     assert seq == {"lv": [], "star": [], "story": []}
 
