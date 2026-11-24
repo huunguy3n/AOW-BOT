@@ -84,13 +84,22 @@ def departed(before, after, screen_gone):
 
 
 class Pickups:
-    """Hop qua dang nhat (ham thuan, thoi gian truyen vao): toi da `cap` hop cung luc; het `dur` giay coi nhu nhat xong."""
+    """Hop qua dang nhat (ham thuan, thoi gian truyen vao): toi da `cap` hop cung luc; het `dur` giay coi nhu nhat xong.
+
+    P9-9 (live2 11:06:57-11:07:05, 3 lan "nhan hop qua da xong" lien tiep): do la NHAN THUONG ghim da xong (tick xanh,
+    khung s110655 "Chuc mung nhan duoc"), khong phai gui 3 don vi nhat cung luc -> khong vi pham. Nhung truoc P9 moi
+    tick (ke ca tick cua tran thang / quan doan) deu goi done() -> giai phong 1 cho cua hop CON DANG NHAT -> co the gui
+    hop thu 3. Nay nho VI TRI ghim moi hop; done(pos) chi giai phong khi tick nam o ghim hop do."""
+
+    NEAR = 60                   # px: tick xanh ~ dau ghim (diem cham ghim y - 35)
 
     def __init__(self, cap=PICKUP_MAX, dur=PICKUP_S):
-        self.cap, self.dur, self.until = cap, dur, []
+        self.cap, self.dur, self.until, self.pos = cap, dur, [], []
 
     def _prune(self, now):
-        self.until = [t for t in self.until if t > now]
+        keep = [i for i, t in enumerate(self.until) if t > now]
+        self.until = [self.until[i] for i in keep]
+        self.pos = [self.pos[i] for i in keep]
 
     def can_pick(self, now):
         self._prune(now)
@@ -101,14 +110,28 @@ class Pickups:
         self._prune(now)
         return 0.0 if len(self.until) < self.cap else max(0.0, min(self.until) - now)
 
-    def add(self, now):
+    def add(self, now, pos=None):
         self._prune(now)
         self.until.append(now + self.dur)
+        self.pos.append(pos)
 
-    def done(self):
-        """Ghim hop vua nhan thuong (tick xanh) -> 1 hop da xong, giai phong cho som nhat."""
-        if self.until:
-            self.until.remove(min(self.until))
+    def done(self, pos=None):
+        """Ghim hop vua nhan thuong (tick xanh) -> 1 hop da xong, giai phong cho. pos = vi tri tick: chi giai phong hop
+        nhat tai ghim gan do (tick cua tran / ghim khac -> khong giai phong). pos None -> hop som nhat (cu).
+        -> True neu da giai phong."""
+        if not self.until:
+            return False
+        if pos is None:
+            i = self.until.index(min(self.until))
+        else:
+            near = [i for i, p in enumerate(self.pos)
+                    if p is not None and abs(p[0] - pos[0]) <= self.NEAR and abs(p[1] - pos[1]) <= self.NEAR]
+            if not near:
+                return False
+            i = min(near, key=lambda k: self.until[k])
+        del self.until[i]
+        del self.pos[i]
+        return True
 
 
 def should_rescan(done_since_scan, rescans, max_rescans):

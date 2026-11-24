@@ -12,7 +12,8 @@ log = logging.getLogger("aow")
 
 def run(ctx):
     nc = ctx.cfg.get("notify", {})
-    ctx.ensure_city()
+    if not ctx.find("campaign/btn_open"):      # P9-9: icon Tinh bao co ca tren ban do the gioi -> khong bat ve thanh pho
+        ctx.ensure_city()
     if not ctx.find("campaign/btn_open"):
         log.info("Khong thay icon Chien dich/Tinh bao (chua mo khoa?) - bo qua")
         return 0
@@ -20,6 +21,6 @@ def run(ctx):
         n = notify.intel(ctx, nc.get("intel_max", 20))
     finally:
         notify.leave(ctx)
-        ctx.ensure_city()
+        ctx.ensure_city()                       # quy uoc: module xong thi ve thanh pho
     log.info("Tinh bao: %d nhiem vu", n)
     return n

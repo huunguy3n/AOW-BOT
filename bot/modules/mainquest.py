@@ -31,11 +31,49 @@ def _power(ctx):
     return ocr.topbar(ctx.shot()).get("power")
 
 
+TEXT_X0 = 52          # P9-9: chu bat dau sau icon (x < 52 = icon + cham do -> OCR ra '}' / ']')
+TEXT_GAP = 18         # cot trong lien tiep >= 18 px sau chu = het chu (khoang giua 2 tu ~6 px)
+
+
+def text_extent(img, roi=BANNER_TEXT_ROI, x0=TEXT_X0, gap=TEXT_GAP):
+    """P9-9 (live2 11:10:39 '} C6 the nhan Ruong moi ngay : 8. S. N | P Cothenhan Ruongpd'): thanh nhiem vu trong suot,
+    nen thanh pho sang phia PHAI chu bi OCR thanh rac. Ham thuan: cot co chu (trang sang V >= 200, S <= 60) tu x0; chu
+    ket thuc o khoang trong >= gap cot. -> (x, y, w, h) chi phu chu | None (khong co chu)."""
+    import cv2
+    _, ry, rw, rh = roi
+    x_end = roi[0] + rw
+    hsv = cv2.cvtColor(img[ry + 2:ry + rh - 2, x0:x_end], cv2.COLOR_BGR2HSV)
+    cols = ((hsv[..., 2] >= 200) & (hsv[..., 1] <= 60)).sum(0)
+    start, last, run = None, None, 0
+    for i, c in enumerate(cols):
+        if c >= 1:              # chu kem mo (anh #0 'Tang Xuong kien truc') nhieu cot chi 1 diem sang
+            start = i if start is None else start
+            last, run = i, 0
+        elif start is not None:
+            run += 1
+            if run >= gap:
+                break
+    if start is None or last is None:
+        return None
+    return x0, ry, min(x_end - x0, last + 10), rh
+
+
 def read_banner(ctx, img=None):
-    """Chu thanh nhiem vu (2 cach nhi phan, noi lai) - '' neu khong doc duoc."""
+    """Chu thanh nhiem vu (2 cach nhi phan, noi lai) - '' neu khong doc duoc. P9-9: chi OCR phan co chu (text_extent)."""
     img = img if img is not None else ctx.shot()
-    parts = [ocr.text(img, BANNER_TEXT_ROI, bright=b, psm=7) or "" for b in (170, None)]
+    roi = text_extent(img) or BANNER_TEXT_ROI
+    parts = [clean_text(ocr.text(img, roi, bright=b, psm=7) or "") for b in (170, None)]
     return " | ".join(p for p in parts if p)
+
+
+def clean_text(t):
+    """P9-9: bo token rac dau (icon: '}' ']' '|' '~') va cuoi (chi dau cau: '.' ':' ';' '‘'). Ham thuan."""
+    toks = t.split()
+    while toks and not any(ch.isalnum() for ch in toks[0]):
+        toks.pop(0)
+    while toks and not any(ch.isalnum() for ch in toks[-1]):
+        toks.pop()
+    return " ".join(toks)
 
 
 def _blocked(ctx, mq):

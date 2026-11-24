@@ -42,26 +42,32 @@ def builder_idle(ctx):
 # templates/build/hq_emblem_<ten>.png. Camera khong luon dat nha chinh giua man -> luot theo vong tron toi khi thay.
 HQ_MATCH_TH = 0.68                   # anh khac #2/#3: huy hieu cung 0.72-0.90, nen khac khong qua 0.56
 HQ_TPLS = ("build/hq_emblem_a", "build/hq_emblem_b")
+# P9-9 nha chinh DA SKIN: skin bi ngo Halloween (#1, live2/00-before.png 200,420,340,490 = san tron tim duoi qua bi ngo;
+# bi ngo co hoat anh nen khong cat). Mau khong nam tren mai -> lech diem cham: tam mau + TAP_DY[ten] (truoc khi _try_open
+# cong +35). Khop that 0.76-1.0 tren 22 khung thanh pho live2, nen <= 0.66.
+TAP_DY = {"build/hq_emblem_halloween": -45}
 SAFE = (60, 190, 400, 840)           # vung khong bi bang/menu che (x1, y1, x2, y2)
 CENTER = (270, 450)
 PAN_DX, PAN_DY = 200, 300            # moi buoc luot (ngon tay keo noi dung theo)
 PAN_RING = ((0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1))
 
 
-def find_hq(img, tpls, th=HQ_MATCH_TH):
-    """-> (x, y, diem) tam huy hieu nha chinh tot nhat >= th, hoac None. Ham thuan (test offline)."""
+def find_hq(img, tpls, th=HQ_MATCH_TH, dys=None):
+    """-> (x, y, diem) tam huy hieu nha chinh tot nhat >= th, hoac None. Ham thuan (test offline).
+    dys: lech y theo tung mau (P9-9 skin: mau khong phai huy hieu tren mai) - y tra ve da cong lech."""
     import cv2
     best = None
-    for t in tpls:
+    for i, t in enumerate(tpls):
         if t is None:
             continue
         _, m, _, loc = cv2.minMaxLoc(cv2.matchTemplate(img, t, cv2.TM_CCOEFF_NORMED))
         if m >= th and (best is None or m > best[2]):
-            best = (loc[0] + t.shape[1] // 2, loc[1] + t.shape[0] // 2, float(m))
+            dy = dys[i] if dys else 0
+            best = (loc[0] + t.shape[1] // 2, loc[1] + t.shape[0] // 2 + dy, float(m))
     return best
 
 
-def _templates(ctx):
+def _names(ctx):
     import glob
     import os
     names = list(HQ_TPLS)
@@ -69,7 +75,11 @@ def _templates(ctx):
         n = "build/" + os.path.basename(f)[:-4]
         if n not in names:
             names.append(n)
-    return [ctx.v.load(n, probe=True) for n in names]
+    return names
+
+
+def _templates(ctx):
+    return [ctx.v.load(n, probe=True) for n in _names(ctx)]
 
 
 def _drag(ctx, dx, dy):
@@ -102,20 +112,31 @@ def goto_hq(ctx):
         ctx.ensure_world()
     ctx.ensure_city()          # the gioi -> thanh pho: camera ve gan nha chinh
     img = ctx.settle()
+    names = _names(ctx)
     tpls = _templates(ctx)
+    dys = [TAP_DY.get(n, 0) for n in names]
     if not any(t is not None for t in tpls):
         log.warning("Thieu anh mau nha chinh: templates/build/hq_emblem_*.png")
         return None
     pos = (0, 0)                # tong dich chuyen noi dung so voi luc vao thanh pho
     for step in range(len(PAN_RING) + 1):
-        hit = find_hq(img, tpls)
+        hit = find_hq(img, tpls, dys=dys)
+        if hit is None and step == 0:
+            # P9-9 skin moi chua co mau: ve thanh pho -> camera dat nha chinh giua man; cham VI TRI + kiem NHAN ten
+            # ("Xuong kien truc") -> khong phu thuoc skin. Sai cong trinh -> _try_open tu thoat.
+            log.info("Xay theo nha chinh: khong khop mau skin nao -> thu vi tri giua man %s + nhan ten", HQ_TAP)
+            ic = _try_open(ctx, (HQ_TAP[0], HQ_TAP[1] - 35, 0.0))
+            if ic:
+                return ic
+            ctx.ensure_city()
+            img = ctx.settle()
         if hit:
             x, y, sc = hit
             log.info("Xay theo nha chinh: thay nha chinh @%d,%d (%.2f) sau %d buoc luot", x, y, sc, step)
             if not (SAFE[0] <= x <= SAFE[2] and SAFE[1] <= y <= SAFE[3]):
                 # sat mep / duoi bang che -> dua vao giua man roi tim lai
                 img = _drag(ctx, max(-PAN_DX, min(PAN_DX, CENTER[0] - x)), max(-PAN_DY, min(PAN_DY, CENTER[1] - y)))
-                hit = find_hq(img, tpls) or hit
+                hit = find_hq(img, tpls, dys=dys) or hit
             ic = _try_open(ctx, hit)
             if ic:
                 return ic

@@ -42,6 +42,7 @@ NAMES: Mapping[str, str] = MappingProxyType({
     "build/title_hq": "Tiêu đề Nhà chính",
     "build/hq_emblem_a": "Huy hiệu cánh Nhà chính (kiểu mái vòm)",
     "build/hq_emblem_b": "Huy hiệu cánh Nhà chính (kiểu cửa gara)",
+    "build/hq_emblem_halloween": "Nhà chính skin bí ngô Halloween (sân tròn tím)",
     # --- Chiến dịch
     "campaign/battle_hud": "Giao diện trận đánh", "campaign/btn_attack": "Nút Tấn công",
     "campaign/btn_challenge": "Nút Thách đấu", "campaign/btn_done": "Nút Xong (thắng)",

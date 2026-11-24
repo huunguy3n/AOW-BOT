@@ -373,6 +373,19 @@ def _pickups(ctx):
     return pk
 
 
+def open_intel(ctx):
+    """P9-9 (anh tinh_bao_tu_world_map): icon Tinh bao (ngay tren icon Chien dich) co ca tren BAN DO THE GIOI -> bam
+    tu man hien tai (thanh pho hoac the gioi), chi ve thanh pho khi khong thay. -> True neu da bam."""
+    q = ctx.find("campaign/btn_open")
+    if not q:
+        ctx.ensure_city()
+        q = ctx.find("campaign/btn_open")
+    if not q:
+        return False
+    ctx.tap(q[0] - 2, q[1] - 56, wait=2.0)
+    return True
+
+
 def intel(ctx, max_n):
     nc = ctx.cfg.get("notify", {})
     only_gold = nc.get("intel_only_gold", False)   # #1 (TK chinh): chi lam ghim vang
@@ -382,11 +395,8 @@ def intel(ctx, max_n):
     rescans, done_scan = 0, 0
     for _ in range(max_n):
         if not ctx.find("intel/title"):
-            ctx.ensure_city()
-            q = ctx.find("campaign/btn_open")  # icon Tinh bao nam ngay tren icon Chien dich
-            if not q:
+            if not open_intel(ctx):
                 break
-            ctx.tap(q[0] - 2, q[1] - 56, wait=2.0)
         # nhiem vu da xong (dau tick xanh tren ghim) -> cham ghim de nhan thuong. Nhan theo MAU (anh mau cu chi khop
         # 0.61, chu du an 2026-11-20 "nhan het cac hop qua co tick v"); chup lai sau moi lan nhan (ghim bien mat)
         claimed = set()
@@ -400,8 +410,8 @@ def intel(ctx, max_n):
             ctx.dismiss_reward()
             done += 1
             done_scan += 1
-            _pickups(ctx).done()
-            log.info("Tinh bao: nhan hop qua da xong @%d,%d", x, y)
+            freed = _pickups(ctx).done((x, y))      # P9-9: chi giai phong hop nhat tai ghim nay
+            log.info("Tinh bao: nhan hop qua da xong @%d,%d%s", x, y, " (giai phong 1 cho nhat hop)" if freed else "")
         img = ctx.shot()
         pins = [p for p in ctx.v.find_all(img, "intel/pin_base", th=0.6, min_dist=15)  # vong mo, chong nhau
                 if (p[0] // 20, p[1] // 20) not in tried]
@@ -426,6 +436,7 @@ def intel(ctx, max_n):
             break
         x, y, _ = pins[0]
         tried.add((x // 20, y // 20))
+        ctx._intel_pin = (x, y - 35)               # P9-9: pickup() nho vi tri ghim hop
         ctx.tap(x, y - 35, wait=1.5)               # ghim (hinh giot nuoc) nam tren vong tron
         r = intel_mission(ctx)
         log.info("Tinh bao: %s", r)
@@ -552,7 +563,7 @@ def pickup(ctx):
         time.sleep(w)
     r = confirm_departure(ctx, "intel/btn_pickup", ok="picked")
     if r == "picked":
-        pk.add(time.time())
+        pk.add(time.time(), getattr(ctx, "_intel_pin", None))
     return r
 
 
