@@ -202,6 +202,7 @@ quests: {daily: true, main: true, alliance: true, story: true, max_go_per_run: 6
                             # (co thong bao: lo dat chua mo 12 h, thieu cong trinh dieu kien 6 h - aowbot/domain/blockers.py)
 notify:
   welfare: true
+  welfare_daily_check: true  # P10-6: moi luot log Diem Danh 30 Ngay / Qua dang nhap (da nhan -> bo nhanh; chua kiem hom nay -> mo TT phuc loi 1 lan)
   bubble: true
   activity: true
   intel: true

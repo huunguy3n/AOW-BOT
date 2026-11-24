@@ -1023,6 +1023,12 @@ def run(ctx):
         finally:
             leave(ctx)
             ctx.ensure_city()
+    if nc.get("welfare", True) and nc.get("welfare_daily_check", True):
+        try:
+            done["welfare_daily"] = welfare_daily(ctx, done)
+        finally:
+            leave(ctx)
+            ctx.ensure_city()
     if nc.get("events", True):
         try:
             done["events"] = events(ctx)
@@ -1031,6 +1037,57 @@ def run(ctx):
             ctx.ensure_city()
     log.info("Thong bao da xu ly: %s", done)
     return done
+
+
+# ---------- P10-6 Diem Danh 30 Ngay / Qua dang nhap: kiem MOI luot ----------
+def utc_day(now=None):
+    return time.strftime("%Y-%m-%d", time.gmtime(now if now is not None else time.time()))
+
+
+def welfare_plan(today, claim_day, check_day, handled):
+    """Ham thuan (P10-6, live3: khong co dong log nao ve Diem Danh / Qua dang nhap - TT phuc loi chi vao khi icon co cham
+    do va chi tab co cham do, nhan xong tu live2 10:56 nen live3 im lang). -> (hanh dong, ly do):
+      'claimed'  - luot nay TT phuc loi vua nhan duoc qua (handled > 0) -> ghi nhan hom nay
+      'done'     - hom nay da nhan / da kiem (reset 0h UTC) -> log 'da nhan', bo qua nhanh
+      'verify'   - chua nhan / chua kiem hom nay ma icon KHONG co cham do -> mo TT phuc loi 1 lan de kiem (o phat sang /
+                   tab cham do), khong luot"""
+    if handled:
+        return "claimed", f"TT phuc loi vua nhan {handled}"
+    if claim_day == today:
+        return "done", f"da nhan hom nay ({today} UTC)"
+    if check_day == today:
+        return "done", f"da kiem hom nay ({today} UTC), khong con qua"
+    return "verify", "chua kiem hom nay - mo TT phuc loi"
+
+
+def welfare_daily(ctx, done):
+    """Moi luot: ghi ro trang thai Diem Danh 30 Ngay / Qua dang nhap (TT phuc loi). Luat giu nguyen: o hao quang khong
+    luot (claim_glow_tiles), Qua dang nhap chi cot Mien phi (free_column_tiles), khong goi ₫. -> so lan nhan them."""
+    m, idx, today = getattr(ctx, "mem", None), ctx.dev.idx, utc_day()
+    claim_day = m.fact(idx, "welfare_claim_day") if m else None
+    check_day = m.fact(idx, "welfare_check_day") if m else None
+    act, why = welfare_plan(today, claim_day, check_day, done.get("welfare") or 0)
+    if act == "claimed":
+        if m:
+            m.set_fact(idx, "welfare_claim_day", today)
+        log.info("Diem Danh 30 Ngay / Qua dang nhap: %s -> da nhan hom nay", why)
+        return 0
+    if act == "done":
+        log.info("Diem Danh 30 Ngay / Qua dang nhap: %s - bo qua", why)
+        return 0
+    ctx.ensure_city()
+    p = ctx.v.find(ctx.shot(), ICONS["welfare"])
+    if not p:
+        log.info("Diem Danh 30 Ngay / Qua dang nhap: khong thay icon TT phuc loi - de lan sau")
+        return 0
+    ctx.tap(p[0], p[1], wait=2.5)
+    n = claim_glow_tiles(ctx) + hub(ctx, cards=True)     # o phat sang tab dang mo + moi tab con cham do
+    if m:
+        m.set_fact(idx, "welfare_check_day", today)
+        if n:
+            m.set_fact(idx, "welfare_claim_day", today)
+    log.info("Diem Danh 30 Ngay / Qua dang nhap: %s -> nhan %d%s", why, n, "" if n else " (da nhan truoc do)")
+    return n
 
 
 # ---------- su kien "chua thuong" (hop cuu thuong -> cham vong vang) ----------
