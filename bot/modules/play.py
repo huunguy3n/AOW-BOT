@@ -270,6 +270,65 @@ def _mark_skip(lm, name, power, now=None):
     lm["skip"].append({"name": name, "power": power, "at": now})
 
 
+# ---------- P9-5 (live-run-2 11:04: popup "Da chuyen doi sang sv ServerID #28" + xe N chi co nut "Xem") ----------
+WORLD_HDR = (140, 212, 100, 50)          # chu do hiem SSR/SR/N goc trai tren popup xe tren BAN DO
+WORLD_BTN_ROI = (130, 540, 290, 70)      # hang nut "Xem" (trai) | "Cuop boc" (phai) day popup
+TOAST_ROI = (0, 295, 540, 60)            # dai thong bao "Da chuyen doi sang sv ServerID #.."
+SERVER_RX = re.compile(r"chuy\w{0,2}n\s*d\w{0,2}i|server\s*id|sang\s*sv")
+LOOT_RX = r"cu\w{0,2}p\s*b"              # chu "Cuop boc" (OCR mat dau)
+
+
+def world_rarity(img):
+    """Do hiem tren popup xe o ban do: SSR (vang H~20), SR (tim H 120-165), N (xanh la H 40-85) | None."""
+    x, y, w, h = WORLD_HDR
+    hsv = cv2.cvtColor(img[y:y + h, x:x + w], cv2.COLOR_BGR2HSV).reshape(-1, 3)
+    r = hsv[(hsv[:, 1] > 120) & (hsv[:, 2] > 150)]
+    if len(r) < 200:
+        return None
+    hue = float(np.median(r[:, 0]))
+    return "SSR" if 10 <= hue <= 35 else "SR" if 120 <= hue <= 165 else "N" if 40 <= hue <= 85 else None
+
+
+def server_toast(img):
+    from bot import buttons
+    return bool(SERVER_RX.search(buttons._norm(ocr.text(img, TOAST_ROI, scale=2, psm=6))))
+
+
+def loot_button(ctx, img):
+    """Nut "Cuop boc" (BEN PHAI, chu 'cuop boc') -> (x, y) | None. KHONG BAO GIO tra nut "Xem"."""
+    from bot import buttons
+    for b in buttons.with_text(img, LOOT_RX, WORLD_BTN_ROI):
+        if "xem" not in b.text and b.x >= 300:
+            return b.x, b.y
+    p = ctx.v.find(img, "play/btn_loot", th=0.8, roi=WORLD_BTN_ROI)
+    return (p[0], p[1]) if p and p[0] >= 300 else None
+
+
+def world_popup_kind(rarity, btn, toast, rar=("SSR", "SR")):
+    """Ham thuan: popup tren ban do sau "Toi cuop boc" -> 'loot' (dung popup: SR/SSR + nut Cuop boc) |
+    'server_change' (thong bao doi server / xe khac) | 'no_loot_btn' (chi co "Xem") | 'wrong_rarity'."""
+    if btn and rarity in rar and not toast:
+        return "loot"
+    if toast:
+        return "server_change"
+    if not btn:
+        return "no_loot_btn"
+    return "wrong_rarity"
+
+
+def world_popup(ctx, rar, timeout=6.0):
+    """Cho popup xe tren ban do (toi `timeout` s). -> (loai, toa do nut Cuop boc | None)."""
+    t0, kind, btn = time.time(), "no_loot_btn", None
+    while time.time() - t0 < timeout:
+        img = ctx.shot()
+        btn = loot_button(ctx, img)
+        kind = world_popup_kind(world_rarity(img), btn, server_toast(img), rar)
+        if kind in ("loot", "server_change"):
+            break
+        time.sleep(0.6)
+    return kind, btn
+
+
 def _reopen_mine(ctx):
     """Sau khi bo xe o man doi hinh (dang o ban do) -> ve Loi choi > Mo khoang san de thu xe khac."""
     ctx.ensure_city()
@@ -362,11 +421,16 @@ def _loot_once(ctx, lc):
     ctx.tap(x, y, wait=1.2)
     if not ctx.tap_tpl("play/btn_go_loot", wait=3.0, th=0.8):
         return 0
-    if not ctx.wait_for("play/btn_loot", timeout=6):
-        ctx.save_debug("loot_no_world_btn")
-        ctx.ensure_city()
-        return 0
-    ctx.tap_tpl("play/btn_loot", wait=2.5, fresh=False)
+    # P9-5: XAC NHAN dung popup cuop (SR/SSR + nut "Cuop boc"); popup doi server / xe N chi co "Xem" -> dong, bo xe
+    kind, btn = world_popup(ctx, rar)
+    if kind != "loot":
+        ctx.save_debug(f"loot_popup_{kind}")
+        log.info("Cuop boc: popup ban do sai (%s) - dong, bo xe '%s', chon xe khac", kind, name)
+        _mark_skip(lm, name, pw)
+        _loot_save(ctx, lm)
+        ctx.back_out(1)                                 # dong popup / thong bao (KHONG bam "Xem")
+        return "retry"
+    ctx.tap(btn[0], btn[1], wait=2.5)                   # nut "Cuop boc" (ben phai) - khong bao gio "Xem"
     if not ctx.wait_for("play/btn_battle", timeout=5):
         ctx.save_debug("loot_no_legion")
         ctx.ensure_city()

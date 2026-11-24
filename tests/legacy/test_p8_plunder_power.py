@@ -111,6 +111,7 @@ def scene(monkeypatch):
     monkeypatch.setattr(play, "own_power", lambda img: s.own)
     monkeypatch.setattr(play, "open_menu", lambda ctx: True)
     monkeypatch.setattr(play, "_loot_result", lambda ctx: s.result)
+    monkeypatch.setattr(play, "world_popup", lambda ctx, rar, timeout=6.0: ("loot", (346, 575)))   # P9-5
     monkeypatch.setattr(ocr, "text", lambda *a, **k: "(JED)Guard")
     return s
 
