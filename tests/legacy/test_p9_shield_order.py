@@ -65,7 +65,7 @@ def test_plan():
     assert shield.plan("off", False, None, 1000, 60) == (True, "khien dang tat")
     assert not shield.plan("on", False, None, 1000, 60)[0]
     assert not shield.plan("off", True, None, 1000, 60)[0]           # thu 7: warday lo
-    assert not shield.plan("off", False, 1000 - 600, 1000, 60)[0]    # Hiep uoc dang chuan bi
+    assert shield.plan("off", False, 1000 - 600, 1000, 60)[0]        # P12-1: Hiep uoc chuan bi != khien -> van bat
     assert shield.plan("off", False, 1000 - 4000, 1000, 60)[0]
     assert not shield.plan(None, False, None, 1000, 60)[0]
 
@@ -100,6 +100,8 @@ def _ctx(monkeypatch, state="off", war=None, peace="cooldown", shields=None):
 
 def test_run_uses_free_peace_first(monkeypatch):
     ctx, calls = _ctx(monkeypatch, peace="peace")
+    seq = [("off", None), ("on", 8 * 3600)]     # P12-1: Hiep uoc chi tinh xong khi khien DANG BAT
+    monkeypatch.setattr(warday, "screen_shield", lambda ctx: seq.pop(0))
     assert shield.run(ctx) == 1
     assert calls == [("peace", True)]
     assert ctx.mem.f["peace_at"]

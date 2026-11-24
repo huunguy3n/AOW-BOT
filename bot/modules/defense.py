@@ -192,6 +192,20 @@ def peace_free(text):
     return bool(FREE_RX.search((text or "").lower()))
 
 
+PREP_RX = re.compile(r"chu\w{0,2}n\s*b|prepar")
+
+
+def peace_label_status(text):
+    """P12-1: chu OCR phia tren nut dong Hiep uoc -> 'ready' (Mien phi) | 'preparing' (Chuan bi / Preparing) |
+    'cooldown' (con lai: dong ho hoi chieu / khong doc duoc - an toan: khong bam)."""
+    t = (text or "").lower()
+    if FREE_RX.search(t):
+        return "ready"
+    if PREP_RX.search(t):
+        return "preparing"
+    return "cooldown"
+
+
 def panel_active(img):
     """Bang Bao Ho Chien Tranh dang mo: dong 'Thoi gian co hieu luc' co so khac 0 -> dang con bao ho."""
     digits = re.findall(r"\d", ocr.text(img, ACTIVE_ROI, "0123456789d:"))
@@ -201,7 +215,7 @@ def panel_active(img):
 def peace(ctx, skip_if_active=False):
     """Hiep uoc hoa binh (dong 8h, chu du an 2026-11-23 dong y dung): MIEN PHI, chuan bi 1h roi bao ho 8h, hoi 14h.
     Chi bam 'Dung' khi phia tren nut co chu 'Mien phi' (dang hoi / khong doc duoc -> khong bam). Kiem lai: sau khi
-    bam chu 'Mien phi' phai mat. -> 'peace' | 'cooldown' | 'missing_tpl' | 'error'."""
+    bam chu 'Mien phi' phai mat. -> 'peace' | 'cooldown' | 'preparing' | 'missing_tpl' | 'error'."""
     missing = missing_tpls(ctx.v, 8)
     if missing:
         log.warning("Khong dung Hiep uoc: thieu anh mau %s", ", ".join(missing))
@@ -223,10 +237,12 @@ def peace(ctx, skip_if_active=False):
         log.warning("Khong thay dong Hiep uoc hoa binh")
         ctx.back_out()
         return "error"
-    if not peace_free(label(img, row)):
-        log.info("Hiep uoc hoa binh: khong thay chu 'Mien phi' (dang hoi?) - khong bam")
+    st = peace_label_status(label(img, row))
+    if st != "ready":
+        log.info("Hiep uoc hoa binh: trang thai %s (khong thay chu 'Mien phi') - khong bam",
+                 "CHUAN BI" if st == "preparing" else "HOI CHIEU")
         ctx.back_out()
-        return "cooldown"
+        return st
     log.info("Dung Hiep uoc hoa binh (mien phi, chuan bi 1h)")
     ctx.tap(469, row[1] + 27, wait=1.5)
     ctx.tap_tpl("common/btn_confirm", wait=1.5)   # hop thoai xac nhan (neu co) - dong mien phi
