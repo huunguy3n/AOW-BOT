@@ -71,8 +71,70 @@ def claim_scroll(ctx, pages=6):
     return n
 
 
+EPIC_SPLIT_X = 245            # TT phuc loi > Qua dang nhap: cot "Mien phi" x < 245, cot "Su thi" (tra phi) ben phai
+EPIC_Y_RANGE = (360, 900)    # vung tim dau 2 cot (Mien phi tim / Su thi vang dat)
+
+
+def _frac(hsv, x0, x1, y, hlo, hhi, smin, vmin):
+    row = hsv[y, x0:x1]
+    m = (row[:, 0] >= hlo) & (row[:, 0] <= hhi) & (row[:, 1] >= smin) & (row[:, 2] >= vmin)
+    return float(m.mean())
+
+
+def epic_header(img, run=60):
+    """P9-3: tab Qua dang nhap co cot "Su thi" (goi tra phi ₫25000)? Nhan theo MAU (OCR khong doc duoc chu mo "Su thi"
+    tren nen vang dat): cot phai vang dat (H 15-28) + cot trai tim (H 120-145) lien tuc >= `run` dong.
+    -> y dong dau tien cua 2 cot | None. Ham thuan."""
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    y0, y1 = EPIC_Y_RANGE
+    start, count = None, 0
+    for y in range(y0, min(y1, img.shape[0])):
+        ok = (_frac(hsv, 270, 520, y, 15, 28, 100, 90) > 0.5 and _frac(hsv, 40, 220, y, 118, 145, 80, 90) > 0.5)
+        if ok:
+            start = y if start is None else start
+            count += 1
+            if count >= run:
+                return start
+        else:
+            start, count = None, 0
+    return None
+
+
+def free_column_tiles(tiles, epic_y):
+    """P9-3 (chu du an 2026-11-24, anh qua_dang_nhap_mien_phi_chua_bam): co cot "Su thi" -> CHI o phat sang o cot
+    "Mien phi" (x < EPIC_SPLIT_X) va duoi dau cot (khong cham banner / nut ₫25000). Khong co cot Su thi -> giu nguyen."""
+    if epic_y is None:
+        return list(tiles)
+    return [t for t in tiles if t[0] < EPIC_SPLIT_X and t[1] > epic_y]
+
+
+def claim_glow_tiles(ctx, max_taps=6):
+    """O qua phat sang khong co nut "Nhan" rieng (tab "Qua dang nhap", "Chuc phuc tan thu", "Diem danh 30 ngay"):
+    cham thang vao o. P9-3: chay TRUOC khi luot danh sach (Diem danh 30 ngay: bam o hao quang, KHONG luot)."""
+    n, seen = 0, set()
+    for _ in range(max_taps):
+        img = ctx.shot()
+        # glow_tiles: vien xanh ngoc (Qua dang nhap); nhan_tiles: chu "Nhan" xanh la + vien vang (Diem danh 30 ngay)
+        tiles = [t for t in glow_tiles(img) + nhan_tiles(img) if (t[0] // 30, t[1] // 30) not in seen]
+        tiles = free_column_tiles(tiles, epic_header(img))
+        if not tiles:
+            break
+        x, y = tiles[0]
+        seen.add((x // 30, y // 30))
+        log.info("Phuc loi: o qua phat sang @%d,%d", x, y)
+        ctx.tap(x, y, wait=1.2)
+        # Diem danh 30 ngay: hien bang "Phan Thuong Hang Ngay" -> CHI bam "Nhan Phan Thuong Co Ban" (mien phi),
+        # KHONG BAO GIO "Nang cap VIP"
+        if ctx.tap_tpl("welfare/btn_basic_reward", wait=1.2, th=0.9):
+            log.info("Diem danh: nhan phan thuong co ban")
+        ctx.dismiss_reward()
+        n += 1
+    return n
+
+
 def claim_content(ctx, cards=False, gift=True):
-    n = claim_scroll(ctx)
+    n = claim_glow_tiles(ctx)          # P9-3: o phat sang truoc (khong luot), roi moi nut Nhan + luot danh sach
+    n += claim_scroll(ctx)
     if cards:  # the qua co cham do (vd Thuong online 100/120 phut): cham giua the
         for _ in range(6):
             dots = red_dots(ctx.shot(), CONTENT)
@@ -82,25 +144,6 @@ def claim_content(ctx, cards=False, gift=True):
             ctx.tap(x - 48, y + 70, wait=1.2)
             ctx.dismiss_reward()
             n += 1
-    # o qua phat sang khong co nut "Nhan" rieng (tab "Qua dang nhap", "Chuc phuc tan thu", "Diem danh 30 ngay"):
-    # cham thang vao o
-    seen = set()
-    for _ in range(6):
-        img = ctx.shot()
-        # glow_tiles: vien xanh ngoc (Qua dang nhap); nhan_tiles: chu "Nhan" xanh la + vien vang (Diem danh 30 ngay)
-        tiles = [t for t in glow_tiles(img) + nhan_tiles(img) if (t[0] // 30, t[1] // 30) not in seen]
-        if not tiles:
-            break
-        x, y = tiles[0]
-        seen.add((x // 30, y // 30))
-        log.debug("o qua phat sang @%d,%d", x, y)
-        ctx.tap(x, y, wait=1.2)
-        # Diem danh 30 ngay: hien bang "Phan Thuong Hang Ngay" -> CHI bam "Nhan Phan Thuong Co Ban" (mien phi),
-        # KHONG BAO GIO "Nang cap VIP"
-        if ctx.tap_tpl("welfare/btn_basic_reward", wait=1.2, th=0.9):
-            log.info("Diem danh: nhan phan thuong co ban")
-        ctx.dismiss_reward()
-        n += 1
     if ctx.find("event/timed_login"):
         # "Dang nhap hen gio": "Dem nguoc nhan" = thoi gian CON LAI de nhan (khung 8-9h, 18-19h UTC).
         # Tab chi duoc vao khi co cham do (= dang nhan duoc) -> cham vao ruong.
@@ -132,18 +175,36 @@ def hub(ctx, cards):
         ctx.tap_first(["common/btn_close", "common/btn_x"], wait=1.0)
         log.info("Hoat dong: xem lich tuan (xoa cham do)")
     for page in range(3):
-        tried = set()
-        for _ in range(8):
-            dots = [d for d in red_dots(ctx.shot(), TAB_STRIP) if (d[0] // 40) not in tried]
+        visits = {}
+        for _ in range(12):
+            # P9-3: tab con cham do sau khi nhan (con muc khac) -> vao LAI (toi da TAB_REVISIT lan, chi khi lan truoc
+            # nhan duoc gi); truoc day moi tab chi vao 1 lan ("chi bam 1 cham do roi bo di", live-run-2)
+            dots = [d for d in red_dots(ctx.shot(), TAB_STRIP) if tab_open_again(visits.get(d[0] // 40))]
             if not dots:
                 break
             x, y = dots[0]
-            tried.add(x // 40)
             ctx.tap(x - 30, y + 40, wait=1.5)   # cham icon tab (cham do o goc tren-phai)
-            total += claim_content(ctx, cards)
+            got = claim_content(ctx, cards)
+            if not cards:                       # Hoat dong: o/the co cham do trong tab -> chi nhan bang "Nhan"
+                got += event_tiles(ctx, max_taps=8)
+            k = x // 40
+            visits[k] = (visits.get(k, (0, 0))[0] + 1, got)
+            total += got
         ctx.dev.swipe(460, 120, 120, 120, 500)  # cuon hang tab sang phai
         time.sleep(1.0)
     return total
+
+
+TAB_REVISIT = 3
+
+
+def tab_open_again(visit):
+    """visit = (so lan da vao, so nhan duoc lan cuoi) | None. Chua vao -> vao; lan truoc nhan duoc va chua qua
+    TAB_REVISIT lan -> vao lai; lan truoc 0 -> thoi (cham do khong xu ly an toan duoc)."""
+    if visit is None:
+        return True
+    n, last = visit
+    return last > 0 and n < TAB_REVISIT
 
 
 TIMED_CHEST = (285, 500)   # ruong "Dang nhap hen gio" giua tab (giong claim_content)
@@ -615,45 +676,58 @@ RECRUIT_LABEL = {"free": "1 lan (mien phi)", "ten": "10 lan (phieu)", "one_free"
                  "one_ticket": "1 lan (phieu)"}
 
 
+RECRUIT_TABS = ("recruit/tab_premium", "recruit/tab_normal")
+
+
+def _recruit_once(ctx, tab, use_tickets):
+    """1 lan bam o tab dang mo (cham do: Mien phi / 10 lan co cham do / Qua Chieu Mo). -> 1 neu bam duoc, 0 neu het."""
+    # doi the chieu mo truot xong: chup khi chua yen thi nut chua khop -> bo qua luot mien phi
+    # (#0 2026-11-20: nut "Mien phi" co cham do o tab Chieu mo thuong ma bot nhan 0)
+    for _ in range(4):
+        img = ctx.shot()
+        ten = ctx.v.find(img, "recruit/btn_ten")
+        free = ctx.v.find(img, "recruit/btn_free", th=0.85)
+        if (ten or free) and screens.same(img, ctx.shot()):
+            break
+        time.sleep(1.0)
+    if recruit_gift(ctx, img):
+        return 1
+    # nut "Mien phi" (luot mien phi trong ngay, nut trai) -> uu tien (do #5 2026-11-18: truoc day bi bo sot);
+    # nut co cham do goc tren-phai (~+80,-23) cung tinh la mien phi du mau nut lech
+    one = ctx.v.find(img, "recruit/btn_one")
+    pick = recruit_choice(
+        free_ok=bool(free and (ctx.is_colored(img, free[0], free[1]) or _dot_near(img, free, dx=80, dy=-23))),
+        # "Chieu mo 10 lan" co cham do = du >= 10 phieu -> bam (dung phieu, khong phai kim cuong)
+        ten_dot=bool(ten and any(ten[0] < d[0] < ten[0] + 110 and ten[1] - 25 < d[1] < ten[1] + 15
+                                 for d in red_dots(img))),
+        one_free=bool(one and _dot_near(img, one, dx=80, dy=-23)),
+        free_wait=bool(ctx.v.find(img, "recruit/free_wait")),
+        use_tickets=use_tickets)
+    btn = {"free": free and (free[0], free[1] - 9), "ten": ten}.get(pick, one) if pick else None
+    if not btn:
+        return 0
+    ctx.tap(btn[0], btn[1] + 9, wait=4.0)
+    log.info("Chieu mo %s: %s", tab.split("_")[-1], RECRUIT_LABEL[pick])
+    # man ket qua co nut "Chieu mo X1/X10" (KHONG bam lai - het phieu se hoi mua bang kim cuong) -> dong X
+    for _ in range(4):
+        if ctx.find("recruit/title"):
+            break
+        if ctx.tap_first(["common/btn_close"] + ctx.POPUP_CLOSERS, wait=1.5) is None:
+            ctx.back_out(1)
+    return 1
+
+
 def recruit(ctx):
+    """P9-3 (chu du an 2026-11-24): bam HET cham do o tab hien tai roi moi chuyen giua Chieu mo cao cap / thuong; lap toi
+    khi ca vong khong con gi (live-run-2: moi tab bam 1 lan roi bo di)."""
+    from bot import claimloop
     use_tickets = ctx.cfg.get("recruit", {}).get("use_tickets", False)
-    n = 0
-    for tab in ("recruit/tab_premium", "recruit/tab_normal"):
-        ctx.tap_tpl(tab, wait=1.5)
-        # doi the chieu mo truot xong: chup khi chua yen thi nut chua khop -> bo qua luot mien phi
-        # (#0 2026-11-20: nut "Mien phi" co cham do o tab Chieu mo thuong ma bot nhan 0)
-        for _ in range(4):
-            img = ctx.shot()
-            ten = ctx.v.find(img, "recruit/btn_ten")
-            free = ctx.v.find(img, "recruit/btn_free", th=0.85)
-            if (ten or free) and screens.same(img, ctx.shot()):
-                break
-            time.sleep(1.0)
-        n += 1 if recruit_gift(ctx, img) else 0
-        # nut "Mien phi" (luot mien phi trong ngay, nut trai) -> uu tien (do #5 2026-11-18: truoc day bi bo sot);
-        # nut co cham do goc tren-phai (~+80,-23) cung tinh la mien phi du mau nut lech
-        one = ctx.v.find(img, "recruit/btn_one")
-        pick = recruit_choice(
-            free_ok=bool(free and (ctx.is_colored(img, free[0], free[1]) or _dot_near(img, free, dx=80, dy=-23))),
-            # "Chieu mo 10 lan" co cham do = du >= 10 phieu -> bam (dung phieu, khong phai kim cuong)
-            ten_dot=bool(ten and any(ten[0] < d[0] < ten[0] + 110 and ten[1] - 25 < d[1] < ten[1] + 15
-                                     for d in red_dots(img))),
-            one_free=bool(one and _dot_near(img, one, dx=80, dy=-23)),
-            free_wait=bool(ctx.v.find(img, "recruit/free_wait")),
-            use_tickets=use_tickets)
-        btn = {"free": free and (free[0], free[1] - 9), "ten": ten}.get(pick, one) if pick else None
-        if not btn:
-            continue
-        what = RECRUIT_LABEL[pick]
-        ctx.tap(btn[0], btn[1] + 9, wait=4.0)
-        n += 1
-        log.info("Chieu mo %s: %s", tab.split("_")[-1], what)
-        # man ket qua co nut "Chieu mo X1/X10" (KHONG bam lai - het phieu se hoi mua bang kim cuong) -> dong X
-        for _ in range(4):
-            if ctx.find("recruit/title"):
-                break
-            if ctx.tap_first(["common/btn_close"] + ctx.POPUP_CLOSERS, wait=1.5) is None:
-                ctx.back_out(1)
+    rc = ctx.cfg.get("recruit", {})
+    n, book = claimloop.tabs_until_clear(
+        RECRUIT_TABS, lambda tab: ctx.tap_tpl(tab, wait=1.5), lambda tab: _recruit_once(ctx, tab, use_tickets),
+        max_per_tab=rc.get("max_per_tab", 6), max_rounds=rc.get("max_rounds", 3))
+    if n:
+        log.info("Chieu mo: %d lan (%s)", n, ", ".join(f"{t.split('_')[-1]} {k}" for t, k in book if k))
     if not n and ctx.find("recruit/title"):
         ctx.save_debug("recruit_dot_left")     # vao chieu mo vi cham do ma khong bam duoc gi -> luu anh de doi chieu
         log.info("Chieu mo: co cham do nhung khong thay luot mien phi / 10 lan (luu anh)")

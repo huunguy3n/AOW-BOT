@@ -29,6 +29,9 @@ RULES: tuple[tuple[str, tuple[str, ...], str | None], ...] = (
     ("paid", ("mua", "nap", "kim cuong", "thanh toan", "the thang", "goi qua", "dac quyen"), FORBIDDEN),
     ("pvp", ("nguoi choi", "tan cong can cu", "tan cong thanh", "pha huy", "danh bai chi huy", "chien thang chi huy"),
      FORBIDDEN),
+    # P9-3 (chu du an 2026-11-24, anh vip_reddot_ruong_moi_ngay): thanh "Co the nhan Ruong moi ngay" = qua MIEN PHI
+    # (ruong ngay VIP) -> mainquest cham thanh roi chi nhan nut "Nhan" an toan. Sau nhom CAM (an toan truoc).
+    ("chest", ("ruong moi ngay", "co the nhan ruong"), None),
     ("loot", ("cuop",), "play"),                             # "Cuop boc xe khai thac" - buoc play (so luc chien P8-2)
     ("alliance", ("lien minh",), "alliance"),                # truoc 'rally': "Tham gia lien minh" la viec lien minh
     ("rally", ("tap ket", "tham gia"), "rebels"),            # "Tham gia tap ket tan cong 1 lan phan quan Co giap"

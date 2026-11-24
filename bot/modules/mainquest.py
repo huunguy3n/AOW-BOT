@@ -129,6 +129,22 @@ def npc_attack(ctx, mq):
     return "npc_sent"
 
 
+def daily_chest(ctx, text=""):
+    """P9-3: thanh nhiem vu "Co the nhan Ruong moi ngay" (live-run-2 doc ra '... C6 the nhan Ruong moi ngay ...' ->
+    loai unknown, bo qua). Cham thanh -> CHI nhan bang nut "Nhan" xanh (claim_buttons: mau + chu, bo nut tra phi) va
+    cham do trang VIP (rewards.vip_dots - khong bao gio mua goi VIP). -> so lan nhan."""
+    from bot.modules import rewards
+    log.info("Nhiem vu chinh %r -> nhan Ruong moi ngay (mien phi)", (text or "")[:60])
+    ctx.tap(*BANNER, wait=2.5)
+    n = ctx.claim_buttons(max_taps=4)
+    if not ctx.is_home():
+        n += rewards.vip_dots(ctx, max_taps=4)
+    ctx.dismiss_reward()
+    ctx.ensure_city()
+    log.info("Ruong moi ngay: nhan %d", n)
+    return n
+
+
 def step(ctx, mq, kind="unknown"):
     ctx.ensure_city()
     if not ctx.find("quest/banner_icon"):
@@ -217,6 +233,8 @@ def run(ctx):
         log.info("Nhiem vu chinh %r (%s) -> viec cua buoc %s, khong cham", text[:60], kind, module)
         _remember(ctx, text, kind, False, now)
         return 0
+    if kind == "chest":
+        return daily_chest(ctx, text)
     ok, why = quest_rules.should_retry(m.fact(ctx.dev.idx, "mainquest_last") if m else None, text, now,
                                        mq.get("same_retry_h", 1), mq.get("same_retry_cap_h", 8))
     if not ok:

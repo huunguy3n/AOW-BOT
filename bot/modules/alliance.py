@@ -142,6 +142,61 @@ def gift_more(before, after, rounds, max_rounds):
     return not (before is not None and after is not None and after >= before)
 
 
+# P9-3 (chu du an 2026-11-24, gop y t39ua0 - CHUA CO ANH tab "Qua dac biet" / Ruong Lv.17: lam theo mo ta, khong
+# bia anh mau): tab Qua dac biet -> bam "Nhan" tung mon toi het; Ruong Lv.17 (goc phai tren) co cham do -> nhan.
+GIFT_LIST_ROI = (380, 280, 160, 560)        # cot nut "Nhan" ben phai danh sach qua (anh alliance_gift_qua_thuong)
+CHEST_ROI = (400, 60, 140, 130)             # Ruong Lv.N goc phai tren (anh: ruong ~470,125, chu "Ruong Lv.17")
+CHEST_TAP = (468, 128)
+NHAN_RX = r"(?:^|\W)nh\w{1,2}n(?:\W|$)"   # chu "Nhan" (OCR mat dau)
+
+
+def chest_dot(dots):
+    """Cham do trong vung Ruong Lv.N -> True (ham thuan)."""
+    x, y, w, h = CHEST_ROI
+    return any(x <= d[0] <= x + w and y <= d[1] <= y + h for d in dots)
+
+
+def lv_chest(ctx):
+    """Ruong Lv.N cua qua lien minh: chi bam khi co cham do; nhan bang nut "Nhan" an toan (claim_buttons)."""
+    from bot.badges import red_dots
+    if not chest_dot(red_dots(ctx.shot(), CHEST_ROI)):
+        return 0
+    ctx.tap(*CHEST_TAP, wait=1.5)
+    got = ctx.claim_buttons(max_taps=3)
+    ctx.dismiss_reward()
+    log.info("Qua lien minh: Ruong Lv (cham do) -> nhan %d", got or 1)
+    if not ctx.find("ally/gift_title"):
+        ctx.tap_first(["common/btn_close"] + ctx.POPUP_CLOSERS, wait=1.0)
+    return max(got, 1)
+
+
+def special_claim(ctx, max_taps=30):
+    """Tab "Qua dac biet": "Nhan toan bo" (neu co) roi bam "Nhan" TUNG MON (nut xanh co chu Nhan, khong dau hieu tra
+    phi - buttons.with_text) toi khi het. Nut bam ma man khong doi -> khong bam lai. -> so lan nhan."""
+    from bot import buttons, screens
+    n = 0
+    if ctx.tap_tpl("ally/btn_gift_claim_all", wait=1.5):
+        ctx.dismiss_reward()
+        n += 1
+        log.info("Qua lien minh dac biet: nhan toan bo")
+    dead = set()
+    for _ in range(max_taps):
+        img = ctx.shot()
+        todo = [b for b in buttons.with_text(img, NHAN_RX, GIFT_LIST_ROI) if (b.x // 20, b.y // 20) not in dead]
+        if not todo:
+            break
+        b = todo[0]
+        ctx.tap(b.x, b.y, wait=1.2)
+        if screens.same(img, ctx.shot()):
+            dead.add((b.x // 20, b.y // 20))
+            continue
+        ctx.dismiss_reward()
+        n += 1
+    if n:
+        log.info("Qua lien minh dac biet: nhan %d", n)
+    return n
+
+
 def gifts(ctx, x, y):
     """Icon hop qua (so do) tren thanh pho = "Qua tang lien minh" (chu du an 2026-11-21 #1)."""
     ctx.tap(x - 16, y + 17, wait=2.0)
@@ -165,12 +220,9 @@ def gift_panel(ctx):
     -> so lan bam "Nhan toan bo"."""
     if not ctx.wait_for("ally/gift_title", timeout=3):
         return 0
-    n = 0
+    n = lv_chest(ctx)                      # P9-3: Ruong Lv.N goc phai tren co cham do -> nhan
     ctx.tap(*TAB_SPECIAL, wait=1.5)
-    if ctx.tap_tpl("ally/btn_gift_claim_all", wait=1.5):
-        ctx.dismiss_reward()
-        n += 1
-        log.info("Qua lien minh dac biet: nhan toan bo")
+    n += special_claim(ctx)
     ctx.tap(*TAB_NORMAL, wait=1.5)
     img = ctx.shot()
     can = gift_can_claim(img)

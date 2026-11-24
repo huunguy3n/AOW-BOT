@@ -197,7 +197,11 @@ def _handle(ctx, kind, x, y):
             if ctx.is_home():
                 return 0
             ctx.save_debug("shop_gift")
-            return _shop_gift(ctx)
+            from bot import claimloop    # P9-3: lap toi khi bang Qua het cham do (tab + o mien phi)
+            n, rounds, left = claimloop.until_clear(lambda: _shop_gift(ctx),
+                                                    lambda: bool(red_dots(ctx.shot(), SHOP_DOTS)), max_rounds=4)
+            log.info("Qua ($): nhan %d lan / %d vong%s", n, rounds, " - con cham do khong nhan an toan duoc" if left else "")
+            return n
         if kind in ("recruit", "hero"):
             ctx.tap(x - 16, y + 17, wait=2.5)
             return notify.recruit(ctx) if kind == "recruit" else notify.heroes(ctx)
@@ -231,6 +235,9 @@ def _shop_page(ctx):
         seen.add((dots[0][0] // 30, dots[0][1] // 30))
         n += _free_chest(ctx, img, dots[0])
     return n
+
+
+SHOP_DOTS = (90, 30, 450, 800)   # hang tab + noi dung bang Qua
 
 
 def _shop_gift(ctx):
