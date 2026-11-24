@@ -292,6 +292,17 @@ def search_levels(rec, start=10, fail_h=12, tries=3, now=None):
     return out
 
 
+def snap_levels(levels, step):
+    """Ham thuan P12-4: cap muon tim -> cap o 'Cap' nhan duoc (boi so cua step, giu thu tu, bo trung)."""
+    from bot.modules.gather import snap_level
+    out = []
+    for lv in levels:
+        s_ = snap_level(lv, step)
+        if s_ not in out:
+            out.append(s_)
+    return out
+
+
 def attack(ctx):
     """Tu mo 1 tap ket danh Phan quan Co giap tren ban do. -> 1 neu da Xuat chinh, 0 neu khong."""
     rc = ctx.cfg.get("rebels", {})
@@ -311,8 +322,21 @@ def attack(ctx):
         if r >= 0:
             return r
     levels = search_levels(rec, rc.get("start_level", 10), rc.get("fail_h", 12), rc.get("search_tries", 3))
+    step = rec.get("step") or 1
+    if step > 1 and not getattr(ctx, "level_step", None):
+        ctx.level_step = step
+    tried = set()
     for lv in levels:
+        snapped = snap_levels([lv], getattr(ctx, "level_step", 1) or 1)[0]
+        if snapped in tried:       # P12-4: buoc 5 -> cap 9/8/7 deu la 5 -> khong tim lai cung cap
+            log.info("Phan quan: cap %d = cap %d (buoc %s) da thu - bo", lv, snapped, ctx.level_step)
+            continue
+        tried.add(snapped)
         p = search_target(ctx, lv)
+        if (getattr(ctx, "level_step", 1) or 1) > 1 and rec.get("step") != ctx.level_step:
+            rec["step"] = ctx.level_step               # nho buoc o Cap Co giap cho lan sau
+            _save(ctx, rec)
+        tried.add(snap_levels([lv], getattr(ctx, "level_step", 1) or 1)[0])
         if p is False:                                  # o tim kiem hong -> cap khac cung vay
             break
         if not p:

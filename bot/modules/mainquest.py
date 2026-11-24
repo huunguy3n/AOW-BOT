@@ -23,7 +23,9 @@ log = logging.getLogger("aow")
 BANNER = (150, 818)
 BANNER_TEXT_ROI = (36, 806, 480, 30)
 TARGET = (272, 445)   # muc tieu (vd o do Mo ruong lanh tho / phien quan) sau khi camera can giua
-NPC_ATTACK = "rebels/npc_attack"   # nut "Tan cong" bang phien quan (cat tu logs/human/20261121/002012-i3-mainquest-091)
+NPC_ATTACK = "rebels/npc_attack"
+NPC_SEARCH = "rebels/npc_btn_search"   # P12-4 (t55u): "Tim kiem" khi "Toi da co the tan cong phan quan cap X!" (s193422)
+NPC_SEARCH_ROI = (100, 600, 340, 250)   # nut "Tan cong" bang phien quan (cat tu logs/human/20261121/002012-i3-mainquest-091)
 SUCCESS = ("win", "build_started", "follow_build_started", "npc_sent")
 
 
@@ -113,22 +115,54 @@ def _fight(ctx, mq):
     return r
 
 
+def npc_popup_action(img, v):
+    """Ham thuan P12-4: bang phien quan dang mo -> 'attack' (nut Tan cong) | 'search' (popup 'Toi da co the tan cong
+    phan quan cap X!' chi co nut 'Tim kiem' - game dan toi con dung cap) | None."""
+    if v.find(img, NPC_ATTACK, th=0.85):
+        return "attack"
+    if v.has(NPC_SEARCH) and v.find(img, NPC_SEARCH, th=0.85, roi=NPC_SEARCH_ROI):
+        return "search"
+    return None
+
+
+def npc_search(ctx):
+    """P12-4: bam 'Tim kiem' -> camera toi phien quan dung cap -> cham muc tieu giua man -> cho nut 'Tan cong'.
+    -> toa do nut Tan cong | None."""
+    p = ctx.find(NPC_SEARCH, th=0.85, roi=NPC_SEARCH_ROI)
+    if not p:
+        return None
+    log.info("Phien quan: 'Toi da co the tan cong phan quan cap X' -> bam 'Tim kiem' de game dan toi con dung cap")
+    ctx.tap(p[0], p[1], wait=3.0)
+    ctx.settle()
+    a = ctx.find(NPC_ATTACK, th=0.85)
+    if not a:
+        ctx.tap(*TARGET, wait=1.8)
+        a = ctx.wait_for(NPC_ATTACK, timeout=3, th=0.85)
+    return a
+
+
 def npc_attack(ctx, mq):
     """Nhiem vu 'Kich sat N lan phien quan': thanh nhiem vu -> ban do, muc tieu giua man -> 'Tan cong' -> Xuat chinh.
     -> 'npc_sent' | 'npc_skip' | 'npc_full' | 'npc_contested' | 'npc_none'. Thieu anh mau -> 'npc_none' (khong bam)."""
     if not tplneed.has(ctx.v, NPC_ATTACK, "nut Tan cong bang phien quan"):
         return "npc_none"
     if not ctx.world_ready():
-        return "npc_skip"
+        # P12-4 (live4 #3-#6 nha chinh 4-5: npc_skip ngay vi world.min_hq_level 6) - thanh nhiem vu tu dan ra ban do;
+        # khong toi duoc bang muc tieu thi 'npc_none' nhu cu. Danh LE phien quan NPC, khong phai tap ket Co giap.
+        log.info("Phien quan (nhiem vu): ban do chua chac mo (nha chinh thap) - van theo thanh nhiem vu, danh le")
     if ctx.march_full():
         log.info("Phien quan: het doi hanh quan ranh - de lan sau")
         return "npc_full"
     ctx.tap(*BANNER, wait=3.0)
     ctx.settle()
     p = ctx.find(NPC_ATTACK, th=0.85)
+    if not p and npc_popup_action(ctx.shot(), ctx.v) == "search":
+        p = npc_search(ctx)
     if not p:
         ctx.tap(*TARGET, wait=1.8)
         p = ctx.wait_for(NPC_ATTACK, timeout=3, th=0.85)
+    if not p and npc_popup_action(ctx.shot(), ctx.v) == "search":
+        p = npc_search(ctx)
     if not p:
         log.info("Phien quan: khong mo duoc bang muc tieu")
         ctx.save_debug("mainquest_npc_none")

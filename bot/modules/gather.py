@@ -109,33 +109,51 @@ def plus_minus_plan(cur, level):
     return ("+" if cur < level else "-", abs(level - cur))
 
 
+def snap_level(level, step):
+    """Ham thuan P12-4: o 'Cap' chi nhan boi so cua step (live4 #1 s184116/s184141: Co giap 5 -> 10 -> 5 moi lan bam
+    +/-, cap 7/8/9 khong ton tai) -> cap hop le gan nhat <= level (toi thieu step)."""
+    step = max(1, int(step or 1))
+    return max(step, int(level) // step * step) if step > 1 else int(level)
+
+
 def set_level(ctx, level, misses=2):
     """Bam +/- tung buoc (cham nhanh qua game bo qua) cho toi khi o 'Cap' = level, DOC LAI sau moi lan bam.
     P10-3: bam ma so khong doi `misses` lan lien tiep -> da cham tran/san (truoc: 1 lan la bo - lan cham dau co the chi
-    dong ban phim). Tra ve False neu khong dat duoc (vd mo hop kim thap nhat la cap 3)."""
+    dong ban phim). P12-4: 1 lan bam doi > 1 cap (buoc 5 cua Co giap) -> nho ctx.level_step, dich muc tieu ve boi so
+    gan nhat (snap_level) thay vi dao 5 <-> 10 roi bo. Tra ve False neu khong dat duoc (vd mo hop kim thap nhat la cap 3)."""
     minus = ctx.find("gather/btn_level_minus")
     plus = ctx.find("gather/btn_level_plus", fresh=False)
     if not (minus and plus):
         log.debug("Khong thay nut +/- cap, dung cap mac dinh cua game")
         return True
-    miss = 0
+    miss, target = 0, snap_level(level, getattr(ctx, "level_step", 1))
     for _ in range(40):
         cur = read_level(ctx)
         if cur is None:
             log.debug("Khong doc duoc cap - dung cap hien tai")
             return True
-        plan = plus_minus_plan(cur, level)
+        plan = plus_minus_plan(cur, target)
         if plan is None:
+            if target != level:
+                log.info("O Cap: buoc %s -> dung cap %d thay cho %d", getattr(ctx, "level_step", 1), target, level)
             return True
         btn = plus if plan[0] == "+" else minus
         ctx.dev.tap(btn[0], btn[1])
         time.sleep(0.6)
-        if read_level(ctx) == cur:  # bam ma khong doi
+        new = read_level(ctx)
+        if new == cur:  # bam ma khong doi
             miss += 1
             if miss >= misses:
                 return False
-        else:
-            miss = 0
+            continue
+        miss = 0
+        if new is not None and abs(new - cur) > 1 and new % abs(new - cur) == 0:
+            ctx.level_step = abs(new - cur)
+            t2 = snap_level(level, ctx.level_step)
+            if t2 != target:
+                log.info("O Cap: moi lan bam doi %d cap -> chi co boi so %d, muc tieu %d -> %d", ctx.level_step,
+                         ctx.level_step, level, t2)
+                target = t2
     return False
 
 
@@ -147,6 +165,7 @@ def type_level(ctx, level):
     plus = ctx.find("gather/btn_level_plus", fresh=False)
     if not (minus and plus) or not hasattr(ctx.dev, "type_digits"):
         return set_level(ctx, level)
+    level = snap_level(level, getattr(ctx, "level_step", 1))   # P12-4: buoc 5 (Co giap) da biet -> go boi so
     ctx.tap(minus[0] + LEVEL_TAP_DX[0], minus[1] + LEVEL_TAP_DX[1], wait=0.8)   # o "Cap" (KHONG phai thanh truot)
     ctx.dev.type_digits(int(level))
     time.sleep(0.5)
