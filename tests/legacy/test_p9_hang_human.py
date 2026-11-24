@@ -168,10 +168,11 @@ def test_recover_gives_up_after_max_and_on_failure():
 
 
 def test_runner_continues_with_next_step_after_recovery():
-    """Ma nguon run_account: khi dead -> goi _recover_device, thanh cong thi `continue` (buoc ke tiep), khong raise."""
+    """Ma nguon run_account: khi dead -> goi _recover_device, thanh cong thi `continue`
+    (P12-6: thu lai buoc 1 lan roi buoc ke tiep), khong raise."""
     src = inspect.getsource(Runner.run_account)
     i = src.index("self._recover_device(")
-    seg = src[i:i + 300]
+    seg = src[i:i + 900]   # P12-6: nhanh thu lai buoc 1 lan nam truoc continue
     assert "continue" in seg and "raise RuntimeError" in seg
     assert seg.index("continue") < seg.index("raise RuntimeError")   # cuu duoc -> buoc ke tiep; khong -> bo may
     assert "blind >= 2" in src[i - 600:i]                             # 2 buoc mu lien tiep cung duoc cuu

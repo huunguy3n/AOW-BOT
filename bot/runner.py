@@ -34,6 +34,12 @@ ORDER = [("warday", warday), ("tutorial", tutorial), ("shield", shield), ("allia
 DRAIN_AT = ("gather", "observe")
 
 
+def retry_after_recover(name, res, retried):
+    """Ham thuan P12-6: may vua duoc cuu (treo / ScreencapError) giua buoc `name` -> thu lai buoc do 1 lan (chi khi buoc
+    loi/ket, khong phai observe, chua thu lai trong lan ghe nay)."""
+    return name != "observe" and res in ("err", "stuck") and name not in retried
+
+
 class Stop(Exception):
     pass
 
@@ -516,7 +522,7 @@ class Runner:
         except (Exception, Stuck) as e:
             log.error("Cuu may #%d that bai: %s", idx, e)
             return False
-        log.info("May #%d da chay lai sau khi treo -> tiep tuc tu buoc ke tiep (sau %s)", idx, name)
+        log.info("May #%d da chay lai sau khi treo -> tiep tuc (buoc %s: thu lai 1 lan neu chua thu)", idx, name)
         return True
 
     def _backoff(self, cfg, idx, name, res, note):
@@ -714,6 +720,7 @@ class Runner:
                 ctx.quests_claim_only = True
                 log.info("Buoc quests tat -> chi nhan thuong nhiem vu (quests.claim_when_off)")
             qi, done, rerun = 0, {}, collections.Counter()
+            retried = set()           # P12-6: buoc da thu lai sau khi cuu may treo
             drained = False
             ctx.visit_done = done   # reddots: biet buoc nao vua chay xong ma khong lam duoc gi
             ctx.tap_guard = tapguard.TapGuard()   # P12-2: toa do cham 2 lan vo hieu -> danh sach den trong lan ghe
@@ -859,6 +866,12 @@ class Runner:
                     if self._recover_device(ctx, idx, pkg, cfg, recovers, name):
                         recovers += 1
                         blind = 0
+                        if retry_after_recover(name, res, retried):
+                            # P12-6 (live4 #2: upgrade 0 % - ScreencapError, may treo, khoi dong lai, bo buoc): lam lai
+                            # DUNG 1 lan buoc dang do
+                            retried.add(name)
+                            queue.insert(qi, (name, mod))
+                            log.warning("May #%d chay lai sau treo -> THU LAI buoc %s (1 lan)", idx, name)
                         continue
                     raise RuntimeError(f"May khong phan hoi o buoc {name} (khong chup duoc man hinh) - bo luot may nay")
                 if ctx.nav:

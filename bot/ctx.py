@@ -12,6 +12,17 @@ class Stuck(BaseException):
     'except Exception' trong module khong nuot mat; runner bat rieng va khoi dong lai game."""
 
 
+OUTSIDE = (12, 480)     # P12-6: diem ngoai popup (mep trai giua man, popup thuong cach mep >= 25 px)
+
+
+def popup_escape(scr, pstale):
+    """Ham thuan P12-6: popup / bang khong doi sau pstale lan thao tac lien tiep -> None (lam binh thuong: cham X) |
+    'back' (sau 3 lan X khong dong) | 'outside' (Back cung khong dong: lan 4, 6, ... xen ke Back / cham ngoai)."""
+    if scr not in ("popup", "panel") or pstale < 3:
+        return None
+    return "back" if pstale % 2 else "outside"
+
+
 class Ctx:
     def __init__(self, dev, vision, cfg):
         self.dev, self.v, self.cfg = dev, vision, cfg
@@ -339,12 +350,13 @@ class Ctx:
         nut o 'cho chet' (cham >= 8 lan hau nhu khong an) -> Back luon. Tra ve True neu toi dich."""
         from bot import screens
         L = self.learner
-        prev, stale = None, 0
+        prev, stale, pstale = None, 0, 0
         for _ in range(rounds):
             img = self.shot()
             scr, act, arg = screens.nav_action(img, self.v, target)
             changed = prev is None or not screens.same(prev, img)
             stale = 0 if changed else stale + 1
+            pstale = 0 if changed or scr not in ("popup", "panel") else pstale + 1
             if prev is not None and self.nav:
                 s0, a0, _ = self.nav[-1]
                 self.nav[-1] = (s0, a0, changed)       # ket qua cua hanh dong TRUOC (truoc day ghi lech 1 dong)
@@ -367,9 +379,17 @@ class Ctx:
                 if target == "world":
                     self._world_open(False)
                 return False
-            if stale >= 2 and act == "tap":
+            esc = popup_escape(scr, pstale)
+            if esc == "outside":
+                # P12-6 (live4 #5: btn_x @488,266 cham 48 lan, goto(city) hong 10 lan, watchdog sau 5 phut): X 3 lan +
+                # Back khong dong -> cham RA NGOAI popup (mep trai giua man). KHONG BAO GIO cham nut mua / gia / kim cuong.
+                log.info("goto: popup khong dong sau %d lan (X / Back) -> cham ra ngoai popup @%d,%d", pstale, *OUTSIDE)
+                act, arg, tpl = "tap", OUTSIDE, None
+            elif esc == "back" and act == "tap":
+                act = "back"
+            if stale >= 2 and act == "tap" and esc != "outside":
                 act = "back"  # cham hoai khong an thua -> Back
-            if act == "tap" and L and scr in ("popup", "panel"):
+            if act == "tap" and L and scr in ("popup", "panel") and esc != "outside":
                 if L.dead_spot(tpl, arg[0], arg[1]):
                     ok, n = L.spot(tpl, arg[0], arg[1])
                     log.info("goto: %s @%d,%d cham %d lan chi an %d -> dung Back (hoc tu kinh nghiem)", tpl, arg[0], arg[1], n, ok)
