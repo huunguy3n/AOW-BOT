@@ -261,6 +261,26 @@ def power_check(guard, ours, margin=0.0):
     return True, "ok"
 
 
+def pre_check(guard, legion, account=None, margin=0.0):
+    """P10-1 (live3 15:39:04: ho ve 108.031.985 > TONG luc chien ta 79.829.544 ma log "CHON DUOC" vi chua biet luc
+    doi). Ham thuan, loc o popup xe -> (ok, ly do). Biet luc doi hanh quan (man doi hinh lan truoc) -> power_check.
+    Chua biet: luc doi <= tong luc chien tai khoan -> ho ve >= tong luc chien = chac chan manh hon -> bo; con lai cho qua
+    TAM (kiem lai bang luc doi that sau "Doi hinh de xuat")."""
+    if not guard:
+        return False, "khong doc duoc luc chien ho ve"
+    if legion:
+        return power_check(guard, legion, margin)
+    if account and guard >= account:
+        return False, f"ho ve {guard:,} >= tong luc chien ta {account:,} (doi hanh quan con yeu hon)"
+    return True, "tam (chua biet luc doi - kiem o man doi hinh)"
+
+
+def _account_power(ctx):
+    st = ctx.store.inst(ctx.dev.idx) if getattr(ctx, "store", None) else {}
+    p = (st.get("resources") or {}).get("power") if isinstance(st, dict) else None
+    return p if isinstance(p, int) and p > 0 else None
+
+
 def _skipped(lm, name, power, now=None):
     """Xe (ten / luc chien +-1 %) da bo vi ho ve manh hon trong SKIP_H gio."""
     now = now or time.time()
@@ -314,10 +334,12 @@ def loot_button(ctx, img):
 
 def world_popup_kind(rarity, btn, toast, rar=("SSR", "SR")):
     """Ham thuan: popup tren ban do sau "Toi cuop boc" -> 'loot' (dung popup: SR/SSR + nut Cuop boc) |
-    'server_change' (thong bao doi server / xe khac) | 'no_loot_btn' (chi co "Xem") | 'wrong_rarity'."""
-    if btn and rarity in rar and not toast:
+    'server_change' (thong bao doi server, KHONG co nut Cuop boc) | 'no_loot_btn' (chi co "Xem") | 'wrong_rarity'.
+    P10-1 (live3 15:39:09): toast "Da chuyen doi sang sv ServerID #6" DE LEN popup SSR dung (co nut Cuop boc) -> phan
+    loai theo SU CO MAT nut "Cuop boc", bo qua chu toast; chi la doi server khi KHONG co nut."""
+    if btn and rarity in rar:
         return "loot"
-    if toast:
+    if toast and not btn:
         return "server_change"
     if not btn:
         return "no_loot_btn"
@@ -327,11 +349,11 @@ def world_popup_kind(rarity, btn, toast, rar=("SSR", "SR")):
 def world_popup(ctx, rar, timeout=6.0):
     """Cho popup xe tren ban do (toi `timeout` s). -> (loai, toa do nut Cuop boc | None)."""
     t0, kind, btn = time.time(), "no_loot_btn", None
-    while time.time() - t0 < timeout:
+    while time.time() - t0 < timeout:                   # P10-1: toast doi server mo sau ~1 s -> chup lai toi het gio
         img = ctx.shot()
         btn = loot_button(ctx, img)
-        kind = world_popup_kind(world_rarity(img), btn, server_toast(img), rar)
-        if kind in ("loot", "server_change"):
+        kind = world_popup_kind(world_rarity(img), btn, server_toast(img) if not btn else False, rar)
+        if kind == "loot":
             break
         time.sleep(0.6)
     return kind, btn
@@ -387,6 +409,7 @@ def _loot_once(ctx, lc):
     lm = _loot_mem(ctx)
     legion = lm.get("legion")
     pmargin = lc.get("power_margin", 0.0)
+    account = _account_power(ctx)
     rar = tuple(lc.get("rarity", ["SSR", "SR"]))
     crystal_only = lc.get("crystal_only", True)
     cands = []                                          # doc tung xe cam/tim -> chon doi thu YEU NHAT dat nguong
@@ -410,9 +433,10 @@ def _loot_once(ctx, lc):
                 ok, why = False, "khong cho pha le xanh"
             elif _skipped(lm, name, pw):
                 ok, why = False, f"da bo trong {SKIP_H}h (ho ve manh hon)"
-            elif ok and legion:                         # P8-2 loc som theo luc chien ta doc o man doi hinh lan truoc
-                ok, why = power_check(pw, legion, pmargin)
-            log.info("Cuop boc: xe %s %s '%s' luc chien %s -> %s", col, r, name, pw, "CHON DUOC" if ok else why)
+            elif ok:                                    # P8-2/P10-1 loc som: luc doi (lan truoc) / tong luc chien
+                ok, why = pre_check(pw, legion, account, pmargin)
+            log.info("Cuop boc: xe %s %s '%s' luc chien %s -> %s", col, r, name, pw,
+                     ("CHON DUOC" if why == "ok" else f"CHON TAM, {why}") if ok else why)
             if ok:
                 cands.append((pw, x, y, name))
             ctx.tap(270, 150, wait=0.8)                 # dong popup (cham ra ngoai)

@@ -31,7 +31,7 @@ def test_kind_pure():
     assert play.world_popup_kind("SSR", (346, 575), False) == "loot"
     assert play.world_popup_kind("SR", (346, 575), False) == "loot"
     assert play.world_popup_kind("N", None, True) == "server_change"
-    assert play.world_popup_kind("SSR", (346, 575), True) == "server_change"   # thong bao doi server -> khong tin
+    assert play.world_popup_kind("SSR", (346, 575), True) == "loot"   # P10-1: co nut Cuop boc -> bo qua toast
     assert play.world_popup_kind("SSR", None, False) == "no_loot_btn"
     assert play.world_popup_kind("N", (346, 575), False) == "wrong_rarity"
 
