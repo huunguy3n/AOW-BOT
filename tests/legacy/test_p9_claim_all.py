@@ -59,7 +59,7 @@ def test_tabs_until_clear_empties_current_tab_before_switching():
 
 
 def test_recruit_uses_loop(monkeypatch):
-    left = {"recruit/tab_premium": 1, "recruit/tab_normal": 2}
+    left = {"current": 0, "recruit/tab_premium": 1, "recruit/tab_normal": 2}
 
     def once(ctx, tab, use_tickets):
         if left[tab] <= 0:
@@ -68,7 +68,9 @@ def test_recruit_uses_loop(monkeypatch):
         return 1
     monkeypatch.setattr(notify, "_recruit_once", once)
     ctx = types.SimpleNamespace(cfg={}, tap_tpl=lambda *a, **k: True, find=lambda *a, **k: True,
-                                save_debug=lambda *a: None)
+                                save_debug=lambda *a: None, shot=lambda: None,
+                                v=types.SimpleNamespace(find=lambda *a, **k: None))   # tab khong biet -> vao thu
+    monkeypatch.setattr(notify, "red_dots", lambda img: [])
     assert notify.recruit(ctx) == 3 and not any(left.values())
 
 

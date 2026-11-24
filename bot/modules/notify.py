@@ -688,19 +688,40 @@ RECRUIT_LABEL = {"free": "1 lan (mien phi)", "ten": "10 lan (phieu)", "one_free"
 
 
 RECRUIT_TABS = ("recruit/tab_premium", "recruit/tab_normal")
+RECRUIT_TAB_DOT = (87, -84)        # cham do goc tren-phai the tab (live3 recruit_dot_left: tab thuong 385,927 -> 472,843)
+FREE_BTN_ROI = (60, 690, 200, 70)  # nut trai "Mien phi" (teal, live3 recruit_dot_left 78-236 x 698-748)
+
+
+def recruit_tab_dot(img, tab_pos, dots):
+    """Ham thuan: the tab o `tab_pos` co cham do goc tren-phai? tab_pos None -> None (khong biet)."""
+    if not tab_pos:
+        return None
+    dx, dy = RECRUIT_TAB_DOT
+    return any(abs(d[0] - tab_pos[0] - dx) < 35 and abs(d[1] - tab_pos[1] - dy) < 30 for d in dots)
+
+
+def _free_by_text(img):
+    """P10-2: du phong khi anh mau recruit/btn_free khong khop - nut teal co chu 'Mien phi' o vung nut trai. -> (x, y)."""
+    from bot import buttons
+    for b in buttons.with_text(img, r"mi\w{0,2}n\s*ph", FREE_BTN_ROI):
+        return b.x, b.y
+    return None
 
 
 def _recruit_once(ctx, tab, use_tickets):
     """1 lan bam o tab dang mo (cham do: Mien phi / 10 lan co cham do / Qua Chieu Mo). -> 1 neu bam duoc, 0 neu het."""
     # doi the chieu mo truot xong: chup khi chua yen thi nut chua khop -> bo qua luot mien phi
     # (#0 2026-11-20: nut "Mien phi" co cham do o tab Chieu mo thuong ma bot nhan 0)
-    for _ in range(4):
+    for _ in range(6):                  # P10-2: the truot sau khi doi tab -> cho yen (6 lan) roi moi quyet dinh
         img = ctx.shot()
         ten = ctx.v.find(img, "recruit/btn_ten")
         free = ctx.v.find(img, "recruit/btn_free", th=0.85)
         if (ten or free) and screens.same(img, ctx.shot()):
             break
         time.sleep(1.0)
+    if not free:
+        ft = _free_by_text(img)
+        free = (ft[0], ft[1], 1.0) if ft else None       # tam nut theo chu (tap = free.y)
     if recruit_gift(ctx, img):
         return 1
     # nut "Mien phi" (luot mien phi trong ngay, nut trai) -> uu tien (do #5 2026-11-18: truoc day bi bo sot);
@@ -734,9 +755,15 @@ def recruit(ctx):
     from bot import claimloop
     use_tickets = ctx.cfg.get("recruit", {}).get("use_tickets", False)
     rc = ctx.cfg.get("recruit", {})
-    n, book = claimloop.tabs_until_clear(
-        RECRUIT_TABS, lambda tab: ctx.tap_tpl(tab, wait=1.5), lambda tab: _recruit_once(ctx, tab, use_tickets),
-        max_per_tab=rc.get("max_per_tab", 6), max_rounds=rc.get("max_rounds", 3))
+    def has_dot(tab):
+        img = ctx.shot()
+        p = ctx.v.find(img, tab, th=0.85)
+        return recruit_tab_dot(img, p, red_dots(img))
+
+    # P10-2: tab HIEN TAI truoc (live3: mo san tab thuong co "Mien phi" ma bot sang cao cap truoc), roi tab con cham do
+    n, book = claimloop.current_then_tabs(
+        RECRUIT_TABS, lambda tab: ctx.tap_tpl(tab, wait=2.0), lambda tab: _recruit_once(ctx, tab, use_tickets),
+        has_dot, max_per_tab=rc.get("max_per_tab", 6), max_rounds=rc.get("max_rounds", 3))
     if n:
         log.info("Chieu mo: %d lan (%s)", n, ", ".join(f"{t.split('_')[-1]} {k}" for t, k in book if k))
     if not n and ctx.find("recruit/title"):

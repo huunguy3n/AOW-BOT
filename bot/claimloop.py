@@ -42,3 +42,34 @@ def tabs_until_clear(tabs, enter, claim_once, max_per_tab=10, max_rounds=3):
         if not got_round:
             break
     return total, logbook
+
+
+def current_then_tabs(tabs, enter, claim_once, has_dot, max_per_tab=10, max_rounds=3):
+    """P10-2 (live-run-3 15:31:17: man Chieu mo mo san tab THUONG co nut "Mien phi" + cham do, bot lai chuyen sang tab
+    cao cap truoc roi bo ve -> nhan 0). Bam HET o tab HIEN TAI truoc (khong chuyen tab), roi moi vao tab con cham do
+    (`has_dot(tab)`: True / False / None = khong biet -> vao thu); lap toi khi ca vong khong nhan them hoac khong tab nao
+    con cham do. -> (tong, nhat ky [(tab, so lan)]); tab hien tai ghi la "current"."""
+    def drain(tab):
+        got = 0
+        for _ in range(max_per_tab):
+            n = claim_once(tab) or 0
+            if n <= 0:
+                break
+            got += n
+        return got
+    total = drain("current")
+    logbook = [("current", total)]
+    for _ in range(max_rounds):
+        got_round, entered = 0, 0
+        for tab in tabs:
+            if has_dot(tab) is False:
+                continue
+            enter(tab)
+            entered += 1
+            got = drain(tab)
+            logbook.append((tab, got))
+            got_round += got
+        total += got_round
+        if not entered or not got_round:
+            break
+    return total, logbook
