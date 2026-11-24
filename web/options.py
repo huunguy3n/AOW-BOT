@@ -64,6 +64,7 @@ GROUPS = [
     ("Chấm đỏ thông báo", [
         dict(key="notify.welfare", label="TT phúc lợi (Nhận miễn phí)", type="bool", ready=True),
         dict(key="rewards.use_vip_items", label="Dùng vật phẩm Thời gian VIP để nhận Rương ngày VIP (không mua thẻ tháng)", type="bool", ready=True),
+        dict(key="rewards.use_vip_points", label="Dùng vật phẩm điểm VIP đã có (bảng Tăng cấp VIP, không bấm \"Mua và dùng\")", type="bool", ready=True),
         dict(key="notify.bubble", label="Bong bóng Nhận / Thưởng online", type="bool", ready=True),
         dict(key="notify.activity", label="Hoạt động trò chơi", type="bool", ready=True),
         dict(key="notify.intel", label="Tình báo (đánh nhiệm vụ)", type="bool", ready=True),

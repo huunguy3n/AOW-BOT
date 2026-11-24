@@ -65,6 +65,7 @@ rewards:
   # free_chest: chua tim thay ruong mien phi that (Ruong vat tu chien tranh: nut Mien phi bi khoa sau goi tra phi)
   routes: [mail, vip, celebration, city]
   use_vip_items: true     # Ruong ngay VIP can VIP: dung vat pham 'Thoi gian VIP' (nut Dung) - chu du an cho phep 2026-11-20; KHONG mua The thang
+  use_vip_points: true    # P12-3 (t57u): bang 'Tang cap VIP' -> bam 'Dung' hang vat pham diem VIP DA CO, lap toi het; KHONG 'Mua va dung' / kim cuong
   max_taps_per_route: 30
   repeat_until_clear: true   # P7-3: tuyen thu lap toi khi icon thu het so do (nhan het, tab dau tien truoc)
   repeat_rounds: 4           # toi da so lan mo lai icon thu / icon qua lien minh moi buoc

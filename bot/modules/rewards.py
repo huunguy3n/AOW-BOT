@@ -60,11 +60,73 @@ def vip_dots(ctx, max_taps=5):
                 log.info("VIP: kich hoat bang vat pham (Dung)")
                 ctx.dismiss_reward()
                 got += 1
+        if (ctx.cfg.get("rewards") or {}).get("use_vip_points", True) and ctx.v.find(after, "rewards/vip/title_upgrade",
+                                                                                      th=0.9):
+            got += vip_points(ctx)          # P12-3: bang Tang cap VIP -> Dung vat pham diem VIP da co
         n += got
         log.info("VIP: cham do @%d,%d -> nhan %d", x, y, got)
         g.record("vip", x, y, got > 0, "nhan 0")
         ctx.dismiss_reward()
         ctx.tap_first(["common/btn_close"], wait=1.0)      # dong bang con mo (neu co) de ve trang VIP
+    return n
+
+
+VIP_USE_ROI = (380, 280, 150, 480)   # cot nut cac hang trong bang "Tang cap VIP" (s181950: nut Dung 452,416)
+
+
+def safe_vip_use(label_text, btn_text):
+    """Ham thuan P12-3 (t57u): nut hang diem VIP chi bam khi la 'Dung' vat pham DA CO: nhan phia tren nut khong co
+    'Mua' ('Mua va dung') va chu tren nut khong co so (gia kim cuong 20 / 1000 / 2000 / 10000)."""
+    lab = (label_text or "").lower()
+    if "mua" in lab or "mu a" in lab:
+        return False
+    return not any(c.isdigit() for c in (btn_text or ""))
+
+
+def vip_point_buttons(img, v, texts=None):
+    """Ham thuan P12-3: man 'Tang cap VIP' (title_upgrade) -> [(x, y)] nut 'Dung' (btn_use_points, nen xanh dam)
+    cua hang vat pham diem VIP dang co. Hang 'Mua va dung' (nut xanh ngoc co kim cuong) KHONG bao gio tra ve.
+    texts(img, x, y) -> (nhan phia tren, chu tren nut) de loc them bang OCR (None = chi anh mau)."""
+    if not v.find(img, "rewards/vip/title_upgrade", th=0.9):
+        return []
+    out = []
+    for p in v.find_all(img, "rewards/vip/btn_use_points", th=0.92, roi=VIP_USE_ROI):
+        x, y = int(p[0]), int(p[1])
+        if texts is not None and not safe_vip_use(*texts(img, x, y)):
+            log.warning("VIP diem: nut @%d,%d co chu 'Mua' / gia kim cuong - KHONG bam", x, y)
+            continue
+        out.append((x, y))
+    return sorted(out, key=lambda p: p[1])
+
+
+def _vip_use_texts(img, x, y):
+    from bot import ocr
+    return (ocr.text(img, (x - 50, y - 38, 110, 20)), ocr.text(img, (x - 42, y - 15, 84, 30)))
+
+
+def vip_points(ctx, max_taps=12):
+    """P12-3 (t57u, live4 @414,175 'nhan 0' vi bang Tang cap VIP khong co nut 'Nhan'): bam 'Dung' o hang vat pham diem
+    VIP da co (vd 100 diem VIP x4) lap toi khi het nut. KHONG bao gio 'Mua va dung' / nut kim cuong / mua goi VIP."""
+    from bot import screens, tapguard
+    g = tapguard.of(ctx)
+    n = 0
+    for _ in range(max_taps):
+        img = ctx.shot()
+        btns = g.keep("vip_use", vip_point_buttons(img, ctx.v, _vip_use_texts))
+        if not btns:
+            break
+        x, y = btns[0]
+        ctx.tap(x, y, wait=1.5)
+        ctx.tap_tpl("common/btn_confirm", wait=1.2)      # hop xac nhan dung (neu co)
+        ctx.dismiss_reward()
+        after = ctx.shot()
+        changed = not screens.same(img, after)
+        g.record("vip_use", x, y, changed, "bam Dung man khong doi")
+        if changed:
+            n += 1
+            log.info("VIP diem: Dung vat pham diem VIP @%d,%d (lan %d)", x, y, n)
+    if n:
+        log.info("VIP diem: da dung %d lan vat pham diem VIP", n)
     return n
 
 
