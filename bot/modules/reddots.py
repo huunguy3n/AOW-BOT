@@ -151,6 +151,25 @@ KIND_STEP = {"intel": "intel", "campaign": "campaign", "daily": "daily", "play":
              "mission": "mission"}
 
 
+# P10-5 (live3 15:34-15:37:49: cham do Tinh bao an ~4 phut cua 240 s -> het gio, con 11 cham do: thu, qua lien minh...)
+CLAIM_KINDS = ("mail", "ally_gift", "vip", "shop_gift", "recruit", "hero")   # nhan qua nhanh - lam ca khi het gio (grace)
+DEFER_KINDS = ("intel", "play", "rally", "campaign")                          # tien trinh dai co buoc rieng
+
+
+def defer_to_step(kind, pending):
+    """Ham thuan: cham do loai tien trinh dai ma buoc rieng CON CHO trong luot nay -> de buoc rieng lam (khong ton thoi
+    gian quet cham do). -> ten buoc | None."""
+    step = KIND_STEP.get(kind)
+    return step if kind in DEFER_KINDS and step and pending and step in pending else None
+
+
+def in_budget(kind, now, deadline, grace_s):
+    """Ham thuan: con duoc xu ly cham do loai nay? Het max_s -> chi loai nhan qua (CLAIM_KINDS) them grace_s giay."""
+    if deadline is None or now < deadline:
+        return True
+    return kind in CLAIM_KINDS and now < deadline + grace_s
+
+
 def already_idle(ctx, kind):
     """Buoc rieng cua icon nay vua chay TRONG LAN GHE NAY va khong lam duoc gi -> mo lai cham do cung vo ich
     (cham do van hien vi game dem thong bao khac; do 2026-11-22: campaign/intel/daily mo lai ~20-40 s moi cai)."""
@@ -209,6 +228,33 @@ def _handle(ctx, kind, x, y):
     finally:
         notify.leave(ctx)
         ctx.ensure_city()
+
+
+def final_claims(ctx):
+    """P10-5: quet NHAN QUA cuoi luot (truoc observe) - thu (moi tab co cham do, ca Bao cao: tran tinh bao / dau truong /
+    thu thap sinh bao cao MOI sau buoc reddots), hop qua lien minh (Qua dac biet + Ruong Lv.N + Qua thuong), chieu mo.
+    Live3 cuoi luot: hop qua 12, thu 4, chieu mo 1. Khong cham goi tra phi (cac ham nhan dung chung, loc chu). -> so lan."""
+    rc = rcfg(ctx.cfg)
+    if not rc["final_claims"]:
+        return 0
+    mods, rw = ctx.cfg.get("modules", {}), ctx.cfg.get("rewards", {})
+    got = {}
+    ctx.ensure_city()
+    if mods.get("alliance", True) and rw.get("ally_gift", True):
+        got["ally_gift"] = rewards.ally_gift_until_clear(ctx, rw.get("repeat_rounds", 4))
+    if mods.get("rewards", True) and "mail" in (rw.get("routes") or []):
+        got["mail"] = rewards.run_until_clear(ctx, "mail", rw.get("max_taps_per_route", 30), rw.get("repeat_rounds", 4))
+    ok, _why = allowed("recruit", ctx.cfg)
+    if ok:
+        ctx.ensure_city()
+        img = ctx.shot()
+        p = ctx.v.find(img, "badge/recruit")
+        dot = next((d for d in red_dots(img) if _near(d, p)), None) if p else None
+        if dot:
+            got["recruit"] = _handle(ctx, "recruit", dot[0], dot[1]) or 0
+    ctx.ensure_city()
+    log.info("Nhan qua cuoi luot: %s", got)
+    return sum(v for v in got.values() if isinstance(v, int))
 
 
 def _free_chest(ctx, img, d):
@@ -274,7 +320,8 @@ def _open_dot(ctx, x, y):
 
 def rcfg(cfg):
     """A-OPT-1 (PM 2026-11-23): reddots khong chay moi lan ghe - gioi han thoi gian / tan suat, nho icon vo ich."""
-    return {"max_rounds": 6, "skip_idle_steps": True, "dead_h": 2, "dead_cap_h": 24, "max_s": 240,
+    return {"claim_grace_s": 90, "final_claims": True,
+            "max_rounds": 6, "skip_idle_steps": True, "dead_h": 2, "dead_cap_h": 24, "max_s": 240,
             "min_interval_min": 30, **(cfg.get("reddots") or {})}
 
 
@@ -370,15 +417,21 @@ def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
             ctx.ensure_city()
         # cac cham do con lai (cot phai truoc, roi tren xuong): mo tung cai 1 lan / vong
         for _ in range(12):
-            if over():
-                timed_out = True
-                break
             img = ctx.shot()
             todo = _order([d for d in _left(img, ctx.v) if _key(d) not in dead])
             if not todo:
                 break
             (x, y), kind = pick([(d, _kind(ctx, img, d)) for d in todo])   # P7-3: so do co the nhan truoc
             k = _key((x, y))
+            if not in_budget(kind, time.time(), deadline, rc["claim_grace_s"]):
+                timed_out = True        # P10-5: het gio - chi con loai nhan qua (thu, qua lien minh...) duoc lam them
+                break
+            step_later = defer_to_step(kind, getattr(ctx, "visit_pending", None))
+            if step_later:
+                dead.add(k)
+                ignored.add(k)
+                log.info("Cham do %s @%d,%d: buoc rieng '%s' chay sau trong luot nay - de no lam", kind, x, y, step_later)
+                continue
             ok, gate = allowed(kind, ctx.cfg)
             if not ok:
                 dead.add(k)

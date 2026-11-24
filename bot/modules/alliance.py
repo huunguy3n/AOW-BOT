@@ -2,7 +2,7 @@
 
 KHONG tu dong: nhan tin kenh lien minh (gui tin thay ban), mua do tiem lien minh, xay co.
 """
-import re, logging
+import re, logging, time
 from bot import buttons, ocr, tplneed
 
 log = logging.getLogger("aow")
@@ -179,17 +179,23 @@ def special_claim(ctx, max_taps=30):
         ctx.dismiss_reward()
         n += 1
         log.info("Qua lien minh dac biet: nhan toan bo")
-    dead = set()
+    dead, miss = set(), {}
     for _ in range(max_taps):
         img = ctx.shot()
         todo = [b for b in buttons.with_text(img, NHAN_RX, GIFT_LIST_ROI) if (b.x // 20, b.y // 20) not in dead]
         if not todo:
             break
         b = todo[0]
+        k = (b.x // 20, b.y // 20)
         ctx.tap(b.x, b.y, wait=1.2)
         if screens.same(img, ctx.shot()):
-            dead.add((b.x // 20, b.y // 20))
-            continue
+            time.sleep(1.0)                 # P10-5 (live3 s153317: 2 mon con lai bi bo): hieu ung nhan cham -> chup lai
+            if screens.same(img, ctx.shot()):
+                miss[k] = miss.get(k, 0) + 1
+                if miss[k] >= 2:            # 2 lan bam khong doi -> nut khong tac dung
+                    dead.add(k)
+                continue
+        miss.pop(k, None)
         ctx.dismiss_reward()
         n += 1
     if n:

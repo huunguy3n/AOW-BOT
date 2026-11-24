@@ -234,6 +234,9 @@ reddots:
   max_s: 240           # A-OPT-1 (PM 2026-11-23): toi da N giay moi lan quet (0 = khong gioi han). P9-2: 90 -> 240
                        # (live-run-2: het 90 s con 14 cham do; P9-3 nhan HET cham do moi man - can them thoi gian)
   min_interval_min: 30 # moi may toi da 1 lan / N phut, tru khi notify vua nhan duoc qua hoac co cham do MOI
+  claim_grace_s: 90     # P10-5: het max_s van lam them N giay cho cham do NHAN QUA (thu, qua lien minh, VIP, Qua, chieu mo)
+  final_claims: true    # P10-5: truoc observe quet lai thu (moi tab co cham do, ca Bao cao) + qua lien minh + chieu mo
+                        # (live3: tran tinh bao / dau truong / thu thap sinh thu bao cao MOI sau buoc reddots)
   chat_clear: true      # mo roi thoat bang Tro chuyen de mat huy hieu tin nhan chua doc (chi doc, khong gui) - chu du an 2026-11-22
 recruit:
   use_tickets: false   # chi chieu mo mien phi; true = dung ca phieu (KHONG BAO GIO kim cuong)

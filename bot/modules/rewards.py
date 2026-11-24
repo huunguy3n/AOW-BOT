@@ -15,12 +15,23 @@ from bot.badges import red_dots, city_bubbles
 log = logging.getLogger("aow")
 
 
-def claim_tab(ctx, claims, onces, max_taps):
+ONCE_ROI = {"mail": (270, 860, 270, 100)}   # P10-5: "Doc & nhan nhanh" o goc PHAI duoi; "Xoa tat ca da doc" ben trai
+ITEM_DOTS = {"mail": (480, 100, 60, 760)}   # cham do tren tung dong thu (s153252: x 515) -> con thu chua doc / chua nhan
+
+
+def claim_tab(ctx, claims, onces, max_taps, route=None):
     n = ctx.claim_loop(claims, max_taps) if claims else 0
-    for o in onces:  # nut luon hien (vd "Doc & nhan nhanh") -> chi bam 1 lan
-        if ctx.tap_tpl(o, wait=1.5):
+    roi = ONCE_ROI.get(route)
+    for o in onces:  # nut luon hien (vd "Doc & nhan nhanh") -> bam 1 lan; P10-5: lap lai (toi 3) khi dong thu con cham do
+        for k in range(3):
+            if not (ctx.tap_tpl(o, wait=1.5, roi=roi) if roi else ctx.tap_tpl(o, wait=1.5)):
+                break
             ctx.dismiss_reward()
             n += 1
+            dots_roi = ITEM_DOTS.get(route)
+            if not dots_roi or not red_dots(ctx.shot(), dots_roi):
+                break
+            log.info("Thu: con dong cham do sau 'Doc & nhan nhanh' lan %d - bam lai", k + 1)
     return n
 
 
@@ -124,7 +135,7 @@ def run_route(ctx, prefix, max_taps=30):
     if strip:
         # tab co cham do (so tren tab che mat chu -> anh mau tab khong khop) -> cham tab theo cham do.
         # P7-3 (chu du an 2026-11-24): nhan het o tab DAU TIEN (dang mo) truoc, roi moi sang tab co cham do
-        total += claim_tab(ctx, claims, onces, max_taps)
+        total += claim_tab(ctx, claims, onces, max_taps, route)
         done = set()
         for _ in range(6):
             dots = [d for d in red_dots(ctx.shot(), tuple(strip)) if d[0] // 50 not in done]
@@ -132,8 +143,8 @@ def run_route(ctx, prefix, max_taps=30):
                 break
             x, y = dots[0]
             done.add(x // 50)
-            ctx.tap(x - 40, y + 14, wait=1.2)   # cham do o goc tren-phai tab
-            total += claim_tab(ctx, claims, onces, max_taps)
+            ctx.tap(x - 40, y + 14, wait=1.2)   # cham do o goc tren-phai tab (P10-5: ca tab Bao cao)
+            total += claim_tab(ctx, claims, onces, max_taps, route)
         ctx.ensure_city()
         return total
     tabs = ctx.v.list(prefix + "tab_")
