@@ -111,12 +111,14 @@ def free_column_tiles(tiles, epic_y):
 def claim_glow_tiles(ctx, max_taps=6):
     """O qua phat sang khong co nut "Nhan" rieng (tab "Qua dang nhap", "Chuc phuc tan thu", "Diem danh 30 ngay"):
     cham thang vao o. P9-3: chay TRUOC khi luot danh sach (Diem danh 30 ngay: bam o hao quang, KHONG luot)."""
+    from bot import tapguard
+    g = tapguard.of(ctx)
     n, seen = 0, set()
     for _ in range(max_taps):
         img = ctx.shot()
         # glow_tiles: vien xanh ngoc (Qua dang nhap); nhan_tiles: chu "Nhan" xanh la + vien vang (Diem danh 30 ngay)
         tiles = [t for t in glow_tiles(img) + nhan_tiles(img) if (t[0] // 30, t[1] // 30) not in seen]
-        tiles = free_column_tiles(tiles, epic_header(img))
+        tiles = g.keep("glow", free_column_tiles(tiles, epic_header(img)))   # P12-2: o bam 2 lan van sang -> bo
         if not tiles:
             break
         x, y = tiles[0]
@@ -129,6 +131,9 @@ def claim_glow_tiles(ctx, max_taps=6):
             log.info("Diem danh: nhan phan thuong co ban")
         ctx.dismiss_reward()
         n += 1
+        after = ctx.shot()   # o van phat sang cung cho -> cham khong co hieu ung (live4 @139,530 bam 4-5 lan)
+        still = any(abs(t[0] - x) <= 15 and abs(t[1] - y) <= 15 for t in glow_tiles(after) + nhan_tiles(after))
+        g.record("glow", x, y, not still, "o van phat sang")
     return n
 
 

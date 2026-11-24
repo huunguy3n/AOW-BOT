@@ -9,7 +9,7 @@ from bot.device import LDConsole, Device
 from bot.ctx import Ctx, Stuck
 from bot import ocr
 from bot.memory import Memory
-from bot import hang, perf, quest_rules, queues, scheduler, stepgate
+from bot import hang, perf, quest_rules, queues, scheduler, stepgate, tapguard
 from aowbot.domain import drain, rollout
 from aowbot.domain import warday as W
 from bot.modules import tutorial, mainquest, construct, city, rewards, alliance, quests, campaign, notify, research, train, rebels, gather, daily, observe, defense, intel, reddots, play, upgrade, heal, warday, mission, shield
@@ -716,6 +716,7 @@ class Runner:
             qi, done, rerun = 0, {}, collections.Counter()
             drained = False
             ctx.visit_done = done   # reddots: biet buoc nao vua chay xong ma khong lam duoc gi
+            ctx.tap_guard = tapguard.TapGuard()   # P12-2: toa do cham 2 lan vo hieu -> danh sach den trong lan ghe
             dcfg = cfg.get("drain") or {}
             t_visit = time.time()
             while qi < len(queue):

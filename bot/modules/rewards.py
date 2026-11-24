@@ -39,10 +39,13 @@ def vip_dots(ctx, max_taps=5):
     """Man 'Dac quyen VIP' (chu du an 2026-11-22: anh 3 cham do - dau '+', ruong goc phai, nut dong ho duoi): bam tung
     cham do tren trang VIP, CHI nhan nut 'Nhan' xanh (claim_buttons theo mau+chu) / dung vat pham VIP da co (nut 'Dung').
     Khong bam nut co gia (khung 'VIP1 gioi han mua' co gia kim cuong, khong co cham do). Anh moi bang luu logs/shots."""
+    from bot import tapguard
+    g = tapguard.of(ctx)
     n, seen = 0, set()
     for _ in range(max_taps):
         img = ctx.shot()
         dots = [d for d in red_dots(img, (0, 60, 540, 900)) if (d[0] // 30, d[1] // 30) not in seen]
+        dots = g.keep("vip", dots)          # P12-2: cham do VIP 2 lan nhan 0 (live4 @414,175) -> bo trong lan ghe
         if not dots:
             break
         x, y = sorted(dots, key=lambda d: (d[1] // 30, d[0]))[0]
@@ -59,6 +62,7 @@ def vip_dots(ctx, max_taps=5):
                 got += 1
         n += got
         log.info("VIP: cham do @%d,%d -> nhan %d", x, y, got)
+        g.record("vip", x, y, got > 0, "nhan 0")
         ctx.dismiss_reward()
         ctx.tap_first(["common/btn_close"], wait=1.0)      # dong bang con mo (neu co) de ve trang VIP
     return n

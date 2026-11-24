@@ -14,7 +14,7 @@ import logging, os, time
 import cv2
 from bot.badges import red_dots
 from aowbot.domain import drain
-from bot import scheduler, screens, stepgate
+from bot import scheduler, screens, stepgate, tapguard
 from bot.modules import notify, rewards, intel, campaign, daily, alliance, play, rebels, research, train, upgrade, chat
 
 log = logging.getLogger("aow")
@@ -168,6 +168,13 @@ def in_budget(kind, now, deadline, grace_s):
     if deadline is None or now < deadline:
         return True
     return kind in CLAIM_KINDS and now < deadline + grace_s
+
+
+def remaining(dots, ignored_keys, guard):
+    """Ham thuan P12-2: cham do con can lam = chua co y bo qua va chua vao danh sach den. -> (con lam, da den)."""
+    rest = [d for d in dots if _key(d) not in ignored_keys]
+    black = [d for d in rest if guard.blocked("reddot", d[0], d[1])]
+    return [d for d in rest if d not in black], black
 
 
 def already_idle(ctx, kind):
@@ -404,6 +411,7 @@ def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
     ignored = set()                 # cham do CO Y bo qua (tap hop phan quan, qua lien minh het luot) -> khong tinh 'con sot'
     use_notify = ctx.cfg.get("modules", {}).get("notify", True)
     left, timed_out, img = [], False, None
+    guard = tapguard.of(ctx)       # P12-2: toa do 2 lan vo hieu (ca o buoc khac trong lan ghe) -> bo qua
 
     def over():
         return deadline is not None and time.time() >= deadline
@@ -418,7 +426,7 @@ def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
         # cac cham do con lai (cot phai truoc, roi tren xuong): mo tung cai 1 lan / vong
         for _ in range(12):
             img = ctx.shot()
-            todo = _order([d for d in _left(img, ctx.v) if _key(d) not in dead])
+            todo = _order([d for d in guard.keep("reddot", _left(img, ctx.v)) if _key(d) not in dead])
             if not todo:
                 break
             (x, y), kind = pick([(d, _kind(ctx, img, d)) for d in todo])   # P7-3: so do co the nhan truoc
@@ -453,6 +461,7 @@ def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
                     continue
             n = _handle(ctx, kind, x, y)
             n = n if isinstance(n, int) else 0
+            guard.record("reddot", x, y, n > 0, f"{kind} khong lam duoc gi")
             handled[k] = handled.get(k, 0) + 1
             # cham do khong bao gio mat (so "66" o nut Lien minh = tin nhan / thong bao) -> moi vi tri toi da
             # 2 lan / buoc, Lien minh 1 lan (chu du an 2026-11-21: "khong co hoat dong ma he thong lien tuc bam")
@@ -473,9 +482,13 @@ def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
         total += got
         ctx.ensure_city()
         img = ctx.shot()
-        left = [d for d in _left(img, ctx.v) if _key(d) not in ignored]
+        left, black = remaining(_left(img, ctx.v), ignored, guard)
         if not left:
-            log.info("Het cham do sau %d vong", rnd)
+            if black:
+                log.info("Het cham do lam duoc sau %d vong - chi con cham do trong danh sach den: %s",
+                         rnd, guard.summary())
+            else:
+                log.info("Het cham do sau %d vong", rnd)
             break
         if timed_out or over():
             timed_out = True
