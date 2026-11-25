@@ -359,6 +359,9 @@ def _open_dot(ctx, x, y):
     if ctx.is_home():                          # cham trung cho trong / icon khong mo man -> khong co gi de nhan
         return 0
     opened = ctx.shot()
+    from bot.modules import champion      # P13d-5: icon vua mo la man cuoc Quan quan tuan -> dat cuoc (bar su kien, khong kim cuong)
+    if champion.screen_of(ctx, opened):
+        return champion.handle(ctx)
     n = notify.heal_event(ctx) + notify.hub(ctx, cards=True) + notify.event_tiles(ctx) + ctx.claim_buttons()
     if not n:
         # chu du an 2026-11-21: tinh nang chua co cach xu ly -> dua vao muc hoc (web "Hoc & Agent", man la) de day
