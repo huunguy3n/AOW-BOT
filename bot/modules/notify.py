@@ -138,18 +138,52 @@ def claim_glow_tiles(ctx, max_taps=6):
     return n
 
 
+def dot_tap_points(dot):
+    """Ham thuan P13b: diem cham cho 1 cham do goc tren-phai cua vat so huu no. Thu tu: giua THE (x-48,y+70) roi
+    NUT/ICON sat cham (x-28,y+20). Man 'Quan quan tuan': cham do tren nut 'Vao lich thi dau' (nut thap ~50 px),
+    giua-the roi xuong khoang trong DUOI nut -> man khong doi; diem thu 2 trung nut that."""
+    x, y = dot
+    return [(x - 48, y + 70), (x - 28, y + 20)]
+
+
+def tap_red_dots(ctx, roi, scope, max_n=6):
+    """Cham lan luot cac cham do trong roi. Luat chung P13b: cham 1 diem ma man khong doi (screens.same) -> thu diem
+    ke tiep cua cham do do; het diem van khong doi -> DANH SACH DEN o cham do (TapGuard, het lan ghe), sang cham khac.
+    Cung diem cham 2 lan khong doi cung vao danh sach den. Khong bao gio lap vo han. -> so cham do co hieu ung."""
+    from bot import tapguard
+    g = tapguard.of(ctx)
+    n, done = 0, set()
+    for _ in range(max_n):
+        dots = [d for d in g.keep(scope, red_dots(ctx.shot(), roi)) if (d[0] // 30, d[1] // 30) not in done]
+        if not dots:
+            break
+        d = dots[0]
+        done.add((d[0] // 30, d[1] // 30))
+        moved = False
+        for (x, y) in dot_tap_points(d):
+            if g.blocked("tap", x, y):
+                continue
+            before = ctx.shot()
+            ctx.tap(x, y, wait=1.2)
+            if not screens.same(before, ctx.shot()):
+                g.record("tap", x, y, True)
+                moved = True
+                break
+            g.record("tap", x, y, False, "cham man khong doi")
+        if not moved:
+            g.black[g.key(scope, d[0], d[1])] = "cham do: moi diem cham deu khong doi man"
+            log.info("Cham do @%d,%d: cham khong doi man -> danh sach den, sang cho khac", d[0], d[1])
+            continue
+        ctx.dismiss_reward()
+        n += 1
+    return n
+
+
 def claim_content(ctx, cards=False, gift=True):
     n = claim_glow_tiles(ctx)          # P9-3: o phat sang truoc (khong luot), roi moi nut Nhan + luot danh sach
     n += claim_scroll(ctx)
     if cards:  # the qua co cham do (vd Thuong online 100/120 phut): cham giua the
-        for _ in range(6):
-            dots = red_dots(ctx.shot(), CONTENT)
-            if not dots:
-                break
-            x, y = dots[0]
-            ctx.tap(x - 48, y + 70, wait=1.2)
-            ctx.dismiss_reward()
-            n += 1
+        n += tap_red_dots(ctx, CONTENT, "card", max_n=6)
     if ctx.find("event/timed_login"):
         # "Dang nhap hen gio": "Dem nguoc nhan" = thoi gian CON LAI de nhan (khung 8-9h, 18-19h UTC).
         # Tab chi duoc vao khi co cham do (= dang nhan duoc) -> cham vao ruong.
