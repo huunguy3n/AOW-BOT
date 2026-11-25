@@ -823,6 +823,13 @@ class Runner:
                         except Exception as e:
                             log.warning("Nhan qua cuoi luot: loi %s", e)
                             ctx.ensure_city()
+                        if reddots.rcfg(cfg)["final_sweep"]:
+                            try:   # P13d-1: quet lai 1 vong cham do cuoi luot (bo qua tan suat + tri nho vo ich)
+                                with span("reddots_final"):
+                                    reddots.run(ctx, final=True)
+                            except Exception as e:
+                                log.warning("Quet cham do cuoi luot: loi %s", e)
+                                ctx.ensure_city()
                     ret = mod.run(ctx)
                     done[name] = ret
                     if len(ctx.debug_shots) > n0:  # module tu luu anh = co cho khong on (ket, khong thay...)

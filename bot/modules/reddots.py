@@ -42,10 +42,33 @@ def _left(img, v=None):
     'chua lam xong cac muc do': so 60 tren icon qua lien minh khong bao gio duoc xu ly."""
     dots = red_dots(img, CITY)
     out = [d for d in dots if is_hud_dot(d)]
+    out += [d for d in hammer_dots(img) if not any(abs(d[0] - o[0]) < 12 and abs(d[1] - o[1]) < 12 for o in out)]
     g = v.find(img, "ally/icon_gift", th=0.8, roi=(330, 600, 210, 300)) if v is not None else None
     if g:
         out += [d for d in dots if d not in out and GIFT_DOT[0] <= d[0] - g[0] <= GIFT_DOT[1] and GIFT_DOT[2] <= d[1] - g[1] <= GIFT_DOT[3]]
     return out
+
+
+NHAN_ZONE = (150, 725, 235, 785)   # x1, y1, x2, y2: cham do cua icon "Nhan" (anh: cham @197,748, icon @175,765)
+PROTECTED = ("alliance", "intel", "campaign", "ally_gift", "mail", "nhan", "construct")   # P13d-1: khong bao gio bo qua
+
+
+def in_nhan_zone(d):
+    return NHAN_ZONE[0] <= d[0] <= NHAN_ZONE[2] and NHAN_ZONE[1] <= d[1] <= NHAN_ZONE[3]
+
+
+def must_open(kind):
+    """P13d-1 (chu du an): cham do Lien minh / Tinh bao / Chien dich / Nhan (+ qua lien minh, thu, xay) KHONG duoc bo qua
+    som (buoc rieng vua tra 0, stepgate gian chu ky, tri nho vo ich): co cham do la mo it nhat 1 lan moi luot quet."""
+    return kind in PROTECTED
+
+
+HAMMER_DOT_ROI = (470, 765, 70, 75)
+
+
+def hammer_dots(img):
+    """P13d-1: cham do nut bua (goc phai duoi, tren nut thu): nen xanh ngoc nen cham nho/toi -> dung nguong long hon."""
+    return red_dots(img, HAMMER_DOT_ROI, min_r=3, min_v=150)
 
 
 def is_hud_dot(d):
@@ -55,6 +78,8 @@ def is_hud_dot(d):
     x, y = d
     if 30 <= x <= 70 and 305 <= y <= 350:
         return False                                   # so tin nhan chat
+    if in_nhan_zone(d):
+        return True                                    # P13d-1: icon "Nhan" (hop vang canh Chieu mo) - anh reddot_con_sot.png
     return x <= 170 or y >= 850 or (x >= 420 and y <= 460) or (x >= 480 and y >= 690)
 
 
@@ -95,6 +120,8 @@ def _kind(ctx, img, d):
     for name, tpl in (("recruit", "badge/recruit"), ("hero", "badge/hero"), ("daily", "daily/open_1")):
         if _near(d, ctx.v.find(img, tpl)):
             return name
+    if in_nhan_zone(d):
+        return "nhan"                              # P13d-1: icon "Nhan" canh Chieu mo
     if d[1] > 850 and 290 < d[0] < 400:
         return "alliance"                          # nut "Lien minh" thanh duoi (cham do/so goc tren-phai)
     if _near(d, ctx.v.find(img, "play/btn_open", th=0.85, roi=(330, 860, 160, 100))):
@@ -114,6 +141,9 @@ def _kind(ctx, img, d):
         return "mission"                           # P7-7: icon Su menh -> module rieng (khong mo "generic")
     if _near(d, ctx.v.find(img, "rewards/mail/open_1", roi=(400, 600, 140, 300))):
         return "mail"                              # P7-3: icon thu (so do) goc phai duoi -> nhan het, lap toi khi het so
+    if _near(d, ctx.v.find(img, "build/icon_hammer", th=0.85, roi=(440, 760, 100, 110))) or (
+            d[0] >= 480 and 765 <= d[1] <= 840):
+        return "construct"                         # P13d-1: nut bua co cham do = co cong trinh moi de xay
     return "generic"
 
 
@@ -137,6 +167,8 @@ def allowed(kind, cfg):
         return mods.get("upgrade", True), "modules.upgrade"
     if kind == "rally":
         return mods.get("rebels", True), "modules.rebels"
+    if kind == "construct":
+        return mods.get("construct", True), "modules.construct"
     if kind == "shop_gift":
         return mods.get("rewards", True), "modules.rewards"
     return True, ""
@@ -144,11 +176,11 @@ def allowed(kind, cfg):
 
 KIND_STEP = {"intel": "intel", "campaign": "campaign", "daily": "daily", "play": "play", "alliance": "alliance",
              "research": "research", "train": "train", "build": "upgrade", "rally": "rebels",
-             "mission": "mission"}
+             "mission": "mission", "construct": "construct"}
 
 
 # P10-5 (live3 15:34-15:37:49: cham do Tinh bao an ~4 phut cua 240 s -> het gio, con 11 cham do: thu, qua lien minh...)
-CLAIM_KINDS = ("mail", "ally_gift", "vip", "shop_gift", "recruit", "hero")   # nhan qua nhanh - lam ca khi het gio (grace)
+CLAIM_KINDS = ("mail", "ally_gift", "vip", "shop_gift", "recruit", "hero", "nhan")   # nhan qua nhanh - lam ca khi het gio (grace)
 DEFER_KINDS = ("intel", "play", "rally", "campaign")                          # tien trinh dai co buoc rieng
 
 
@@ -207,6 +239,17 @@ def _handle(ctx, kind, x, y):
             return upgrade.run(ctx) or 0
         if kind in ("research", "train"):
             return (research if kind == "research" else train).run(ctx) or 0
+        if kind == "construct":   # P13d-1: nut bua co cham do -> xay cong trinh moi
+            from bot.modules import construct
+            return construct.run(ctx) or 0
+        if kind == "nhan":        # P13d-1: icon "Nhan" (hop vang): cham -> nhan qua, dong popup
+            before = ctx.shot()
+            ctx.tap(x - 22, y + 17, wait=1.5)
+            if screens.same(before, ctx.shot()):
+                return 0
+            n = ctx.claim_buttons()
+            ctx.dismiss_reward()
+            return max(1, n)
         if kind == "rally":       # Q1: tap hop phan quan -> buoc phan quan (cap HQ / luot trong ngay do no kiem)
             ok, why = scheduler.rebels_ready(getattr(ctx, "mem", None), ctx.dev.idx, ctx.cfg)                 if getattr(ctx, "mem", None) else (True, "")
             if not ok:
@@ -329,7 +372,8 @@ def rcfg(cfg):
     """A-OPT-1 (PM 2026-11-23): reddots khong chay moi lan ghe - gioi han thoi gian / tan suat, nho icon vo ich."""
     return {"claim_grace_s": 90, "final_claims": True,
             "max_rounds": 6, "skip_idle_steps": True, "dead_h": 2, "dead_cap_h": 24, "max_s": 240,
-            "min_interval_min": 30, "defer_to_steps": False, **(cfg.get("reddots") or {})}
+            "min_interval_min": 30, "defer_to_steps": False,
+            "dot_max_s": 75, "final_sweep": True, "final_max_s": 90, **(cfg.get("reddots") or {})}
 
 
 def due(last_at, now, interval_min, notify_worked, new_dots):
@@ -356,7 +400,7 @@ def _s2k(s):
     return tuple(int(v) for v in s.split(","))
 
 
-def remember(m, idx, rc, old, dead_n, dead, useless, worked_at, now):
+def remember(m, idx, rc, old, dead_n, dead, useless, worked_at, now, visit=None):
     """Ghi tri nho sau 1 lan quet: vi tri vo ich -> bo qua lau dan (gap doi), vi tri lam duoc viec -> xoa dem."""
     keep = dict(old)
     olds = {_s2k(s) for s in old}
@@ -369,13 +413,15 @@ def remember(m, idx, rc, old, dead_n, dead, useless, worked_at, now):
             keep[_k2s(k)] = now + rc["dead_h"] * 3600
     for k in worked_at:
         dead_n.pop(_k2s(k), None)
+        keep.pop(_k2s(k), None)      # P13d-1: vi tri da nhan duoc -> khong con la 'vo ich'
+    m.set_fact(idx, "reddots_dead_visit", visit)    # P13d-1: tri nho vo ich chi dung trong CHINH lan ghe nay
     m.set_fact(idx, "reddots_dead", keep)
     m.set_fact(idx, "reddots_dead_n", {k: v for k, v in dead_n.items() if k in keep})
     m.set_fact(idx, "reddots_last_at", now)
     return keep
 
 
-def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
+def run(ctx, final=False):  # noqa: C901 - vong quet giu nguyen cau truc cu
     """Lam toi khi HET cham do (chu du an 2026-11-20: "con reddots thi phai lam tiep toi khi het").
     Moi vong: notify (icon biet ten) -> moi cham do con lai tren thanh pho -> mo, nhan. Lap lai den khi khong con
     cham do, hoac 1 vong tron khong nhan them duoc gi (cham do khong xu ly duoc an toan, vd chieu mo can kim cuong,
@@ -386,17 +432,21 @@ def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
     rc = rcfg(ctx.cfg)
     max_rounds = rc["max_rounds"]
     t_start = time.time()
-    deadline = t_start + rc["max_s"] if rc["max_s"] else None
+    max_s = rc["final_max_s"] if final else rc["max_s"]
+    deadline = t_start + max_s if max_s else None
     m, idx = getattr(ctx, "mem", None), ctx.dev.idx
-    old = {k: u for k, u in ((m.fact(idx, "reddots_dead") or {}) if m else {}).items() if u > t_start}
+    vid = getattr(ctx, "visit", None)
+    same_visit = bool(m) and (vid is None or m.fact(idx, "reddots_dead_visit") == vid)   # P13d-1: het han theo lan ghe
+    old = {k: u for k, u in ((m.fact(idx, "reddots_dead") or {}) if (m and same_visit and not final) else {}).items()
+           if u > t_start}
     dead_n = dict((m.fact(idx, "reddots_dead_n") or {}) if m else {})
     ctx.ensure_city()
     if m:
         vd = getattr(ctx, "visit_done", None) or {}
         seen = {_s2k(k) for k in (m.fact(idx, "reddots_seen") or [])}
         new = [d for d in _left(ctx.shot(), ctx.v) if _key(d) not in seen and _k2s(_key(d)) not in old]
-        ok_, why_ = due(m.fact(idx, "reddots_last_at"), t_start, rc["min_interval_min"],
-                        drain.worked(vd.get("notify")), new)
+        ok_, why_ = (True, "quet lai cuoi luot") if final else due(
+            m.fact(idx, "reddots_last_at"), t_start, rc["min_interval_min"], drain.worked(vd.get("notify")), new)
         if not ok_:
             log.info("Cham do: bo qua lan nay (%s)", why_)
             return 0
@@ -408,6 +458,7 @@ def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
     if old:
         log.info("Cham do: bo qua %d vi tri da biet la vo ich (tri nho)", len(old))
     handled = {}                    # vi tri -> so lan da xu ly trong buoc nay
+    spent, prot = {}, set()         # P13d-1: giay da ton / vi tri; vi tri loai bao ve (khong ghi vao tri nho vo ich)
     ignored = set()                 # cham do CO Y bo qua (tap hop phan quan, qua lien minh het luot) -> khong tinh 'con sot'
     use_notify = ctx.cfg.get("modules", {}).get("notify", True)
     left, timed_out, img = [], False, None
@@ -434,6 +485,12 @@ def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
             if not in_budget(kind, time.time(), deadline, rc["claim_grace_s"]):
                 timed_out = True        # P10-5: het gio - chi con loai nhan qua (thu, qua lien minh...) duoc lam them
                 break
+            if spent.get(k, 0) >= rc["dot_max_s"]:     # P13d-1: tran thoi gian MOI cham do - khong ket 1 diem
+                dead.add(k)
+                log.info("Cham do %s @%d,%d: da ton %.0f s (tran %s s) - sang cham khac", kind, x, y, spent.get(k, 0), rc["dot_max_s"])
+                continue
+            if must_open(kind):
+                prot.add(k)
             step_later = defer_to_step(kind, getattr(ctx, "visit_pending", None), bool(rc.get("defer_to_steps")))
             if step_later:
                 dead.add(k)
@@ -446,21 +503,23 @@ def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
                 ignored.add(k)      # co y bo qua -> khong tinh la 'con sot'
                 log.info("Cham do %s @%d,%d: dang tat trong tuy chon (%s) - bo qua", kind, x, y, gate)
                 continue
-            if rc["skip_idle_steps"] and already_idle(ctx, kind):
+            if rc["skip_idle_steps"] and not must_open(kind) and already_idle(ctx, kind):
                 dead.add(k)
                 ignored.add(k)
                 log.info("Cham do %s @%d,%d: buoc rieng vua chay xong khong lam duoc gi - bo qua", kind, x, y)
                 continue
             step = KIND_STEP.get(kind)
-            if m and step:
+            if m and step and not must_open(kind):
                 g = stepgate.check(m, idx, step, ctx.cfg, time.time(), getattr(ctx, "visit_done", None))
                 if not g.run:   # P1: buoc rieng dang gian chu ky / chua du dieu kien -> mo icon cung vo ich
                     dead.add(k)
                     ignored.add(k)
                     log.info("Cham do %s @%d,%d: %s - bo qua", kind, x, y, g.why)
                     continue
+            t_dot = time.time()
             n = _handle(ctx, kind, x, y)
             n = n if isinstance(n, int) else 0
+            spent[k] = spent.get(k, 0) + (time.time() - t_dot)
             visit.mark(ctx, kind)       # P13-2: buoc sau (rewards / mission) khong mo lai cung icon trong lan ghe nay
             guard.record("reddot", x, y, n > 0, f"{kind} khong lam duoc gi")
             handled[k] = handled.get(k, 0) + 1
@@ -475,7 +534,8 @@ def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
                 log.info("Cham do %s @%d,%d: lam %d (vong %d)", kind, x, y, n, rnd)
             else:
                 dead.add(k)
-                useless.add(k)
+                if kind not in PROTECTED:
+                    useless.add(k)
                 if kind == "ally_gift":
                     ignored.add(k)       # qua thuong het luot nhan hom nay: cham do van hien
                 log.info("Cham do %s @%d,%d: mo ra khong lam duoc gi", kind, x, y)
@@ -508,7 +568,7 @@ def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
     if img is None:                 # max_rounds = 0
         img = ctx.shot()
     if m:
-        remember(m, idx, rc, old, dead_n, dead, useless, worked_at, time.time())
+        remember(m, idx, rc, old, dead_n, dead - prot, useless, worked_at, time.time(), vid)
         m.set_fact(idx, "reddots_seen", sorted({_k2s(_key(d)) for d in _left(img, ctx.v)}))
     _keep_last(ctx, img)
     if left and not timed_out:
