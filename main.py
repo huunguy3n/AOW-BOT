@@ -6,6 +6,7 @@
   python main.py --capture 0          # chup man hinh instance 0 -> logs/capture-*.png (de cat anh mau)
   python main.py --check              # liet ke anh mau con thieu
   python main.py --web                # giao dien quan ly: http://localhost:8080
+  python main.py --web --auto-all     # nhu tren + tu chay auto cac may dang bat (run.bat)
 """
 import argparse, logging, os, sys, time
 import cv2, yaml
@@ -67,7 +68,7 @@ def setup_log():
     log.addHandler(RING)
 
 
-def main():
+def build_parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=os.path.join(BASE, "config.yaml"))
     ap.add_argument("--only", help="danh sach ID instance, vd 0,3,5")
@@ -77,7 +78,24 @@ def main():
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--web", action="store_true", help="mo giao dien quan ly http://localhost:8080")
     ap.add_argument("--port", type=int, default=8080)
-    a = ap.parse_args()
+    ap.add_argument("--auto-all", action="store_true", dest="auto_all",
+                    help="(chi voi --web) tu chay vong auto cho cac may dang bat auto, khong cho bam Bat dau tren web")
+    return ap
+
+
+def launch_web(runner, store, ring, port, auto_all=False, serve_fn=None):
+    """Mo web; auto_all -> runner.start() TRUOC serve() (serve chan luong) de vong auto chay ngay.
+    Van tuan thu max_running/HARD_MAX_RUNNING (runner lo). Nut Bat dau/Dung tren web van dung binh thuong."""
+    if serve_fn is None:
+        from web.server import serve as serve_fn
+    if auto_all:
+        log.info("--auto-all: tu bat runner cho cac may dang bat auto")
+        runner.start()
+    serve_fn(runner, store, ring, port)
+
+
+def main():
+    a = build_parser().parse_args()
     setup_log()          # truoc khi doc YAML: loi cu phap config cung duoc ghi vao log
     try:
         with open(a.config, encoding="utf-8") as f:
@@ -121,8 +139,7 @@ def main():
     from aowbot.app.agent import build_agent_hooks  # lazy: chi khi chay runner (khong can cho --check/--capture)
     runner = Runner(cfg, store, vision, agent=build_agent_hooks(lambda i: store.cfg_for(cfg, i), BASE))
     if a.web:
-        from web.server import serve
-        serve(runner, store, RING, a.port)
+        launch_web(runner, store, RING, a.port, a.auto_all)
         return
     modules = set(a.modules.split(",")) if a.modules else None
     ids = [int(x) for x in a.only.split(",")] if a.only else cfg["instances"]

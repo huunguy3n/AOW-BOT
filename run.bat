@@ -1,5 +1,5 @@
 @echo off
 cd /d %~dp0
 start "" http://localhost:8080
-python main.py --web %*
+python main.py --web --auto-all %*
 pause
