@@ -85,7 +85,7 @@ NAMES: Mapping[str, str] = MappingProxyType({
     "gather/march_header": "Khung Hành quân (bản đồ thế giới)",
     "gather/dlg_contested": "Hộp thoại Chỉ huy trưởng khác đang tới mỏ",
     # --- Tướng
-    "hero/arrow_up": "Mũi tên Tăng cấp", "hero/btn_book": "Nút Sách kinh nghiệm", "hero/btn_levelup": "Nút Tăng cấp tướng",
+    "hero/btn_exchange": "Nút Chiêu mộ tướng (đủ mảnh)", "hero/arrow_up": "Mũi tên Tăng cấp", "hero/btn_book": "Nút Sách kinh nghiệm", "hero/btn_levelup": "Nút Tăng cấp tướng",
     "hero/btn_star": "Nút Sao tướng", "hero/btn_star_up": "Nút Tăng sao", "hero/story_chest": "Rương cốt truyện",
     "hero/title": "Tiêu đề Tướng",
     # --- Tình báo
