@@ -181,11 +181,17 @@ class Device:
                 if not self.wait_ready(self.reconnect_wait):
                     self.dead = True
                     raise ScreencapError("Khong chup duoc man hinh (ADB khong tra loi sau do lai dia chi)") from e
+                # P13-13 (live5 #1 buoc tinh bao: 3 doi dang chay, ADB nghen tam thoi): sau khi do lai dia chi thu 1 lan voi
+                # timeout GAP DOI (toi da 12 s) truoc khi coi may la treo; chi dung 1 lan, khong lap
+                old_timeout = self.shot_timeout
+                self.shot_timeout = min(old_timeout * 2, 12.0)
                 try:
                     img = self._screencap(min(tries, 2))
                 except ScreencapError:
                     self.dead = True
                     raise
+                finally:
+                    self.shot_timeout = old_timeout
             ok = True
             return img
         finally:
