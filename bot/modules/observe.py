@@ -39,12 +39,36 @@ def parse_hq(text):
 HQ_DIGIT_ROI = (280, 758, 60, 22)  # phan "truc: N" - doc rieng chu so khi dong day du doc hong
 
 
-def ocr_hq(img):
-    lv = parse_hq(ocr.text(img, HQ_ROI))
+def ocr_hq_ex(img):
+    """-> (cap | None, co_nhan, text). co_nhan: dong doc duoc co chu "Xuong kien truc" (OCR hong dau van khop tu khoa gan dung);
+    doc rieng chu so (khong co nhan) -> False. P13d-4: chi ghi hq_level khi chac la dong cap nha chinh."""
+    text = ocr.text(img, HQ_ROI) or ""
+    lv = parse_hq(text)
+    labeled = bool(lv and re.search(r"x[uv]?[oa]?ng|ki[eo]n|tr\S{0,2}c", text, re.I))
     if not lv:
         d = ocr.text(img, HQ_DIGIT_ROI, "0123456789").strip()
         lv = int(d) if d.isdigit() and 0 < int(d) <= 40 else None
-    return lv
+    return lv, labeled, text
+
+
+def ocr_hq(img):
+    return ocr_hq_ex(img)[0]
+
+
+def judge_hq(prev, reads):
+    """P13d-4 (live6c #5: ca luot HQ=4, cuoi luot doc 'cap 7' -> ghi 4->7 sai). Ham thuan. reads = [(cap, co_nhan), ...]
+    (cac lan doc doc lap). -> cap duoc ghi | None (khong ghi, giu cap cu).
+    - chua biet cap cu: nhan lan doc dau co so.
+    - bang cap cu: ok. +1 cap: ok. Nhay > +1 hoac GIAM: chi nhan khi >= 2 lan doc doc lap trung nhau, deu co nhan."""
+    got = [(lv, lab) for lv, lab in reads if lv]
+    if not got:
+        return None
+    for lv, _lab in got:
+        if prev is None or lv == prev or lv == prev + 1:
+            return lv
+        if len([g for g in got if g[0] == lv and g[1]]) >= 2:
+            return lv
+    return None
 
 
 def note_hq(m, idx, prev, lv, targets=None):
@@ -72,20 +96,31 @@ def read_hq(ctx, every_h=6):
         if r and r[0][0] and time.time() - r[0][0] < every_h * 3600:
             return m.fact(idx, "hq_level")
     ctx.ensure_city()
-    ctx.tap(38, 38, wait=1.8)
-    lv = ocr_hq(ctx.shot())
-    if not lv:  # bang chua hien xong -> doc lai 1 lan, hong thi luu anh de xem (lan dau #0 2026-11-19 08:08)
-        time.sleep(1.5)
-        lv = ocr_hq(ctx.shot())
-        if not lv:
-            ctx.save_debug("hq_unread")
-    ctx.ensure_city()
+    prev = m.fact(idx, "hq_level") if m else None
+    reads = []
+    for attempt in range(3):
+        ctx.tap(38, 38, wait=1.8)
+        lv, lab, _txt = ocr_hq_ex(ctx.shot())
+        if not lv:  # bang chua hien xong -> doc lai 1 lan, hong thi luu anh de xem (lan dau #0 2026-11-19 08:08)
+            time.sleep(1.5)
+            lv, lab, _txt = ocr_hq_ex(ctx.shot())
+            if not lv:
+                ctx.save_debug("hq_unread")
+        reads.append((lv, lab))
+        ctx.ensure_city()
+        if not lv or judge_hq(prev, reads) is not None or attempt == 2:
+            break      # doc duoc hop ly; lech bat thuong -> mo lai bang doc doc lap de xac nhan (toi da 3 lan)
+    lv = judge_hq(prev, reads)
+    if lv is None and any(r[0] for r in reads):
+        log.warning("Nha chinh: doc %s (cu %s) bat thuong/khong xac nhan duoc - KHONG ghi cap (giu cap cu)",
+                    [r[0] for r in reads], prev)
+        ctx.save_debug("hq_suspect")
+        return prev
     if lv:
         log.info("Nha chinh (Xuong kien truc) cap %d", lv)
         if getattr(ctx, "store", None):
             ctx.store.update(idx, hq_level=lv)
         if m:
-            prev = m.fact(idx, "hq_level")
             m.set_fact(idx, "hq_level", lv)
             note_hq(m, idx, prev, lv, ctx.cfg.get("build", {}).get("hq_targets"))
     else:
