@@ -343,6 +343,8 @@ loot:                     # Cuop boc xe khai thac (Mo khoang san) - chu du an la
   daily: 4                # 4 luot / ngay (game dem "So lan cuop boc con lai: N/4")
   reset_utc: 4            # reset 4h UTC
   margin: 0.97            # bo doi thu >= 97 % nguong da thua
+  require_full_robbed: true  # P13-6: chi cuop xe con DU 2/2 luot bi cuop (popup 'So lan co the bi cuop boc'); 1/2, 0/2, khong doc duoc -> bo
+  robbed_need: 2
   crystal_only: true      # P7-6: chi cuop xe cho vat pham PHA LE XANH (anh mau play/item_crystal; chua co -> theo mau)
   refresh_max: 3          # P7-6: chua co xe SR/SSR pha le -> bam lam moi (mui ten tron, play/btn_refresh) toi da N lan / luot;
                           #       bam ma hien hop thoai khac (ton phi?) -> dong, khong xac nhan, dung lam moi

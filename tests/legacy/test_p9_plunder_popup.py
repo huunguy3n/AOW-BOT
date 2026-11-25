@@ -10,6 +10,12 @@ import pytest
 from bot import buttons, ocr
 from bot.modules import play
 
+
+@pytest.fixture(autouse=True)
+def _full_robbed(monkeypatch):
+    """P13-6: xe luon 2/2 trong cac test cu (doc 'So lan bi cuop' co test rieng o test_p13_loot_robbed)."""
+    monkeypatch.setattr(play, "robbed_left", lambda img: (2, 2))
+
 LIVE2 = "data/pm-shots/owner-20261124/live2/auto/s110411.png"           # ADB 540x960: xe N + thong bao doi server
 GOOD = "data/pm-shots/owner-20261124/plunder_1_ssr_truck_cuop_boc.png"  # anh chu du an (535x955): popup SSR dung
 TESS = "C:/Program Files/Tesseract-OCR/tesseract.exe"

@@ -150,6 +150,29 @@ def loot_left(img):
     return int(m.group(1)) if m else None
 
 
+ROBBED_ROI = (255, 522, 135, 32)    # "So lan co the bi cuop boc:N/M" tren popup xe o ban do (kiem tren loot_world_i1.png)
+
+
+def robbed_left(img):
+    """P13-6: 'So lan co the bi cuop boc:N/M' (popup xe tren ban do) -> (N, M) | None (khong doc duoc)."""
+    for kw in ({"whitelist": "0123456789/", "scale": 4}, {"scale": 3}):
+        m = re.findall(r"(\d)\s*/\s*(\d)", ocr.text(img, ROBBED_ROI, **kw) or "")
+        if m:
+            return int(m[-1][0]), int(m[-1][1])
+    return None
+
+
+def robbed_ok(left, need=2):
+    """Ham thuan P13-6 (chu du an t65u, anh cuop_xe_chi_2_2.png): chi cuop khi xe con DU 2/2 luot bi cuop (chua chay, chua
+    bi cuop). Con 1/2, 0/2 hoac khong doc duoc -> bo. -> (bool, ly do)."""
+    if left is None:
+        return False, "khong doc duoc 'So lan co the bi cuop boc'"
+    n, tot = left
+    if n >= need and n >= tot:
+        return True, "ok"
+    return False, f"xe chi con {n}/{tot} luot bi cuop (chi cuop khi {need}/{need})"
+
+
 def _loot_mem(ctx):
     m = getattr(ctx, "mem", None)
     return (m.fact(ctx.dev.idx, "loot_mem") or {}) if m else {}
@@ -462,6 +485,16 @@ def _loot_once(ctx, lc):
         _loot_save(ctx, lm)
         ctx.back_out(1)                                 # dong popup / thong bao (KHONG bam "Xem")
         return "retry"
+    if lc.get("require_full_robbed", True):             # P13-6: chi cuop khi xe con 2/2 luot bi cuop
+        rl = robbed_left(ctx.shot())
+        rok, rwhy = robbed_ok(rl, lc.get("robbed_need", 2))
+        if not rok:
+            ctx.save_debug("loot_robbed")
+            log.info("Cuop boc: xe '%s' - %s - bo, chon xe khac", name, rwhy)
+            _mark_skip(lm, name, pw)
+            _loot_save(ctx, lm)
+            ctx.back_out(1)
+            return "retry"
     ctx.tap(btn[0], btn[1], wait=2.5)                   # nut "Cuop boc" (ben phai) - khong bao gio "Xem"
     if not ctx.wait_for("play/btn_battle", timeout=5):
         ctx.save_debug("loot_no_legion")

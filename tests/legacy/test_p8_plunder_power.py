@@ -11,6 +11,12 @@ import pytest
 from bot import ocr
 from bot.modules import play
 
+
+@pytest.fixture(autouse=True)
+def _full_robbed(monkeypatch):
+    """P13-6: xe luon 2/2 trong cac test cu (doc 'So lan bi cuop' co test rieng o test_p13_loot_robbed)."""
+    monkeypatch.setattr(play, "robbed_left", lambda img: (2, 2))
+
 ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
 
 
