@@ -965,10 +965,49 @@ EVENT_COL = (480, 340, 60, 200)    # cot icon su kien ben phai thanh pho, duoi P
 EVENT_BODY = (0, 180, 540, 720)
 
 
+ZONE_TITLE_ROI = (20, 225, 500, 50)     # tieu de banner tab "Chien Khu manh nhat" (Hoat dong tro choi)
+ZONE_CHESTS = (0, 560, 540, 300)        # 2 hang ruong: Tich diem ca nhan + Diem lien minh (duoi hang "Muc tieu giai doan")
+
+
+def is_zone_title(text):
+    """Ham thuan P13-9: tieu de banner OCR (mat dau, rat nhieu) co phai tab 'Chien Khu manh nhat'? Khop long 'khu'."""
+    from aowbot.domain.blockers import normalize
+    t = normalize(text or "")
+    return "khu" in t and ("chien" in t or "manh" in t or "mah" in t or "nhat" in t)
+
+
+def zone_chest_points(img):
+    """Ham thuan P13-9 (chu du an, anh chien_khu_manh_nhat_ruong.png): CHI ruong co CHAM DO (da du moc) trong 2 hang ruong
+    -> diem cham (giua ruong, thap-trai cham do). Ruong xam khong cham do (chua du diem) va cham do tab / tab con
+    'Muc tieu giai doan' (ngoai hang ruong) bi bo."""
+    dots = sorted(red_dots(img, ZONE_CHESTS), key=lambda d: (d[1] // 40, d[0]))
+    return [(d[0] - 14, d[1] + 26) for d in dots]
+
+
+def zone_chests(ctx, max_taps=6):
+    """Tab Chien Khu manh nhat: nhan ruong co cham do. Khong bam mua / mo khoa. -> so ruong nhan."""
+    if not is_zone_title(ocr.text(ctx.shot(), ZONE_TITLE_ROI)):
+        return 0
+    n, seen = 0, set()
+    for _ in range(max_taps):
+        pts = [p for p in zone_chest_points(ctx.shot()) if (p[0] // 40, p[1] // 40) not in seen]
+        if not pts:
+            break
+        x, y = pts[0]
+        seen.add((x // 40, y // 40))
+        ctx.tap(x, y, wait=1.5)
+        ctx.tap_tpl("event/btn_popup_claim", wait=1.2, th=0.9)
+        ctx.dismiss_reward()
+        n += 1
+        log.info("Chien Khu manh nhat: nhan ruong @%d,%d", x, y)
+    return n
+
+
 def event_tiles(ctx, max_taps=12):
     """Trong 1 man su kien: cham lan luot o/vat co CHAM DO -> neu hien bang co nut "Nhan" (event/btn_popup_claim)
     thi nhan, dong bang (X). Khong bam gi khac. -> so lan nhan."""
     n, seen = 0, set()
+    n += zone_chests(ctx)                   # P13-9: tab Chien Khu manh nhat - ruong co cham do
     if not ctx.find("recruit/title"):       # trang 'Chieu mo han gio' (Hoat dong) co icon "Qua Chieu Mo" ben phai
         n += 1 if recruit_gift(ctx, ctx.shot()) else 0
     for _ in range(max_taps):
