@@ -498,9 +498,30 @@ def mine_decision(free):
     return "early" if free >= MINE_EARLY_MIN_FREE else "defer"
 
 
+def _hq(ctx):
+    from bot.modules.gather import hq_level      # nhap muon: tranh vong import
+    return hq_level(ctx)
+
+
+def mine_hq_ok(ctx):
+    """LUAT CUNG (chu du an t81u 2026-11-25): nha chinh < alliance.mine_min_hq (12) hoac CHUA BIET cap -> cam thu thap mo
+    lien minh (ca gui som lan hoan cuoi luot). -> bool"""
+    need = int(ctx.cfg.get("alliance", {}).get("mine_min_hq", 12))
+    hq = _hq(ctx)
+    if hq is None:
+        log.info("Mo lien minh: chua biet cap nha chinh - bo qua (can >= %d)", need)
+        return False
+    if hq < need:
+        log.info("Mo lien minh: nha chinh cap %s < %d - bo qua", hq, need)
+        return False
+    return True
+
+
 def ally_mine(ctx, late=False):
     """"Den thu thap" Mo lien minh (Xuong Hop Kim lien minh) -> gui 1 doi. P13b: som (trong buoc lien minh) chi khi con
     >= 2 doi ranh; con 1 -> hoan (ctx.ally_mine = 'deferred'), cuoi luot (late=True, truoc gather) moi gui. -> 1 | 0"""
+    if not mine_hq_ok(ctx):
+        return 0
     if ctx.march_full():
         log.info("Mo lien minh: het quan doan ranh - bo qua")
         return 0
@@ -542,6 +563,8 @@ def ally_mine_end(ctx):
     ctx.ally_mine = "done"           # moi lan ghe chi thu 1 lan
     a = ctx.cfg.get("alliance", {})
     if not a.get("mine", True) or not ctx.cfg.get("quests", {}).get("alliance", True):
+        return 0
+    if not mine_hq_ok(ctx):
         return 0
     log.info("Mo lien minh (cuoi luot, cung thu thap): gui doi da giu lai")
     if not (open_alliance(ctx) and main_tab(ctx)):

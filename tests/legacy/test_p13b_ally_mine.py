@@ -2,8 +2,16 @@
 import time
 from types import SimpleNamespace
 
+import pytest
+import yaml
+
 from bot.ctx import Ctx
 from bot.modules import alliance, gather
+
+
+@pytest.fixture(autouse=True)
+def _hq12(monkeypatch):
+    monkeypatch.setattr(alliance, "_hq", lambda ctx: 12)
 
 
 def test_mine_decision():
@@ -137,3 +145,47 @@ def test_gather_run_calls_end(monkeypatch):
     assert called == [1]
     gather.run(ctx, limit=1)                                    # agent (limit) khong goi
     assert called == [1]
+
+
+def _open(monkeypatch):
+    monkeypatch.setattr(alliance, "open_alliance", lambda ctx: True)
+    monkeypatch.setattr(alliance, "main_tab", lambda ctx: True)
+
+
+@pytest.mark.parametrize("hq", [5, 11, None])
+def test_low_or_unknown_hq_never_sends(monkeypatch, hq):
+    _open(monkeypatch)
+    monkeypatch.setattr(alliance, "_hq", lambda ctx: hq)
+    c = FakeCtx(3)
+    assert alliance.ally_mine(c) == 0 and c.sent == 0 and c.ally_mine is None
+    c = FakeCtx(1)
+    c.ally_mine = "deferred"                        # cuoi luot cung bi chan
+    assert alliance.ally_mine_end(c) == 0 and c.sent == 0
+    c = FakeCtx(1)
+    assert alliance.ally_mine(c, late=True) == 0 and c.sent == 0
+
+
+@pytest.mark.parametrize("hq", [12, 13])
+def test_hq_12_plus_free_two_sends_early(monkeypatch, hq):
+    monkeypatch.setattr(alliance, "_hq", lambda ctx: hq)
+    c = FakeCtx(2)
+    assert alliance.ally_mine(c) == 1 and c.sent == 1
+
+
+def test_hq_12_free_one_defers_then_end_sends(monkeypatch):
+    _open(monkeypatch)
+    c = FakeCtx(1)
+    assert alliance.ally_mine(c) == 0 and c.ally_mine == "deferred"
+    assert alliance.ally_mine_end(c) == 1 and c.sent == 1
+
+
+def test_min_hq_from_config(monkeypatch):
+    monkeypatch.setattr(alliance, "_hq", lambda ctx: 14)
+    c = FakeCtx(3)
+    c.cfg["alliance"]["mine_min_hq"] = 15
+    assert alliance.ally_mine(c) == 0 and c.sent == 0
+    c.cfg["alliance"]["mine_min_hq"] = 14
+    assert alliance.ally_mine(c) == 1
+    with open("config.yaml", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    assert cfg["alliance"]["mine_min_hq"] == 12

@@ -336,6 +336,7 @@ alliance:
   donate_max: 10       # so lan quyen gop (VANG) moi luot
   boss: true           # BOSS lien minh: nhan ruong muc sat thuong (cham do), khong khieu chien
   mine: true           # Mo lien minh "Den thu thap": gui 1 doi neu con doi ranh
+  mine_min_hq: 12      # LUAT CUNG (chu du an 2026-11-25): nha chinh < N (hoac chua biet cap) -> CAM thu thap mo lien minh (som + cuoi luot)
   territory: true      # P7-2: Lanh tho > "Tranh Doat Cu Diem" > "Nhan" loi nhuan tai nguyen moi lan dang nhap (anh mau ally/tab_territory, ally/btn_contest)
   gifts: true          # P7-2: o "Qua tang lien minh" > Qua dac biet + Qua thuong "Nhan toan bo" LAP toi het
   gift_loop_rounds: 30 # P11: qua lien minh LAP den het (2 tab): toi da N vong nhan -> lam moi tab -> doc lai so do
