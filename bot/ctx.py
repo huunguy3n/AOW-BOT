@@ -107,7 +107,7 @@ class Ctx:
             time.sleep(interval)
         return None
 
-    def settle(self, max_s=3.0, interval=0.35, th=1.5):
+    def settle(self, max_s=3.0, interval=0.25, th=1.5):
         """S1: chup toi khi 2 khung lien tiep gan nhu giong nhau (camera ngung truot, bang mo xong) hoac het
         max_s -> anh on dinh (cung la self._img). Vi sao: sau 'Den' game truot camera toi cong trinh; kiem tra
         sau mot khoang cho co dinh thay man dang chay -> tra 'none' du nut Tang cap hien ngay sau do."""

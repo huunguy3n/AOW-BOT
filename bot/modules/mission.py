@@ -14,7 +14,7 @@ import re
 import cv2
 import numpy as np
 
-from bot import buttons, tplneed
+from bot import buttons, tplneed, visit
 from bot.badges import red_dots
 
 log = logging.getLogger("aow")
@@ -178,6 +178,9 @@ def daily_chests(ctx):
 
 def run(ctx):
     mc = ctx.cfg.get("mission", {})
+    if visit.seen(ctx, "mission"):
+        log.info("Su menh: reddots vua mo icon nay trong lan ghe nay - khong mo lai")
+        return 0
     if not tplneed.has(ctx.v, "mission/icon", "icon Su menh ben phai man thanh pho"):
         return 0
     ctx.ensure_city()

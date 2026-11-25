@@ -10,6 +10,7 @@ Moi tuyen la 1 thu muc anh mau templates/rewards/<tuyen>/:
 Them tuyen moi = tao thu muc anh mau + them ten vao config `rewards.routes`, khong can sua code.
 """
 import logging
+from bot import visit
 from bot.badges import red_dots, city_bubbles
 
 log = logging.getLogger("aow")
@@ -286,6 +287,9 @@ def run(ctx):
     grand = 0
     rounds = rc.get("repeat_rounds", 4)
     for route in rc.get("routes", []):
+        if route in ("mail", "vip") and visit.seen(ctx, route):
+            log.info("Qua [%s]: reddots vua xu ly trong lan ghe nay - khong mo lai", route)
+            continue
         try:
             if route == "mail" and rc.get("repeat_until_clear", True):
                 n = run_until_clear(ctx, route, rc.get("max_taps_per_route", 30), rounds)
@@ -298,7 +302,9 @@ def run(ctx):
             continue
         log.info("Qua [%s]: nhan %d lan", route, n)
         grand += n
-    if rc.get("ally_gift", True):
+    if rc.get("ally_gift", True) and visit.seen(ctx, "ally_gift"):
+        log.info("Qua [ally_gift]: reddots vua xu ly trong lan ghe nay - khong mo lai")
+    elif rc.get("ally_gift", True):
         try:
             n = ally_gift_until_clear(ctx, rounds)
             if n:

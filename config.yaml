@@ -153,7 +153,7 @@ cycle:
 # false = cach cu (back_out + nut chuyen ban do). Man la luu vao logs/unknown/ de dan nhan.
 nav:
   smart: true
-  skip_recheck_s: 3.0   # G3: ensure_city ngay sau 1 lan da xac nhan thanh pho (khong thao tac o giua) thi bo qua; 0 = tat
+  skip_recheck_s: 6.0   # G3: ensure_city ngay sau 1 lan da xac nhan thanh pho (khong thao tac o giua) thi bo qua; 0 = tat   P13-2: 3 -> 6 s
 
 # Lap lich theo tri nho (bot/scheduler.py, docs/product/ke-hoach-A-tri-nho-lap-lich.md)
 # fixed = nhu cu (chay het may, het buoc, nghi pause_between_cycles_min); smart = chi bat may khi can

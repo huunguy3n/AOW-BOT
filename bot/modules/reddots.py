@@ -14,7 +14,7 @@ import logging, os, time
 import cv2
 from bot.badges import red_dots
 from aowbot.domain import drain
-from bot import scheduler, screens, stepgate, tapguard
+from bot import scheduler, screens, stepgate, tapguard, visit
 from bot.modules import notify, rewards, intel, campaign, daily, alliance, play, rebels, research, train, upgrade, chat
 
 log = logging.getLogger("aow")
@@ -461,6 +461,7 @@ def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
                     continue
             n = _handle(ctx, kind, x, y)
             n = n if isinstance(n, int) else 0
+            visit.mark(ctx, kind)       # P13-2: buoc sau (rewards / mission) khong mo lai cung icon trong lan ghe nay
             guard.record("reddot", x, y, n > 0, f"{kind} khong lam duoc gi")
             handled[k] = handled.get(k, 0) + 1
             # cham do khong bao gio mat (so "66" o nut Lien minh = tin nhan / thong bao) -> moi vi tri toi da

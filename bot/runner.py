@@ -723,6 +723,7 @@ class Runner:
             retried = set()           # P12-6: buoc da thu lai sau khi cuu may treo
             drained = False
             ctx.visit_done = done   # reddots: biet buoc nao vua chay xong ma khong lam duoc gi
+            ctx.visit_kinds = set()   # P13-2: viec reddots da xu ly trong lan ghe nay (rewards / mission khong lam lai)
             ctx.tap_guard = tapguard.TapGuard()   # P12-2: toa do cham 2 lan vo hieu -> danh sach den trong lan ghe
             dcfg = cfg.get("drain") or {}
             t_visit = time.time()
