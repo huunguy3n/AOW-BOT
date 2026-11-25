@@ -197,3 +197,21 @@ def quests_mode(enabled: bool, qcfg: dict | None, forced: bool = False) -> str |
     if forced or not (qcfg or {}).get("claim_when_off", True):
         return None
     return "claim"
+
+
+# ---------- P13-12: danh le phien quan tu nhiem vu khi nha chinh < 15 ----------
+NPC_FAIL = ("npc_none", "npc_skip", "npc_contested")
+NPC_BACKOFF_BASE_H = 2.0
+NPC_BACKOFF_CAP_H = 24.0
+
+
+def npc_backoff_s(streak: int) -> float:
+    """Giay cho truoc khi thu danh le phien quan tu nhiem vu lai sau `streak` lan that bai lien tiep (2h, 4h, ... tran 24h)."""
+    return min(NPC_BACKOFF_BASE_H * 2 ** max(0, streak - 1), NPC_BACKOFF_CAP_H) * 3600
+
+
+def npc_gate(until: float | None, now: float) -> tuple[bool, str]:
+    """-> (duoc thu, ly do). Dang trong thoi gian lui sau that bai -> bo qua (khong lap moi lan ghe)."""
+    if until and now < until:
+        return False, f"lan danh le truoc that bai, thu lai sau {(until - now) / 60:.0f} phut"
+    return True, "ok"

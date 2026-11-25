@@ -142,6 +142,31 @@ def npc_search(ctx):
 
 
 def npc_attack(ctx, mq):
+    """P13-12 (chu du an chua quyet viec danh le phien quan tu bang nhiem vu khi nha chinh < 15): GIU danh le cap thap CHI
+    khi lan do thanh cong; that bai / khong vao duoc bang muc tieu / bo / tranh chap -> lui 2h (gap doi, tran 24h), khong
+    thu lai moi lan ghe (live5 #2/#3/#4/#6: 'npc_none' moi lan, ~15 s / lan). Khong lien quan tham gia tap ket Co giap
+    (HQ < 15 khong bao gio tham gia)."""
+    m = getattr(ctx, "mem", None)
+    idx, now = ctx.dev.idx, time.time()
+    if m:
+        ok, why = quest_rules.npc_gate(m.fact(idx, "npc_fail_until"), now)
+        if not ok:
+            log.info("Phien quan (nhiem vu): bo qua - %s", why)
+            return "npc_wait"
+    r = _npc_attack_once(ctx, mq)
+    if m:
+        if r in quest_rules.NPC_FAIL:
+            n = int(m.fact(idx, "npc_fail_n") or 0) + 1
+            m.set_fact(idx, "npc_fail_n", n)
+            m.set_fact(idx, "npc_fail_until", now + quest_rules.npc_backoff_s(n))
+            log.info("Phien quan (nhiem vu): that bai lan %d (%s) - lui %.0f gio", n, r, quest_rules.npc_backoff_s(n) / 3600)
+        elif r == "npc_sent":
+            m.set_fact(idx, "npc_fail_n", 0)
+            m.set_fact(idx, "npc_fail_until", None)
+    return r
+
+
+def _npc_attack_once(ctx, mq):
     """Nhiem vu 'Kich sat N lan phien quan': thanh nhiem vu -> ban do, muc tieu giua man -> 'Tan cong' -> Xuat chinh.
     -> 'npc_sent' | 'npc_skip' | 'npc_full' | 'npc_contested' | 'npc_none'. Thieu anh mau -> 'npc_none' (khong bam)."""
     if not tplneed.has(ctx.v, NPC_ATTACK, "nut Tan cong bang phien quan"):

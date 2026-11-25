@@ -72,7 +72,7 @@ def test_npc_search_taps_tim_kiem_then_target():
 
 
 def test_npc_attack_not_gated_by_world_hq(monkeypatch, caplog):
-    src = inspect.getsource(mainquest.npc_attack)
+    src = inspect.getsource(mainquest._npc_attack_once)
     i = src.index("if not ctx.world_ready():")
     assert "return \"npc_skip\"" not in src[i:i + 400]          # truoc day: npc_skip ngay o nha chinh 4-5
     assert "npc_search(ctx)" in src
