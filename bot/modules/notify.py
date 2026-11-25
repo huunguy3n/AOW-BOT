@@ -378,11 +378,15 @@ def _pickups(ctx):
     return pk
 
 
-def open_intel(ctx):
+def open_intel(ctx, allow_city=True):
     """P9-9 (anh tinh_bao_tu_world_map): icon Tinh bao (ngay tren icon Chien dich) co ca tren BAN DO THE GIOI -> bam
-    tu man hien tai (thanh pho hoac the gioi), chi ve thanh pho khi khong thay. -> True neu da bam."""
+    tu man hien tai (thanh pho hoac the gioi), chi ve thanh pho khi khong thay. -> True neu da bam.
+    P13-5: allow_city False -> khong ve thanh pho (chi dong popup roi tim lai icon) - tranh ra/vao thanh pho lap lai."""
     q = ctx.find("campaign/btn_open")
-    if not q:
+    if not q and not allow_city:
+        ctx.close_popups()
+        q = ctx.find("campaign/btn_open")
+    elif not q:
         ctx.ensure_city()
         q = ctx.find("campaign/btn_open")
     if not q:
@@ -398,9 +402,12 @@ def intel(ctx, max_n):
     tried = set()
     done_keys = set()           # P7-4: ghim lam xong (tran thang / nhat) -> o quet lai co the la diem MOI
     rescans, done_scan = 0, 0
+    city_trips = 0              # P13-5: ve thanh pho TOI DA 1 lan trong buoc (khi khong con cach nao thay icon Tinh bao)
     for _ in range(max_n):
         if not ctx.find("intel/title"):
-            if not open_intel(ctx):
+            if not ctx.find("campaign/btn_open"):
+                city_trips += 1         # icon khong thay tren man nay -> open_intel co the phai ve thanh pho (lan thu may)
+            if not open_intel(ctx, allow_city=city_trips <= 1):
                 break
         # nhiem vu da xong (dau tick xanh tren ghim) -> cham ghim de nhan thuong. Nhan theo MAU (anh mau cu chi khop
         # 0.61, chu du an 2026-11-20 "nhan het cac hop qua co tick v"); chup lai sau moi lan nhan (ghim bien mat)
@@ -454,14 +461,14 @@ def intel(ctx, max_n):
             break
         if r in IR.SKIP:
             if not ctx.find("intel/title"):
-                ctx.ensure_city()
+                ctx.close_popups()      # P13-5: o lai ban do, vong sau mo lai bang tinh bao (khong ensure_city)
             continue
         # P5-1: chi khi BANG NHIEM VU khong hien (co the la bang thieu nang luong) moi thu 1 vien thuoc; truoc day moi
         # 'unknown' (ke ca nhan nham muc tieu tren ban do) deu ep dung thuoc
         if r == IR.UNKNOWN_PANEL and energy(ctx) is None and not refill_energy(ctx, force=True):
             break       # co the thieu nang luong ma khong doc duoc so -> thu 1 vien, het thuoc thi dung
         if not ctx.find("intel/title"):
-            ctx.ensure_city()
+            ctx.close_popups()          # P13-5: khong ensure_city o giua buoc
     return done
 
 
