@@ -106,6 +106,13 @@ def detect(img):
     # cong nhat / trong mo (anh chu du an 2026-11-21: "-10%" do S~140, "+5" xanh S~85) -> loc rieng, bo trung
     def _new(lst, cx, cy):
         return not any(abs(cx - a) < 60 and abs(cy - b) < 50 for a, b, _ in lst)
+    # P13d-2 (anh runner_khong_dieu_khien: 3 VONG TIM/hong phat sang tren duong + bang "+5%"): vong elip hong H 140-172,
+    # ruot rong (do dac 0.2-0.65), rong 80-160 x cao 45-95 -> nhat nhu buff (bot truoc day khong nhan ra vong tim)
+    pm = cv2.morphologyEx(((H >= 140) & (H <= 172) & (S >= 40) & (V >= 215)).astype(np.uint8), cv2.MORPH_CLOSE, k)
+    for x, y, w, h, a_, fill in _blobs(pm, 1500):
+        cx, cy = x + w // 2, y0 + y + h // 2
+        if 80 <= w <= 160 and 45 <= h <= 95 and 1.3 <= w / h <= 2.0 and 0.2 <= fill <= 0.65 and _new(out["buff"], cx, cy):
+            out["buff"].append((cx, cy, w))
     for key, m in (("nerf", ((H <= 10) | (H >= 160)) & (S >= 80) & (V >= 170)),
                    ("buff", (H >= 95) & (H <= 118) & (S >= 55) & (V >= 170))):
         m = cv2.morphologyEx(m.astype(np.uint8), cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))   # bo vet dan / duong manh
@@ -151,6 +158,40 @@ def detect(img):
 FAR_Y = 330  # bang do co so o tren muc nay = con xa -> ban; duoi = gan -> ne
 VY_S = 45    # px/giay: vat the lao xuong (do: 18 px/khung x 2.5 khung/giay, tran tan thu)
 VX_S = 120   # px/giay: linh di ngang khi keo (MAX_SQUAD_STEP 70 px / nhip ~0.5 s, lay than trong)
+
+
+STALL_S = 1.5            # P13d-2: khong co khung moi qua N giay -> luong anh dung hinh -> khoi dong lai
+MAX_STREAM_RESTARTS = 4
+
+
+class DragWatch:
+    """P13d-2 (anh runner_khong_dieu_khien: bot keo ma doi quan dung yen): lenh keo vua gui (cmd_dx) ma sau do x doi quan
+    khong doi theo huong do >= min_move px, `need` lan lien tiep -> keo khong co hieu luc (ngon tay mat / id cham cu) ->
+    nguoi goi nhac tay roi dat lai. Ham thuan: x doi quan truyen vao, bo qua khi doi quan sat mep (bi chan that)."""
+
+    def __init__(self, need=4, min_cmd=20, min_move=6, edge=(60, 480)):
+        self.need, self.min_cmd, self.min_move, self.edge = need, min_cmd, min_move, edge
+        self.prev_sx, self.prev_cmd, self.streak = None, 0.0, 0
+
+    def update(self, sx, cmd_dx):
+        """sx: x doi quan do duoc o khung nay (None neu khong thay); cmd_dx: do keo se gui sau khung nay (0 = khong keo).
+        -> True khi can dat lai ngon tay."""
+        stuck = False
+        if sx is not None and self.prev_sx is not None and abs(self.prev_cmd) >= self.min_cmd:
+            moved = (sx - self.prev_sx) * (1 if self.prev_cmd > 0 else -1)
+            at_edge = (sx <= self.edge[0] and self.prev_cmd < 0) or (sx >= self.edge[1] and self.prev_cmd > 0)
+            if moved >= self.min_move or at_edge:
+                self.streak = 0
+            else:
+                self.streak += 1
+                if self.streak >= self.need:
+                    stuck, self.streak = True, 0
+        if sx is not None:
+            self.prev_sx = sx
+            self.prev_cmd = cmd_dx
+        elif cmd_dx:
+            self.prev_cmd = cmd_dx
+        return stuck
 
 
 def reachable(cx, cy, w, cur_x):
@@ -416,6 +457,8 @@ def _run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None
     x = 270
     miss = 0
     gates = GateTrack()
+    watch = DragWatch()
+    stalls, reissued = 0, 0
     t0, last, i = time.time(), 0, 0
     result = "error"
     try:
@@ -437,7 +480,24 @@ def _run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None
         if tele:
             tele.write("i,t,finger,squad_raw,squad_est,target,score,buff,buff_reach,nerf,enemy,danger,recenter\n")
         while time.time() - t0 < timeout:
-            img, last = s.latest(last)
+            img, t_new = s.latest(last)
+            if t_new <= last:      # P13d-2: khong co khung moi trong timeout -> luong anh dung hinh
+                stalls += 1
+                if stalls >= 2 and time.time() - last > STALL_S:
+                    if s.restarts >= MAX_STREAM_RESTARTS:
+                        log.warning("Luong anh dung hinh %d lan - bo lai", s.restarts)
+                        fg.up()
+                        result = "error"
+                        break
+                    log.warning("Luong anh dung hinh %.1fs - khoi dong lai luong (lan %d)", time.time() - last,
+                                s.restarts + 1)
+                    s.restart()
+                    stalls = 0
+                if img is None:
+                    continue
+            else:
+                stalls = 0
+            last = t_new
             if any(vision.find(img, n) for n in RESULT_TPLS):
                 result = result_of(vision, img)
                 break
@@ -465,6 +525,13 @@ def _run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None
             # Linh di theo DO LECH keo tuong doi, he so GAIN (~0.4), chi khi keo cham theo thoi gian (drag_by).
             d = max(-MAX_SQUAD_STEP, min(MAX_SQUAD_STEP, tx - est))
             recenter = 0
+            if fg.down_ and watch.update(sx, d / GAIN if abs(d) >= 8 else 0.0):
+                log.warning("Keo khong co hieu luc (doi quan dung yen x=%s) - dat lai ngon tay (lan %d)", sx, reissued + 1)
+                fg.up()
+                time.sleep(0.05)
+                fg.down(270, SQUAD_Y)
+                reissued += 1
+                recenter = 2
             if fg.down_ and abs(d) >= 8:
                 fdx = d / GAIN
                 if not (FINGER_MIN <= fg.x + fdx <= FINGER_MAX):   # het cho keo -> nhac tay, dat lai giua (nhu touchpad)
@@ -496,5 +563,6 @@ def _run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None
         s.close()
         if debug_dir and "tele" in locals() and tele:
             tele.close()
-    log.info("Tran lai: %s sau %.0fs (%d khung)", result, time.time() - t0, i)
+    log.info("Tran lai: %s sau %.0fs (%d khung, %.1f khung/s luong anh, %d lan khoi dong lai luong, %d lan dat lai tay)",
+             result, time.time() - t0, i, s.fps(), s.restarts, reissued)
     return result

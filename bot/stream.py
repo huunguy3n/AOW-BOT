@@ -8,30 +8,52 @@ import numpy as np
 
 class FrameStream:
     def __init__(self, adb, serial, w=540, h=960):
+        self.adb, self.serial = adb, serial
         self.w, self.h = w, h
         self.size = w * h * 4
-        self.proc = subprocess.Popen(
-            [adb, "-s", serial, "exec-out", "while true; do screencap; done"],
-            stdout=subprocess.PIPE, bufsize=0)
         self.frame, self.t, self.count = None, 0, 0
-        self._stop = False
-        threading.Thread(target=self._reader, daemon=True).start()
+        self.restarts = 0
+        self.proc = None
+        self._start()
 
-    def _read(self, n):
+    def _start(self):
+        """P13d-2: (khoi dong lai) luong screencap lien tuc. Dem khung / thoi gian de biet fps that."""
+        self.proc = subprocess.Popen(
+            [self.adb, "-s", self.serial, "exec-out", "while true; do screencap; done"],
+            stdout=subprocess.PIPE, bufsize=0)
+        self.started_at, self.count_at_start = time.time(), self.count
+        self._stop = False
+        threading.Thread(target=self._reader, args=(self.proc,), daemon=True).start()
+
+    def fps(self):
+        """Khung / giay tu lan (khoi dong lai) gan nhat."""
+        dt = time.time() - self.started_at
+        return (self.count - self.count_at_start) / dt if dt > 0.5 else 0.0
+
+    def restart(self):
+        """Dong bang hinh (reader chet / adb treo): giet tien trinh cu, mo luong moi."""
+        try:
+            self.proc.kill()
+        except Exception:
+            pass
+        self.restarts += 1
+        self._start()
+
+    def _read(self, n, proc):
         buf = bytearray()
         while len(buf) < n:
-            chunk = self.proc.stdout.read(n - len(buf))
+            chunk = proc.stdout.read(n - len(buf))
             if not chunk:
                 raise EOFError
             buf += chunk
         return bytes(buf)
 
-    def _reader(self):
+    def _reader(self, proc):
         try:
-            while not self._stop:
-                hdr = self._read(16)  # w, h, format, colorspace (Android 9+)
+            while not self._stop and proc is self.proc:
+                hdr = self._read(16, proc)  # w, h, format, colorspace (Android 9+)
                 w, h = np.frombuffer(hdr[:8], np.uint32)
-                data = self._read(int(w) * int(h) * 4)
+                data = self._read(int(w) * int(h) * 4, proc)
                 rgba = np.frombuffer(data, np.uint8).reshape(int(h), int(w), 4)
                 self.frame = rgba[..., [2, 1, 0]].copy()  # -> BGR cho OpenCV
                 self.t = time.time()
