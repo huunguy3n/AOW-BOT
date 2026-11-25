@@ -39,6 +39,21 @@ def glow_tiles(img, roi=(0, 440, 250, 520)):
     return sorted(out, key=lambda p: p[1])
 
 
+def tile_locked(img, x, y):
+    """P13-7 (anh duong_tuong_sai.png): o qua co O KHOA trang o goc tren-trai o (than khoa ~14x14 px, trang S<45 V>215)
+    la o CHUA mo (moc > cap hien tai) - khong nhan duoc, khong bam. (x, y) = tam o. Ham thuan."""
+    if getattr(img, "ndim", 0) != 3:
+        return False
+    x0, y0 = max(0, x - 46), max(0, y - 40)
+    sub = img[y0:y + 6, x0:x - 14]
+    if sub.size == 0:
+        return False
+    hsv = cv2.cvtColor(sub, cv2.COLOR_BGR2HSV)
+    m = ((hsv[..., 1] < 45) & (hsv[..., 2] > 215)).astype(np.uint8)
+    n, _, st, _ = cv2.connectedComponentsWithStats(m)
+    return any(10 <= st[k][2] <= 22 and 9 <= st[k][3] <= 24 and st[k][4] >= 70 for k in range(1, n))
+
+
 def nhan_tiles(img, roi=(0, 230, 540, 700)):
     """O qua nhan duoc kieu "Diem danh 30 ngay": chu "Nhan" XANH LA SANG de len o + VIEN VANG NHAT phat sang.
     Do tren anh nguoi dung gui 2026-11-18 (ti le ~0.97): chu H~60 S255 V235, khoi ~44x13; vien H 23-26 S 54-58 V255.

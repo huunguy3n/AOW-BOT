@@ -13,7 +13,7 @@ import time, logging
 import cv2
 import numpy as np
 from bot import intel_rules as IR, ocr, screens
-from bot.badges import red_dots, glow_tiles, nhan_tiles
+from bot.badges import red_dots, glow_tiles, nhan_tiles, tile_locked
 from bot.modules import campaign
 
 log = logging.getLogger("aow")
@@ -119,6 +119,7 @@ def claim_glow_tiles(ctx, max_taps=6):
         # glow_tiles: vien xanh ngoc (Qua dang nhap); nhan_tiles: chu "Nhan" xanh la + vien vang (Diem danh 30 ngay)
         tiles = [t for t in glow_tiles(img) + nhan_tiles(img) if (t[0] // 30, t[1] // 30) not in seen]
         tiles = g.keep("glow", free_column_tiles(tiles, epic_header(img)))   # P12-2: o bam 2 lan van sang -> bo
+        tiles = [t for t in tiles if not tile_locked(img, t[0], t[1])]       # P13-7: o co O KHOA (moc > cap) -> khong bam
         if not tiles:
             break
         x, y = tiles[0]
