@@ -108,20 +108,11 @@ def test_run_uses_free_peace_first(monkeypatch):
     assert ctx.mem.f["peace_at"]
 
 
-def test_run_falls_back_items_then_gems_daily_src(monkeypatch):
-    ctx, calls = _ctx(monkeypatch, peace="cooldown", shields={(1, True): "shielded"})
-    assert shield.run(ctx) == 1
-    kinds = [c for c in calls if c[0] == "shield"]
-    first_buy = next(i for i, c in enumerate(kinds) if c[2])
-    assert all(not c[2] for c in kinds[:first_buy]) and first_buy >= 1   # vat pham thu truoc
-    assert kinds[first_buy][1] == 1 and kinds[first_buy][3] == shield.SRC
-
-
-def test_run_no_buy_when_disabled(monkeypatch):
-    ctx, calls = _ctx(monkeypatch)
-    ctx.cfg["shield"] = {"buy_gems": False}
+def test_run_cooldown_no_item_no_gem(monkeypatch):
+    """P13-4: Hiep uoc hoi chieu -> khong vat pham, khong kim cuong (ghi de P9-2)."""
+    ctx, calls = _ctx(monkeypatch, peace="cooldown", shields={(1, True): "shielded", (1, False): "shielded"})
     assert shield.run(ctx) == 0
-    assert not any(c[0] == "shield" and c[2] for c in calls)
+    assert not any(c[0] == "shield" for c in calls)
 
 
 def test_run_skips_on_war_day_and_when_shield_on(monkeypatch):

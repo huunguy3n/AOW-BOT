@@ -85,6 +85,22 @@ def screen_shield(ctx):
     return sh.get("state"), sh.get("left")
 
 
+# P13-4 (chu du an t60u, anh warday_icon_can_khien.png): huy hieu (sao vang tren nen xam) ngay BEN PHAI dong ho khien
+# o goc tren trai thanh pho = hom nay can khien kieu ngay chien tranh. Vi tri uoc luong tu anh dien thoai
+# (chua kiem tren anh ADB 540x960 - chua co khung ngay chien tranh that): ROI x 196-240, y 60-100.
+BADGE_ROI = (196, 60, 44, 40)
+BADGE_MIN_GOLD = 25
+
+
+def badge_visible(img):
+    """Ham thuan: co huy hieu 'can khien' (ngoi sao vang) ben phai dong ho khien khong."""
+    import cv2
+    x, y, w, h = BADGE_ROI
+    hsv = cv2.cvtColor(img[y:y + h, x:x + w], cv2.COLOR_BGR2HSV)
+    gold = int(((hsv[..., 0] >= 15) & (hsv[..., 0] <= 32) & (hsv[..., 1] >= 90) & (hsv[..., 2] >= 150)).sum())
+    return gold >= BADGE_MIN_GOLD
+
+
 def known_until(state, left, recorded, now):
     """Han khien dang biet (ham thuan). Man hinh 'off' -> khong co khien (bat lai, ke ca khi da ghi). 'on' doc duoc
     gio -> dung gio do. Con lai (khong doc duoc) -> han da ghi luc bat neu con hieu luc."""
@@ -114,6 +130,11 @@ def run(ctx):
     days = days_for(mem, idx, ctx.cfg, now)
     if W.active_window(now, days, c["lead_h"], c["tail_min"]) is None:
         log.info("Ngay chien tranh: %s", W.shield_plan(now, days, None, c).why)
+        return 0
+    # P13-4: khong thay huy hieu 'can khien' ben phai dong ho khien -> khong bat khien kieu warday (cong tac tay mode=on
+    # tren web van bat). Doc huy hieu tren man thanh pho hien tai.
+    if c.get("require_badge", True) and c.get("mode") != "on" and not badge_visible(ctx.shot()):
+        log.info("Ngay chien tranh: khong thay huy hieu 'can khien' canh dong ho khien - khong bat khien kieu warday")
         return 0
     return ensure(ctx, c, days, now)
 

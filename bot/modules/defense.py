@@ -294,7 +294,9 @@ def run(ctx, force=False):
             hours = war_shield(ctx, max(w.end - now, 3600), bool(c["buy_gems"]), c["gem_cap"])
             res = "shielded" if hours else "error"
         else:
-            res = shield(ctx, force)
+            # P13-4: ngay thuong chi Hiep uoc 8h MIEN PHI (khong vat pham, khong kim cuong)
+            res = peace(ctx)
+            log.info("Bi tan cong ngay thuong: chi dung Hiep uoc mien phi -> %s", res)
     if d.get("evacuate_troops"):
         evacuate(ctx)
     if getattr(ctx, "store", None):

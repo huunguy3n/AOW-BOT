@@ -115,9 +115,11 @@ def test_attack_outside_war_keeps_daily_cap(monkeypatch):
     got = {}
     monkeypatch.setattr(defense, "under_attack", lambda ctx: True)
     monkeypatch.setattr(defense, "shield", lambda ctx, force=False, **kw: got.update(kw) or "shielded")
+    monkeypatch.setattr(defense, "peace", lambda ctx, **kw: got.update(peace=1) or "peace")
     monkeypatch.setattr(defense.time, "time", lambda: SAT - 3 * 86400)
     ctx = Ctx([], cfg={"defense": {"shield_on_attack": True}, "warday": {}})
-    assert defense.run(ctx) == "shielded" and got == {}          # duong thuong: cap = defense.gem_cap_daily
+    # P13-4: ngay thuong bi tan cong -> CHI Hiep uoc mien phi (khong vat pham, khong kim cuong)
+    assert defense.run(ctx) == "peace" and got == {"peace": 1}
 
 
 def test_known_until():

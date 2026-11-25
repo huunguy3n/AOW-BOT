@@ -50,24 +50,6 @@ def _ctx(monkeypatch, state, left, results, war=None):
     return ctx, calls
 
 
-def test_renew_035_skips_peace_uses_item_extend(monkeypatch):
-    ctx, calls = _ctx(monkeypatch, "on", 35 * 60, {(1, False): "shielded"})
-    assert shield.run(ctx) == 1
-    assert ("peace",) not in calls                               # Hiep uoc chuan bi 1h > 35 phut -> ho
-    sh = [c for c in calls if c[0] == "shield"]
-    assert all(c[4] for c in sh) and all(c[3] == shield.SRC for c in sh)   # extend, nguon tran ngay thuong
-    first_buy = next((i for i, c in enumerate(sh) if c[2]), len(sh))
-    assert sh[-1][1] == 1 and not sh[-1][2] and first_buy == len(sh)      # vat pham, chua mua
-
-
-def test_renew_gems_only_after_items_within_cap_src(monkeypatch):
-    ctx, calls = _ctx(monkeypatch, "on", 20 * 60, {(1, True): "shielded"})
-    assert shield.run(ctx) == 1
-    sh = [c for c in calls if c[0] == "shield"]
-    first_buy = next(i for i, c in enumerate(sh) if c[2])
-    assert first_buy >= 1 and sh[first_buy][3] == shield.SRC     # kim cuong sau vat pham, ghi gem_ev trong tran
-
-
 def test_no_renew_with_2h(monkeypatch):
     ctx, calls = _ctx(monkeypatch, "on", 2 * 3600, {})
     assert shield.run(ctx) == 0 and calls == []
@@ -88,3 +70,10 @@ def test_runner_checks_shield_at_end_of_visit():
     i = src.index("P10-7: khien CUOI luot")
     assert "shield.run(ctx)" in src[i:i + 300]
     assert src.index('("shield", shield)') < src.index('("notify", notify)')    # dau luot van som
+
+
+def test_p13_renew_never_uses_item_or_gem(monkeypatch):
+    for left in (35 * 60, 20 * 60):
+        ctx, calls = _ctx(monkeypatch, "on", left, {(1, False): "shielded", (1, True): "shielded"})
+        assert shield.run(ctx) == 0
+        assert not any(c[0] == "shield" for c in calls)

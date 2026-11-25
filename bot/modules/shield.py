@@ -71,6 +71,9 @@ def options(renew, left, preparing, prep_min, buy_gems):
 
 
 def run(ctx):
+    """P13-4 (chu du an t59u/t60u, ghi de P10/P12): ngay thuong CHI bat khien bang Hiep uoc hoa binh 8h MIEN PHI san dung.
+    KHONG dung vat pham khien, KHONG kim cuong, KHONG bat moi lan dang nhap: khien dang bat / Hiep uoc dang chuan bi /
+    hoi chieu -> bo qua. Ngay chien tranh (thu 7 co huy hieu) do buoc warday lo."""
     from bot.modules import defense, warday
     c = scfg(ctx.cfg)
     mem, idx, now = getattr(ctx, "mem", None), ctx.dev.idx, time.time()
@@ -82,44 +85,17 @@ def run(ctx):
     if not go:
         log.info("Khien som: %s - bo qua", why)
         return 0
-    renew = state == "on"
-    preparing = peace_preparing(peace_at, now, c["peace_prep_min"])
-    log.warning("Khien som: %s -> Hiep uoc mien phi (chi khi bat xong la bao ho) > vat pham > kim cuong (tran %s/ngay)",
-                why.upper() if not renew else why, (ctx.cfg.get("defense") or {}).get("gem_cap_daily", 0))
-    if renew and not peace_ok_for_renew(left, c["peace_prep_min"]):
-        log.info("Khien som: bo Hiep uoc khi gia han - chuan bi %d phut > khien con %s (se ho)",
-                 c["peace_prep_min"], _hm(left or 0))
-    if preparing:
-        log.info("Khien som: Hiep uoc trang thai CHUAN BI -> bo dong Hiep uoc, dung vat pham khien")
-    for hours, buy in options(renew, left, preparing, c["peace_prep_min"], c["buy_gems"]):
-        if hours == 8:
-            res = defense.peace(ctx, skip_if_active=not renew)
-            log.info("Khien som: Hiep uoc hoa binh trang thai %s", PEACE_STATUS.get(res, res))
-            if res == "peace":
-                if mem:
-                    mem.set_fact(idx, "peace_at", now)
-                st2, _ = warday.screen_shield(ctx)
-                if st2 == "on":
-                    log.info("Khien som: da dung Hiep uoc hoa binh (mien phi) - khien DANG BAT")
-                    return 1
-                log.warning("Khien som: Hiep uoc da dung nhung dang CHUAN BI (khien %s, chua bao ho) -> dung vat pham "
-                            "khien ngay", st2 or "?")
-                continue
-        else:
-            res = defense.shield(ctx, hours=hours, allow_buy=buy, src=SRC, extend=renew)
-            if res == "shielded":
-                if mem:
-                    mem.set_fact(idx, "shield_daily_at", now)
-                log.info("Khien som: da bat khien %dh bang %s", hours, "KIM CUONG" if buy else "vat pham")
-                return 1
-        if res == "active" and not renew:
-            log.info("Khien som: bang bao ho cho biet dang con khien")
-            return 0
-        if res == "missing_tpl":
-            log.warning("Khien som: thieu anh mau - dung")
-            return 0
-        log.info("Khien som: %s %dh -> %s, thu cach ke", "mua" if buy else ("Hiep uoc" if hours == 8 else "vat pham"),
-                 hours, res)
-    log.error("Khien som: KHONG %s DUOC KHIEN (het Hiep uoc / vat pham / kim cuong trong tran)",
-              "GIA HAN" if renew else "BAT")
+    if state == "on":
+        log.info("Khien som: khien con %s - khong gia han bang vat pham / kim cuong (luat P13-4)", _hm(left or 0))
+        return 0
+    if peace_preparing(peace_at, now, c["peace_prep_min"]):
+        log.info("Khien som: Hiep uoc dang chuan bi - KHONG dung vat pham / kim cuong (luat P13-4), cho bao ho")
+        return 0
+    res = defense.peace(ctx, skip_if_active=True)
+    log.info("Khien som: Hiep uoc hoa binh mien phi -> %s", PEACE_STATUS.get(res, res))
+    if res == "peace":
+        if mem:
+            mem.set_fact(idx, "peace_at", now)
+        return 1
+    log.info("Khien som: khong co Hiep uoc 8h mien phi san dung - KHONG bat khien (khong vat pham, khong kim cuong)")
     return 0

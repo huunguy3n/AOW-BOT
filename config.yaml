@@ -378,6 +378,7 @@ rebels:
   search_tries: 3         # P5-2: so cap thu trong 1 luot (cap ke tiep roi ha dan khi du doan thua / khong tim thay)
   intel_rally_min_hq: 0   # P5-2: ghim tinh bao Phan quan Co giap tu mo tap ket chi khi nha chinh >= N (0 = moi cap, nhu cu)
 warday:
+  require_badge: true       # P13-4: chi bat khien kieu warday khi thay huy hieu 'can khien' ben phai dong ho khien (mode=on bo qua)
   # Lich tuan su kien (chu du an 2026-11-23): thu 7 = ngay chien tranh (giu khien LIEN TUC du 24h), thu 2 = ngay thu thap.
   enabled: true
   mode: auto                # CONG TAC TAY (web: Tuy chon -> Ngay chien tranh): auto = theo lich + dau hieu; on = coi HOM NAY la
@@ -408,14 +409,14 @@ warday:
   dates: []                 # ngay chien tranh khai tay "YYYY-MM-DD" (them vao lich, khong thay lich)
 
 shield:                   # P9-2 (chu du an 2026-11-24): khien som ngay thuong, doc lap voi warday (thu 7 warday lo)
-  buy_gems: true          # het Hiep uoc + vat pham -> mua bang kim cuong TRONG tran defense.gem_cap_daily (2000/ngay)
+  buy_gems: false         # P13-4: ngay thuong KHONG vat pham, KHONG kim cuong - chi Hiep uoc 8h mien phi
   peace_prep_min: 60      # Hiep uoc vua dung (chuan bi 1h) -> khong bat/mua khien khac trong N phut
   renew_below_min: 60     # P10-7: dau + cuoi luot, khien con < N phut -> gia han (vat pham > kim cuong trong tran);
                           # Hiep uoc chi khi khien con >= peace_prep_min (khong ho luc chuan bi); con >= N -> khong chong
 defense:
   shield_on_attack: true  # bi tan cong -> bat khien
   shield_hours: 1
-  shield_buy_gems: true   # het vat pham khien thi mua bang kim cuong
+  shield_buy_gems: false  # P13-4: ngay thuong khong mua / khong dung vat pham (chi Hiep uoc mien phi); thu 7 warday theo luat warday
   gem_cap_daily: 2000     # tran kim cuong moi ngay moi tai khoan
   evacuate_troops: false  # gui toan bo quan ra khoi tru so di thu thap
   red_flash: true         # mep man hinh nhay do o thanh pho/ban do = dang bi tan cong (chua co anh mau canh bao)

@@ -48,57 +48,14 @@ def test_plan_off_while_preparing_goes():
     assert go and "chuan bi" in why.lower()                     # live4 #0 cuoi luot: truoc day 'bo qua'
 
 
-def test_peace_used_but_preparing_then_item(monkeypatch):
-    # live4: bam Hiep uoc xong, man hinh van 'off' (chuan bi) -> dung vat pham 1h ngay trong luot
-    ctx, calls = _ctx(monkeypatch, [("off", None), ("off", None)], {(1, False): "shielded"})
-    assert shield.run(ctx) == 1
-    assert calls[0] == ("peace",)
-    sh = [c for c in calls if c[0] == "shield"]
-    assert sh[-1][1] == 1 and sh[-1][2] is False
-    assert ctx.mem.f.get("peace_at")                            # van ghi luc dung Hiep uoc
-
-
 def test_peace_used_and_on_stops(monkeypatch):
     ctx, calls = _ctx(monkeypatch, [("off", None), ("on", 8 * 3600)], {})
     assert shield.run(ctx) == 1 and calls == [("peace",)]
 
 
-def test_peace_preparing_from_memory_skips_peace_uses_item(monkeypatch):
-    ctx, calls = _ctx(monkeypatch, [("off", None)], {(1, False): "shielded"}, facts={"peace_at": time.time() - 20 * 60})
-    assert shield.run(ctx) == 1
-    assert ("peace",) not in calls
-    assert [c for c in calls if c[0] == "shield"][-1][1:3] == (1, False)
-
-
-def test_peace_cooldown_uses_item(monkeypatch):
-    ctx, calls = _ctx(monkeypatch, [("off", None)], {(1, False): "shielded"}, peace_res="cooldown")
-    assert shield.run(ctx) == 1 and calls[0] == ("peace",)
-    assert calls[-1][1:3] == (1, False)
-
-
-def test_peace_label_preparing_uses_item(monkeypatch):
-    ctx, calls = _ctx(monkeypatch, [("off", None)], {(1, False): "shielded"}, peace_res="preparing")
-    assert shield.run(ctx) == 1 and calls[-1][1:3] == (1, False)
-
-
-def test_end_of_visit_045_renews_with_item(monkeypatch):
-    ctx, calls = _ctx(monkeypatch, [("on", 45 * 60)], {(1, False): "shielded"})
-    assert shield.run(ctx) == 1
-    assert ("peace",) not in calls and all(c[4] for c in calls)      # extend
-
-
 def test_2h_protected_no_stack(monkeypatch):
     ctx, calls = _ctx(monkeypatch, [("on", 2 * 3600)], {})
     assert shield.run(ctx) == 0 and calls == []
-
-
-def test_gems_last_within_cap_src(monkeypatch):
-    ctx, calls = _ctx(monkeypatch, [("off", None)], {(1, True): "shielded"}, peace_res="cooldown")
-    assert shield.run(ctx) == 1
-    sh = [c for c in calls if c[0] == "shield"]
-    first_buy = next(i for i, c in enumerate(sh) if c[2])
-    assert all(not c[2] for c in sh[:first_buy]) and sh[first_buy][3] == shield.SRC
-    assert defense.counts_toward_cap(shield.SRC)                    # tinh vao tran 2000/ngay
 
 
 def test_options_order():
@@ -110,4 +67,30 @@ def test_options_order():
 
 def test_warday_untouched(monkeypatch):
     ctx, calls = _ctx(monkeypatch, [("off", None)], {}, war=object())
+    assert shield.run(ctx) == 0 and calls == []
+
+
+def _nobuy(calls):
+    return not any(c[0] == "shield" for c in calls)
+
+
+def test_p13_preparing_no_item_no_gem(monkeypatch):
+    # P13-4: Hiep uoc vua dung (chuan bi) -> KHONG dung vat pham / kim cuong de 'cuu' (ghi de P12-1)
+    ctx, calls = _ctx(monkeypatch, [("off", None)], {(1, False): "shielded", (1, True): "shielded"},
+                      facts={"peace_at": time.time() - 600})
+    assert shield.run(ctx) == 0 and _nobuy(calls) and ("peace",) not in calls
+
+
+def test_p13_cooldown_no_item_no_gem(monkeypatch):
+    ctx, calls = _ctx(monkeypatch, [("off", None)], {(1, False): "shielded"}, peace_res="cooldown")
+    assert shield.run(ctx) == 0 and _nobuy(calls) and calls == [("peace",)]
+
+
+def test_p13_free_peace_used(monkeypatch):
+    ctx, calls = _ctx(monkeypatch, [("off", None)], {}, peace_res="peace")
+    assert shield.run(ctx) == 1 and _nobuy(calls) and ctx.mem.f.get("peace_at")
+
+
+def test_p13_low_shield_not_renewed_with_item(monkeypatch):
+    ctx, calls = _ctx(monkeypatch, [("on", 45 * 60)], {(1, False): "shielded"})
     assert shield.run(ctx) == 0 and calls == []
