@@ -487,11 +487,32 @@ def boss(ctx):
     return n
 
 
-def ally_mine(ctx):
-    """"Den thu thap" Mo lien minh (Xuong Hop Kim lien minh) -> gui 1 doi neu con doi ranh. -> 1 | 0"""
+MINE_EARLY_MIN_FREE = 2
+
+
+def mine_decision(free):
+    """Ham thuan P13b (chu du an t77u/t78u): so quan doan ranh -> 'full' (0: bo) | 'defer' (1: giu cho tinh bao/phan quan,
+    gui cuoi luot cung gather) | 'early' (>=2: gui som trong buoc lien minh)."""
+    if free <= 0:
+        return "full"
+    return "early" if free >= MINE_EARLY_MIN_FREE else "defer"
+
+
+def ally_mine(ctx, late=False):
+    """"Den thu thap" Mo lien minh (Xuong Hop Kim lien minh) -> gui 1 doi. P13b: som (trong buoc lien minh) chi khi con
+    >= 2 doi ranh; con 1 -> hoan (ctx.ally_mine = 'deferred'), cuoi luot (late=True, truoc gather) moi gui. -> 1 | 0"""
     if ctx.march_full():
         log.info("Mo lien minh: het quan doan ranh - bo qua")
         return 0
+    if not late:
+        free = ctx.march_free()
+        what = mine_decision(free)
+        log.info("Mo lien minh: %d quan doan ranh -> %s", free,
+                 {"early": "gui som", "defer": "hoan cuoi luot cung thu thap", "full": "bo qua"}[what])
+        if what == "defer":
+            ctx.ally_mine = "deferred"
+        if what != "early":
+            return 0
     if not ctx.tap_tpl("ally/mine_go", wait=3.0, th=0.8):
         return 0
     # ban do the gioi: vong menu quanh Xuong Hop Kim lien minh (Tin tuc / Thu thap / Huong dan / Quyen gop) -> "Thu thap"
@@ -508,5 +529,24 @@ def ally_mine(ctx):
     log.info("Mo lien minh: %s", "gui 1 doi thu thap" if ok else "khong gui duoc")
     if ok:
         ctx.march_sent()
+        ctx.ally_mine = "sent"
     ctx.ensure_city()
     return int(bool(ok))
+
+
+def ally_mine_end(ctx):
+    """P13b: cuoi luot, ngay truoc gather: gui mo lien minh da hoan o buoc lien minh (con 1 doi ranh luc do). Da gui som /
+    khong hoan -> khong lam gi. Het quan doan ranh luc nay -> bo (nhu thuong). -> 1 | 0"""
+    if getattr(ctx, "ally_mine", None) != "deferred":
+        return 0
+    ctx.ally_mine = "done"           # moi lan ghe chi thu 1 lan
+    a = ctx.cfg.get("alliance", {})
+    if not a.get("mine", True) or not ctx.cfg.get("quests", {}).get("alliance", True):
+        return 0
+    log.info("Mo lien minh (cuoi luot, cung thu thap): gui doi da giu lai")
+    if not (open_alliance(ctx) and main_tab(ctx)):
+        ctx.ensure_city()
+        return 0
+    n = ally_mine(ctx, late=True)
+    ctx.ensure_city()
+    return n

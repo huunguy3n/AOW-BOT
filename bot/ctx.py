@@ -696,6 +696,21 @@ class Ctx:
             return u >= t
         return False
 
+    def march_free(self):
+        """P13b: so quan doan RANH (total - used). Doc man hien tai -> so doc gan nhat (<15 phut) -> state.json (<20 phut).
+        KHONG doc duoc so nao -> 1 (coi nhu tai khoan chi con 1 quan doan ranh: cach an toan, khong gui som)."""
+        v = self.read_marches()
+        if v:
+            return max(v[1] - v[0], 0)
+        c = getattr(self, "_march", None)
+        if c and time.time() - c[2] < 900:
+            return max(c[1] - c[0], 0)
+        st = self.store.inst(self.dev.idx) if getattr(self, "store", None) else {}
+        u, t, at = st.get("march_used"), st.get("march_total"), st.get("resources_at") or 0
+        if u is not None and t and time.time() - at < 1200:
+            return max(t - u, 0)
+        return 1
+
     def march_sent(self):
         """Vua gui 1 quan doan ra the gioi (tinh bao, mo lien minh, phan quan, cuop) -> cong 1 vao so doc gan nhat."""
         c = getattr(self, "_march", None)

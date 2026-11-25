@@ -576,6 +576,12 @@ def remember_too_big(ctx, rtype, lv, load, min_lv):
 def run(ctx, limit=None):
     """limit: gui toi da N doi roi dung (agent gui tung doi, xac minh tung lan - B4); None = toi khi day."""
     g = ctx.cfg["gather"]
+    if limit is None:                  # P13b: mo lien minh hoan tu buoc lien minh -> gui cuoi luot, ngay truoc thu thap
+        try:
+            from bot.modules import alliance
+            alliance.ally_mine_end(ctx)
+        except Exception as e:         # khong de mo lien minh lam hong thu thap
+            log.warning("Mo lien minh cuoi luot: loi %s", e)
     max_lv, min_lv = g["max_level"], g["min_level"]
     # Chu du an 2026-11-19: tai trong doi phai >= mo; truoc nha chinh cap 9 (du 3 nha linh) doi khong cho het
     # noi mo cap 1 -> khong di thu thap, de thoi gian cho nhiem vu trong can cu.
