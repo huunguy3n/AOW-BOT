@@ -148,6 +148,57 @@ def read_build_time(img, btn):
     return None
 
 
+QUICK_IGNORE = frozenset({"observe", "reddots", "upgrade", "construct", "quests", "mainquest"})
+
+
+def should_quick_wait(pending, busy_total, maxb):
+    """P13d-3 (ham thuan): co nen DUNG CHO cong trinh ngan xay xong khong?
+    Khong cho khi con buoc khac trong luot (pending: ten cac buoc chua chay) - lam buoc do truoc, xa viec (drain) chay lai
+    upgrade/construct sau; khong cho khi con tho khac RANH (busy_total = (dang xay, tong)) - tho do xay tiep ngay.
+    Cho chi khi khong con viec gi khac (cho se khong chan ai)."""
+    if busy_total is not None and busy_total[0] < min(maxb, busy_total[1]):
+        return False, "con tho khac ranh - xay tiep, khong cho"
+    others = sorted(n for n in (pending or ()) if n not in QUICK_IGNORE)
+    if others:
+        return False, f"con viec khac trong luot ({','.join(others[:4])}) - lam truoc, quay lai xay sau"
+    return True, ""
+
+
+SPEEDUP_FREE_RX = r"\bmi\w{1,2}n ph\w{1,2}\b"      # "Mien phi" (OCR eng mat dau)
+
+
+def free_speedup_button(img, roi=None):
+    """Nut 'Mien phi' (0 kim cuong) tren bang Tang toc: nut xanh co chu Mien phi, KHONG co chu so/gia/chu tra phi.
+    Ham thuan. -> (x, y) | None. Nut co gia kim cuong / 'Dung' vat pham / 'Tang toc' khong bao gio khop."""
+    from bot import buttons
+    for b in buttons.with_text(img, SPEEDUP_FREE_RX, roi=roi):
+        if not any(ch.isdigit() for ch in b.text):
+            return b.x, b.y
+    return None
+
+
+def free_speedup(ctx):
+    """Cong trinh dang xay co the co moc 'Tang toc - Mien phi': cham thanh tien do tren thanh pho, neu bang Tang toc co nut
+    'Mien phi' thi bam. Khong co -> dong. KHONG bam nut kim cuong / 'Dung' vat pham. -> so lan bam."""
+    from bot.modules.observe import progress_bars
+    ctx.ensure_city()
+    bars = progress_bars(ctx.shot())
+    if not bars:
+        return 0
+    n = 0
+    for bx, by, _t in bars[:2]:
+        ctx.tap(bx + 10, by - 12, wait=1.5)
+        btn = free_speedup_button(ctx.shot())
+        if btn:
+            ctx.tap(btn[0], btn[1], wait=2.0)
+            ctx.skip_dialogs()
+            n += 1
+            log.info("Tang toc xay: bam nut MIEN PHI (0 kim cuong)")
+        ctx.back_out(2)
+        ctx.ensure_city()
+    return n
+
+
 def quick_wait(ctx):
     """Vua bat dau xay: cong trinh nho xay NHANH (thanh tien do tren thanh pho con <= build.quick_s giay) thi cho xong
     roi tra True de ben goi xay tiep ngay, thay vi bo di tho ranh (chu du an 2026-11-22: 'xay nhanh thi xay lien tuc').
@@ -160,7 +211,17 @@ def quick_wait(ctx):
     used = getattr(ctx, "_quick_waited", 0.0)
     if used >= total_cap:
         return False
+    try:
+        free_speedup(ctx)         # P13d-3: co moc 'Mien phi' thi bam (0 kim cuong), roi moi tinh co cho khong
+    except Exception as e:        # noqa: BLE001 - loi o day khong duoc lam hong buoc xay
+        log.warning("Tang toc mien phi: loi %s", e)
+        ctx.ensure_city()
     ctx.ensure_city()
+    ok_wait, why_wait = should_quick_wait(getattr(ctx, "visit_pending", None), None,
+                                          ctx.cfg.get("build", {}).get("max_builders", 1))
+    if not ok_wait:
+        log.info("Xay: %s", why_wait)
+        return False
     known = getattr(ctx, "last_build_s", None)      # thoi gian xay doc duoc tren man Tang cap / Xay dung truoc khi bam
     ctx.last_build_s = None
     ts = [known] if known else sorted(t for _, _, t in progress_bars(ctx.shot()) if t)

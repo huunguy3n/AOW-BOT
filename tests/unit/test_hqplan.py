@@ -90,3 +90,11 @@ def test_next_target_and_rush():
     assert hqplan.next_target(None) is None
     assert hqplan.next_target(3, [15, 9]) == 9
     assert hqplan.hq_rush(7) and not hqplan.hq_rush(20) and not hqplan.hq_rush(None)
+
+
+def test_wait_builder_before_wake_does_not_reserve_idle_builder():
+    """P13d-3: cho nha chinh (wait_builder) chua toi gio -> tho ranh duoc dung cho cong trinh khac."""
+    p = record(None, "no_builder", NOW)
+    assert p.status is Status.WAIT_BUILDER
+    assert not reserve(p, NOW + 60, 1)[0]
+    assert reserve(p, p.wake_at + 60, 1)[0]     # toi gio nha chinh can tho -> nhuong

@@ -98,6 +98,11 @@ def reserve(plan: HqPlan | None, now: float, builders_max: int) -> tuple[bool, s
         return False, ""
     if plan.status in (Status.MAXED, Status.UNREACHED):
         return False, ""
+    if plan.status is Status.WAIT_BUILDER and now < plan.wake_at:
+        # P13d-3: nha chinh/dieu kien DANG xay (hoac vua gap "het tho"; live6c #5: ke hoach noi wait_builder
+        # nhung cuoi luot tho 0/2 RANH, construct bi nhuong ca luot). Chua toi gio nha chinh can tho ->
+        # tho ranh lam viec khac, dung ngoi khong.
+        return False, ""
     if now < plan.reserve_until:
         return True, f"nhuong tho cho nha chinh ({plan.status.value}, con {(plan.reserve_until - now) / 60:.0f} phut)"
     return False, ""
