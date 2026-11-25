@@ -222,6 +222,8 @@ def run(ctx):
                                  "khong bam Den", (tab or "chuong").split("/")[-1], k + 1, kind, titles[k][:40])
                     else:
                         tried.add(k)
+                        if kind == "expand" and getattr(ctx, "mem", None):
+                            ctx.mem.set_fact(ctx.dev.idx, "expand_pending", time.time())   # P13-11
                         log.info("Nhiem vu %s dong %d: %s -> viec cua buoc %s, khong bam Den",
                                  (tab or "chuong").split("/")[-1], k + 1, kind, module)
                 todo = keep

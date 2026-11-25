@@ -12,7 +12,7 @@ from bot.memory import Memory
 from bot import hang, perf, quest_rules, queues, scheduler, stepgate, tapguard
 from aowbot.domain import drain, rollout
 from aowbot.domain import warday as W
-from bot.modules import tutorial, mainquest, construct, city, rewards, alliance, quests, campaign, notify, research, train, rebels, gather, daily, observe, defense, intel, reddots, play, upgrade, heal, warday, mission, shield
+from bot.modules import expand, tutorial, mainquest, construct, city, rewards, alliance, quests, campaign, notify, research, train, rebels, gather, daily, observe, defense, intel, reddots, play, upgrade, heal, warday, mission, shield
 
 log = logging.getLogger("aow")
 # Thu tu (chu du an 2026-11-18): tan thu -> CHAM DO (thong bao, qua, nhiem vu) -> TINH BAO -> THU THAP -> phan con lai
@@ -27,7 +27,7 @@ log = logging.getLogger("aow")
 ORDER = [("warday", warday), ("tutorial", tutorial), ("shield", shield), ("alliance", alliance),
          ("reddots", reddots), ("notify", notify), ("rewards", rewards), ("mission", mission), ("collect_city", city),
          ("play", play), ("intel", intel), ("rebels", rebels), ("heal", heal),
-         ("train", train), ("upgrade", upgrade), ("mainquest", mainquest), ("construct", construct), ("quests", quests),
+         ("train", train), ("upgrade", upgrade), ("expand", expand), ("mainquest", mainquest), ("construct", construct), ("quests", quests),
          ("research", research),
          ("campaign", campaign), ("daily", daily), ("gather", gather)]
 # buoc xa viec (drain) chay lai TRUOC buoc nay (gather cuoi luot) - neu gather tat thi truoc observe

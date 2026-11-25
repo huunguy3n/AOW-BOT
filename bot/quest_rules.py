@@ -43,6 +43,7 @@ RULES: tuple[tuple[str, tuple[str, ...], str | None], ...] = (
     ("research", ("nghien cuu",), "research"),
     ("recruit", ("chieu mo",), "notify"),
     ("campaign", ("chien dich",), "campaign"),               # "Hoan tat Chien dich 1" - mainquest danh qua campaign
+    ("expand", ("mo rong thanh pho", "mo rong"), "expand"),  # P13-11: "Mo rong thanh pho" - buoc expand (vien thanh pho)
     ("build", ("den cap", "xay dung", "sua chua", "xuong"), None),   # "Tang 4 Xuong Thuc Pham den cap 26"
     ("hero", ("tuong",), None),                              # "Tang 5 Tuong len cap 90" -> follow (man Tuong)
     ("build", ("nang cap", "tang"), None),

@@ -29,6 +29,7 @@ modules:
   warday: true       # ngay chien tranh SVS (khien 8h/12h, cam thu thap) + moc the luc 0h/8h/15h UTC
   tutorial: false    # chi bat cho tai khoan moi
   shield: true       # P9-2: ngay thuong khien TAT -> bat som (Hiep uoc mien phi > vat pham > kim cuong trong tran 2000/ngay)
+  expand: true       # P13-11: mo rong thanh pho - luot vien sang, bam icon o khoa mo (+ nhiem vu 'mo rong thanh pho')
   mainquest: true    # UU TIEN: thanh nhiem vu chinh -> danh / xay / chien dich theo noi no dan toi
   collect_city: true # cham bieu tuong tai nguyen noi tren cong trinh
   alliance: true     # dong gop cong nghe lien minh bang vang, tro giup
@@ -229,6 +230,10 @@ stepgate:                  # P1 "On dinh nen" (bot/stepgate.py): dieu kien truoc
   base_min: 60             # tam bo base x 2^(lan - after) phut...
   cap_h: 8                 # ... toi da N gio. Lam duoc viec (tra > 0) -> xoa. Luu theo may: fact idle:<buoc>
   max_skip_h: 6            # bo vi dieu kien (khong thay thuong binh, luc chien chua du...) qua N gio -> chay 1 lan kiem tra
+expand:
+  enabled: true
+  min_interval_min: 240    # quet vien thanh pho toi da 1 lan / N phut / may (nhiem vu mo rong -> chay ngay)
+  ring: true               # luot camera vong quanh thanh pho tim icon o khoa mo
 reddots:
   max_rounds: 6        # lap toi khi het cham do; dung som neu 1 vong khong nhan them duoc gi
   skip_idle_steps: true  # cham do cua icon ma buoc rieng vua chay trong lan ghe nay va tra 0 -> khong mo lai

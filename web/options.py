@@ -5,7 +5,7 @@ MODULES = [  # cung thu tu chay (bot/runner.py ORDER)
     ("alliance", "Liên minh"), ("reddots", "Quét hết chấm đỏ"), ("notify", "Chấm đỏ"), ("rewards", "Nhận quà"), ("mission", "Sự kiện Sứ mệnh (NV hằng ngày + quà miễn phí)"),
     ("collect_city", "Nhặt tài nguyên"), ("play", "Lối chơi (mỏ, đấu trường)"), ("intel", "Tình báo"),
     ("rebels", "Phản quân tập kích"), ("heal", "Chữa thương binh"), ("train", "Huấn luyện"),
-    ("upgrade", "Xây theo nhà chính"), ("mainquest", "NV chính"), ("construct", "Xây công trình mới"),
+    ("upgrade", "Xây theo nhà chính"), ("expand", "Mở rộng thành phố (viền sáng, ổ khóa mở)"), ("mainquest", "NV chính"), ("construct", "Xây công trình mới"),
     ("quests", "Xây theo NV"), ("research", "Nghiên cứu"),
     ("campaign", "Chiến dịch"), ("daily", "Nhiệm vụ"), ("gather", "Gửi quân (cuối lượt)"),
 ]

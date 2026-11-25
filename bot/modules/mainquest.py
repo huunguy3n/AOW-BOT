@@ -301,6 +301,8 @@ def run(ctx):
     now = time.time()
     if getattr(ctx, "store", None):
         ctx.store.update(ctx.dev.idx, mainquest_text=text[:90], mainquest_kind=kind)
+    if kind == "expand" and m:
+        m.set_fact(ctx.dev.idx, "expand_pending", now)   # P13-11: buoc 'expand' chay ngay trong lan ghe nay
     if quest_rules.delegated(kind) and not (kind == "rebels" and mq.get("npc_rebels", True)):
         log.info("Nhiem vu chinh %r (%s) -> viec cua buoc %s, khong cham", text[:60], kind, module)
         _remember(ctx, text, kind, False, now)
