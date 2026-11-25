@@ -138,12 +138,42 @@ def claim_glow_tiles(ctx, max_taps=6):
     return n
 
 
-def dot_tap_points(dot):
-    """Ham thuan P13b: diem cham cho 1 cham do goc tren-phai cua vat so huu no. Thu tu: giua THE (x-48,y+70) roi
-    NUT/ICON sat cham (x-28,y+20). Man 'Quan quan tuan': cham do tren nut 'Vao lich thi dau' (nut thap ~50 px),
-    giua-the roi xuong khoang trong DUOI nut -> man khong doi; diem thu 2 trung nut that."""
+def owner_box(img, dot):
+    """P13c: tim NUT/THE that so huu cham do (cham o goc tren-phai vat do): contour canh quanh cham, lay khung NHO NHAT
+    co mep phai ~ x cham, mep tren ~ y cham. -> (x, y, w, h) hoac None. Khong offset mu (live6b: (x-48,y+70) roi
+    xuong khoang trong duoi nut thap 'Vao lich thi dau', thau y=964 ngoai man)."""
+    import cv2
+    import numpy as np
     x, y = dot
-    return [(x - 48, y + 70), (x - 28, y + 20)]
+    H, W = img.shape[:2]
+    x0, y0, x1, y1 = max(0, x - 340), max(0, y - 60), min(W, x + 30), min(H, y + 440)
+    if x1 - x0 < 40 or y1 - y0 < 30:
+        return None
+    g = cv2.cvtColor(img[y0:y1, x0:x1], cv2.COLOR_BGR2GRAY)
+    e = cv2.dilate(cv2.Canny(g, 40, 120), np.ones((3, 3), np.uint8))
+    cs, _ = cv2.findContours(e, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    best = None
+    for c in cs:
+        bx, by, bw, bh = cv2.boundingRect(c)
+        bx, by = bx + x0, by + y0
+        if bw < 36 or bh < 24 or bw > 340 or bh > 440:
+            continue
+        if abs(bx + bw - x) > 22 or abs(by - y) > 22:
+            continue
+        if best is None or bw * bh < best[2] * best[3]:
+            best = (bx, by, bw, bh)
+    return best
+
+
+def dot_tap_points(img, dot):
+    """Ham thuan P13c: diem cham cho 1 cham do = TAM vat so huu that (owner_box), da kep vao 0..539 x 0..959 va nam
+    TRONG khung. Khong tim duoc vat -> [] (khong doan offset; cham do bi bo qua/danh sach den)."""
+    box = owner_box(img, dot)
+    if box is None:
+        return []
+    bx, by, bw, bh = box
+    cx, cy = bx + bw // 2, by + bh // 2
+    return [(min(max(cx, 0), 539), min(max(cy, 0), 959))]
 
 
 def tap_red_dots(ctx, roi, scope, max_n=6):
@@ -160,10 +190,11 @@ def tap_red_dots(ctx, roi, scope, max_n=6):
         d = dots[0]
         done.add((d[0] // 30, d[1] // 30))
         moved = False
-        for (x, y) in dot_tap_points(d):
+        shot0 = ctx.shot()
+        for (x, y) in dot_tap_points(shot0, d):
             if g.blocked("tap", x, y):
                 continue
-            before = ctx.shot()
+            before = shot0
             ctx.tap(x, y, wait=1.2)
             if not screens.same(before, ctx.shot()):
                 g.record("tap", x, y, True)
@@ -171,7 +202,7 @@ def tap_red_dots(ctx, roi, scope, max_n=6):
                 break
             g.record("tap", x, y, False, "cham man khong doi")
         if not moved:
-            g.black[g.key(scope, d[0], d[1])] = "cham do: moi diem cham deu khong doi man"
+            g.black[g.key(scope, d[0], d[1])] = "cham do: khong tim thay nut that hoac cham khong doi man"
             log.info("Cham do @%d,%d: cham khong doi man -> danh sach den, sang cho khac", d[0], d[1])
             continue
         ctx.dismiss_reward()

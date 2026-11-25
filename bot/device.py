@@ -82,6 +82,19 @@ class LDConsole:
         self.run("runapp", "--index", idx, "--packagename", pkg)
 
 
+SCREEN_W, SCREEN_H = 540, 960
+
+
+def clamp_xy(x, y, who=""):
+    """P13c: kep toa do cham vao khung 540x960 (0..539 x 0..959). Live6b: offset mu day diem cham ra y=964 (ngoai man).
+    Phai kep -> ghi log. Tra (x, y) int."""
+    cx = min(max(int(x), 0), SCREEN_W - 1)
+    cy = min(max(int(y), 0), SCREEN_H - 1)
+    if (cx, cy) != (int(x), int(y)):
+        logging.getLogger("aow").warning("Kep toa do cham %s (%d,%d) -> (%d,%d): ngoai man 540x960", who, int(x), int(y), cx, cy)
+    return cx, cy
+
+
 class Device:
     """Mot instance LDPlayer qua ADB. Instance N -> emulator-(5554+2N)."""
 
@@ -258,11 +271,14 @@ class Device:
 
     # ghi TRUOC khi gui lenh: 'input tap' tren LDPlayer mat ~1 s moi tra ve, su kien cham da toi bot/human.py truoc do
     def tap(self, x, y):
+        x, y = clamp_xy(x, y, "tap")
         self.act_seq = getattr(self, "act_seq", 0) + 1     # G3: ctx.ensure_city biet co thao tac nao tu lan kiem truoc
         self._mine(x, y, time.time())
         self._cmd("shell", "input", "tap", int(x), int(y))
 
     def swipe(self, x1, y1, x2, y2, ms=300):
+        x1, y1 = clamp_xy(x1, y1, "swipe")
+        x2, y2 = clamp_xy(x2, y2, "swipe")
         self.act_seq = getattr(self, "act_seq", 0) + 1
         self._mine(x1, y1, time.time())
         self._cmd("shell", "input", "swipe", int(x1), int(y1), int(x2), int(y2), int(ms))

@@ -137,6 +137,8 @@ class Ctx:
 
     def tap(self, x, y, wait=1.0, tpl=None):
         self.human_gate()
+        from bot.device import clamp_xy
+        x, y = clamp_xy(x, y, "ctx.tap")   # P13c: 1 cho chac, truoc ca nhat ky hoc
         self._exp_begin("tap", x, y, tpl)
         self.dev.tap(x, y)
         self._after_tap(wait * self.wait_scale)
