@@ -23,16 +23,17 @@ def _img(name):
     return cv2.imread(p)
 
 
-def test_claim_kinds_before_long_kinds():
+def test_position_order_not_kind():
     kinded = [((64, 629), "intel"), ((525, 730), "mail"), ((456, 796), "ally_gift"), ((441, 898), "play")]
-    assert reddots.pick(kinded)[1] in ("mail", "ally_gift")
+    assert reddots.pick(kinded)[1] == "intel"                          # P13-3: chi theo vi tri, khong theo loai
 
 
 def test_long_kind_deferred_when_step_pending():
-    assert reddots.defer_to_step("intel", {"intel", "rebels", "gather"}) == "intel"
-    assert reddots.defer_to_step("play", {"play"}) == "play"
-    assert reddots.defer_to_step("intel", {"gather"}) is None          # buoc rieng da chay -> lam luon
-    assert reddots.defer_to_step("mail", {"rewards"}) is None          # nhan qua khong hoan
+    assert reddots.defer_to_step("intel", {"intel", "rebels", "gather"}) is None      # P13-3: mac dinh tat
+    assert reddots.defer_to_step("intel", {"intel", "rebels", "gather"}, True) == "intel"
+    assert reddots.defer_to_step("play", {"play"}, True) == "play"
+    assert reddots.defer_to_step("intel", {"gather"}, True) is None          # buoc rieng da chay -> lam luon
+    assert reddots.defer_to_step("mail", {"rewards"}, True) is None          # nhan qua khong hoan
     assert reddots.defer_to_step("intel", None) is None
 
 

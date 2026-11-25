@@ -25,7 +25,7 @@ log = logging.getLogger("aow")
 # P9-2 (chu du an 2026-11-24, live-run-2): khien SOM (ngay thuong, doc lap voi warday) + lien minh TRUOC cham do /
 # tinh bao (live-run-2 treo 11:11 truoc khi toi khien / lien minh); gather van CUOI (W.gather_last).
 ORDER = [("warday", warday), ("tutorial", tutorial), ("shield", shield), ("alliance", alliance),
-         ("notify", notify), ("reddots", reddots), ("rewards", rewards), ("mission", mission), ("collect_city", city),
+         ("reddots", reddots), ("notify", notify), ("rewards", rewards), ("mission", mission), ("collect_city", city),
          ("play", play), ("intel", intel), ("rebels", rebels), ("heal", heal),
          ("train", train), ("upgrade", upgrade), ("mainquest", mainquest), ("construct", construct), ("quests", quests),
          ("research", research),

@@ -63,18 +63,14 @@ def _order(dots):
     return sorted(dots, key=lambda d: (d[1] // 30, d[0]))
 
 
-# P7-3 (chu du an 2026-11-24): uu tien so do CO THE NHAN (thu, qua lien minh, VIP, nhiem vu ngay...) truoc; chat KHONG uu
-# tien (xoa huy hieu chat chay cuoi, chi khi con thoi gian). Cung muc -> tren xuong, trai qua phai.
-KIND_PRIO = {"mail": 0, "ally_gift": 0, "vip": 1, "daily": 1, "shop_gift": 2, "intel": 2, "play": 2,
-             "build": 3, "research": 3, "train": 3, "campaign": 3, "recruit": 3, "hero": 3, "alliance": 4,
-             "rally": 4, "mission": 2, "generic": 5}
-
-
 def pick(kinded):
-    """kinded: [((x, y), kind)] -> phan tu xu ly truoc (uu tien loai, roi tren xuong / trai qua phai) | None."""
+    """kinded: [((x, y), kind)] -> cham do xu ly truoc | None.
+    P13-3 (chu du an 2026-11-20, anh reddot_thu_tu.png): CHI theo vi tri - hang (y//30) tren xuong, cung hang trai qua
+    phai. Bo lop uu tien theo loai (KIND_PRIO, P7-3) vi no lam bot nhay Qua lien minh (duoi) -> Thu -> Su menh (tren
+    phai) -> Tinh bao (trai). Chat khong uu tien: xoa huy hieu chat van chay cuoi (chat.clear)."""
     if not kinded:
         return None
-    return min(kinded, key=lambda dk: (KIND_PRIO.get(dk[1], 5), dk[0][1] // 30, dk[0][0]))
+    return min(kinded, key=lambda dk: (dk[0][1] // 30, dk[0][0]))
 
 
 def _key(d):
@@ -156,9 +152,13 @@ CLAIM_KINDS = ("mail", "ally_gift", "vip", "shop_gift", "recruit", "hero")   # n
 DEFER_KINDS = ("intel", "play", "rally", "campaign")                          # tien trinh dai co buoc rieng
 
 
-def defer_to_step(kind, pending):
+def defer_to_step(kind, pending, enabled=False):
     """Ham thuan: cham do loai tien trinh dai ma buoc rieng CON CHO trong luot nay -> de buoc rieng lam (khong ton thoi
-    gian quet cham do). -> ten buoc | None."""
+    gian quet cham do). P13-3: MAC DINH TAT (reddots.defer_to_steps false) - vong cham do la truc chinh, moi cham do goi
+    dung trinh xu ly cua icon theo thu tu tren->duoi, trai->phai; buoc rieng chi cho viec KHONG co cham do.
+    -> ten buoc | None."""
+    if not enabled:
+        return None
     step = KIND_STEP.get(kind)
     return step if kind in DEFER_KINDS and step and pending and step in pending else None
 
@@ -329,7 +329,7 @@ def rcfg(cfg):
     """A-OPT-1 (PM 2026-11-23): reddots khong chay moi lan ghe - gioi han thoi gian / tan suat, nho icon vo ich."""
     return {"claim_grace_s": 90, "final_claims": True,
             "max_rounds": 6, "skip_idle_steps": True, "dead_h": 2, "dead_cap_h": 24, "max_s": 240,
-            "min_interval_min": 30, **(cfg.get("reddots") or {})}
+            "min_interval_min": 30, "defer_to_steps": False, **(cfg.get("reddots") or {})}
 
 
 def due(last_at, now, interval_min, notify_worked, new_dots):
@@ -434,7 +434,7 @@ def run(ctx):  # noqa: C901 - vong quet giu nguyen cau truc cu
             if not in_budget(kind, time.time(), deadline, rc["claim_grace_s"]):
                 timed_out = True        # P10-5: het gio - chi con loai nhan qua (thu, qua lien minh...) duoc lam them
                 break
-            step_later = defer_to_step(kind, getattr(ctx, "visit_pending", None))
+            step_later = defer_to_step(kind, getattr(ctx, "visit_pending", None), bool(rc.get("defer_to_steps")))
             if step_later:
                 dead.add(k)
                 ignored.add(k)

@@ -17,7 +17,8 @@ def names():
 def test_order_shield_and_alliance_before_notify_reddots_intel():
     o = names()
     assert o.index("shield") < o.index("notify") and o.index("alliance") < o.index("notify")
-    assert o.index("alliance") < o.index("reddots") and o.index("alliance") < o.index("intel")
+    assert o.index("alliance") < o.index("reddots") < o.index("notify")  # P13-3
+    assert o.index("alliance") < o.index("intel")
     assert o.index("shield") < o.index("alliance")
     assert o[:2] == ["warday", "tutorial"]
     assert W.early_ok(o)

@@ -5,17 +5,17 @@ import types
 from bot.modules import alliance, reddots, rewards
 
 
-def test_pick_prefers_claimable_over_top_left_order():
+def test_pick_only_by_position():
+    """P13-3: KIND_PRIO bo - chi (y//30, x)."""
     kinded = [((60, 120), "generic"), ((515, 800), "mail"), ((20, 40), "vip"), ((455, 860), "ally_gift")]
-    assert reddots.pick(kinded)[1] in ("mail", "ally_gift")
-    assert reddots.pick(kinded)[0] == (515, 800)                 # cung muc 0 -> hang tren truoc
+    assert reddots.pick(kinded)[1] == "vip"                       # tren cung truoc, ke ca khi khong co uu tien loai
     assert reddots.pick([((60, 120), "generic"), ((20, 40), "vip")])[1] == "vip"
     assert reddots.pick([]) is None
+    assert not hasattr(reddots, "KIND_PRIO")
 
 
-def test_chat_badge_not_a_hud_dot_and_lowest_priority():
+def test_chat_badge_not_a_hud_dot():
     assert not reddots.is_hud_dot((49, 327))                    # huy hieu chat khong tinh
-    assert reddots.KIND_PRIO["mail"] < reddots.KIND_PRIO["generic"]
 
 
 def test_repeat_more():
