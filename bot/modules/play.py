@@ -74,9 +74,27 @@ def loot_trucks(img):
     return out
 
 
+def has_fire(img, x, y, box=(45, 40, 85), min_px=40):
+    """P13b: xe co LUA / khoi (da bi cuop, anh chu du an xe_co_lua_bo_qua.png 2026-11-25): ngon lua vang-cam rat sang
+    (H 12-32, S >= 150, V >= 215) o PHIA SAU xe (lech xuong ~55 px so voi tam than xe cam/tim), thanh phan >= min_px
+    diem va >= 8x10 (hoa vang tren co chi ~15-26 diem, be hon). Xe chua bi cuop: than xe cam khong du sang/vang."""
+    bw, bt, bb = box
+    x0, y0 = max(0, x - bw), max(0, y - bt)
+    sub = img[y0:y + bb, x0:x + bw]
+    if sub.size == 0:
+        return False
+    hsv = cv2.cvtColor(sub, cv2.COLOR_BGR2HSV)
+    H, S, V = hsv[..., 0], hsv[..., 1], hsv[..., 2]
+    m = ((H >= 12) & (H <= 32) & (S >= 150) & (V >= 215)).astype(np.uint8)
+    n, _, st, _ = cv2.connectedComponentsWithStats(m)
+    return any(st[i][4] >= min_px and st[i][2] >= 8 and st[i][3] >= 10 for i in range(1, n))
+
+
 def is_burning(img, x, y, half=(38, 48)):
     """P7-6: xe DANG CHAY / da bi nguoi khac cuop (dau X do + lua, anh chu du an plunder_0) -> KHONG BAO GIO danh.
     Dau X = net do manh, mong: thanh phan do lon (>= 25x25) nhung lap day thap (< 0,35); than xe cam (SSR) lap day cao."""
+    if has_fire(img, x, y):                             # P13b: lua / khoi tren xe
+        return True
     hw, hh = half
     x0, y0 = max(0, x - hw), max(0, y - hh)
     box = img[y0:y + hh, x0:x + hw]
@@ -439,7 +457,7 @@ def _loot_once(ctx, lc):
     for _round in range(1 + lc.get("refresh_max", 3)):
         for col, x, y in loot_trucks(img)[:8]:
             if is_burning(img, x, y):                   # P7-6: xe dang chay (da bi cuop) -> KHONG BAO GIO danh
-                log.info("Cuop boc: xe %s @%d,%d dang chay (da bi cuop) - bo", col, x, y)
+                log.info("Cuop boc: xe %s @%d,%d co lua/khoi hoac dau X (da bi cuop) - bo, khong mo popup", col, x, y)
                 continue
             ctx.tap(x, y, wait=1.2)
             p = ctx.shot()

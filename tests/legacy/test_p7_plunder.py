@@ -1,6 +1,7 @@
 """P7-6 (chu du an 2026-11-24): cuop xe Mo khoang san - khong bao gio danh xe dang chay, chi xe cho pha le xanh,
 nut lam moi co gioi han + dong hop thoai la, doc 'So lan cuop boc con lai X/4' (0 -> bo). Anh tong hop."""
 import types
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -100,3 +101,37 @@ def test_loot_counter_zero_skips(monkeypatch):
     monkeypatch.setattr(play, "loot_left", lambda img: 0)
     monkeypatch.setattr(play, "loot_trucks", lambda img: [])
     assert play.loot(c) == 0
+
+
+# ---- P13b: xe co lua/khoi tren ban do -> bo, khong mo popup ----
+def _truck_img(fire):
+    img = _bg()
+    cv2.rectangle(img, (275, 300), (335, 380), (40, 110, 200), -1)       # than xe cam (BGR) , chua lua
+    if fire:
+        for fx in (285, 330):                                            # 2 ngon lua vang-cam sang, sau xe
+            cv2.rectangle(img, (fx, 400), (fx + 11, 415), (40, 200, 255), -1)
+    return img
+
+
+def test_p13b_fire_detected_behind_truck():
+    assert play.has_fire(_truck_img(True), 305, 342)
+    assert play.is_burning(_truck_img(True), 305, 342)
+
+
+def test_p13b_clean_truck_and_small_flowers_not_fire():
+    img = _truck_img(False)
+    for fx, fy in ((250, 420), (360, 410), (320, 395)):                  # hoa vang be (5x4)
+        cv2.rectangle(img, (fx, fy), (fx + 5, fy + 3), (40, 200, 255), -1)
+    assert not play.has_fire(img, 305, 342)
+
+
+def test_p13b_owner_sample_fire_skipped_clean_truck_kept():
+    p = "data/owner-feedback/p13/xe_co_lua_bo_qua.png"
+    if not Path(p).exists():
+        return                                                           # data/ khong nam trong git
+    im = cv2.imread(p)
+    s = 540 / im.shape[1]
+    im = cv2.resize(im, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
+    got = {(c, x, y): play.is_burning(im, x, y) for c, x, y in play.loot_trucks(im)}
+    assert got[("orange", 301, 665)] is True                             # xe khoanh do: dang chay
+    assert got[("orange", 210, 464)] is False                            # xe SSR khac, khong lua
