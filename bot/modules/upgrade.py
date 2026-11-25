@@ -106,11 +106,39 @@ def _try_open(ctx, hit):
     return None
 
 
-def goto_hq(ctx):
-    """-> toa do icon Tang cap tren vong menu nha chinh, hoac None."""
+def recenter_hq(ctx):
+    """P13-1 (chu du an t71u): muon nha chinh nam GIUA man -> ra ban do the gioi roi vao lai thanh pho (camera ve nha
+    chinh). Lam TRUOC khi cham nha chinh, thay cho luot quanh thanh pho. Nha chinh < cap mo the gioi (world_ready
+    false, vd #3-#6 cap 4-5): van thu 1 lan nhe (goto toi da 3 vong); khong ra duoc the gioi -> nho 6 gio khong thu
+    lai (fact recenter_fail), chi ve thanh pho. -> True neu da di 'the gioi -> thanh pho'."""
+    import time
+    if not ctx.cfg.get("build", {}).get("recenter_world", True):
+        ctx.ensure_city()
+        return False
+    m = getattr(ctx, "mem", None)
+    idx = ctx.dev.idx
     if ctx.world_ready():
         ctx.ensure_world()
-    ctx.ensure_city()          # the gioi -> thanh pho: camera ve gan nha chinh
+        ctx.ensure_city()
+        return True
+    last = m.fact(idx, "recenter_fail") if m else None
+    if last and time.time() - float(last) < 6 * 3600:
+        ctx.ensure_city()
+        return False
+    ctx.ensure_city()
+    if ctx.goto("world", rounds=3):
+        ctx.ensure_city()
+        return True
+    if m:
+        m.set_fact(idx, "recenter_fail", time.time())
+    log.info("Xay theo nha chinh: nha chinh thap, khong ra duoc the gioi de can giua - bo qua 6 gio")
+    ctx.ensure_city()
+    return False
+
+
+def goto_hq(ctx):
+    """-> toa do icon Tang cap tren vong menu nha chinh, hoac None."""
+    recentered = recenter_hq(ctx)   # the gioi -> thanh pho: camera ve gan nha chinh
     img = ctx.settle()
     names = _names(ctx)
     tpls = _templates(ctx)
@@ -121,6 +149,11 @@ def goto_hq(ctx):
     pos = (0, 0)                # tong dich chuyen noi dung so voi luc vao thanh pho
     for step in range(len(PAN_RING) + 1):
         hit = find_hq(img, tpls, dys=dys)
+        if hit is None and step == 0 and not recentered:
+            log.info("Xay theo nha chinh: khong thay nha chinh - ra the gioi vao lai de can giua")
+            recentered = recenter_hq(ctx)
+            img = ctx.settle()
+            hit = find_hq(img, tpls, dys=dys)
         if hit is None and step == 0:
             # P9-9 skin moi chua co mau: ve thanh pho -> camera dat nha chinh giua man; cham VI TRI + kiem NHAN ten
             # ("Xuong kien truc") -> khong phu thuoc skin. Sai cong trinh -> _try_open tu thoat.

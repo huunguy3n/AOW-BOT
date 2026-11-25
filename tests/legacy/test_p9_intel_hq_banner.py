@@ -136,7 +136,8 @@ def test_goto_hq_falls_back_to_position_and_label(monkeypatch):
     monkeypatch.setattr(upgrade, "_templates", lambda ctx: [object()])
     monkeypatch.setattr(upgrade, "find_hq", lambda img, t, th=0, dys=None: None)
     monkeypatch.setattr(upgrade, "_try_open", lambda ctx, hit: opened.append(hit) or (300, 600))
-    ctx = types.SimpleNamespace(world_ready=lambda: False, ensure_city=lambda: None, settle=lambda: None)
+    ctx = types.SimpleNamespace(world_ready=lambda: False, ensure_city=lambda: None, settle=lambda: None,
+                               cfg={"build": {"recenter_world": False}})
     assert upgrade.goto_hq(ctx) == (300, 600)
     assert opened and opened[0][0] == upgrade.HQ_TAP[0] and opened[0][1] + 35 == upgrade.HQ_TAP[1]
 

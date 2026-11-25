@@ -39,7 +39,7 @@ def test_none_backs_off_and_does_not_reserve():
         p = record(p, "none", NOW)
         waits.append(p.wake_at - NOW)
         assert not reserve(p, NOW, 1)[0]
-    assert waits[:3] == [1800, 3600, 7200] and waits[-1] == NONE_CAP_S
+    assert waits[:4] == [300, 600, 1200, 2400] and waits[-1] == NONE_CAP_S
     assert p.none_streak == 6
 
 

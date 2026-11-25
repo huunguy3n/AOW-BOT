@@ -16,8 +16,8 @@ from typing import Any
 CHAIN_GRACE_S = 15 * 60        # tho vua ranh: nha chinh duoc chon truoc trong ngan nay
 WAIT_RES_S = 60 * 60           # thieu tai nguyen: thu lai sau
 RESERVE_RES_S = 2 * 3600       # ...va giu tai nguyen cho nha chinh toi da bay nhieu (tranh deadlock)
-NONE_BASE_S = 30 * 60          # 'none' lan 1: 30 phut, nhan doi moi lan, tran 4h
-NONE_CAP_S = 4 * 3600
+NONE_BASE_S = 5 * 60           # P13-1: 'none' lan 1: 5 phut, nhan doi, tran 1h
+NONE_CAP_S = 3600
 BUSY_DEFAULT_S = 30 * 60       # dang xay ma khong doc duoc thoi gian con lai
 
 
