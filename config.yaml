@@ -321,6 +321,8 @@ battle:
   debug_dir: 'logs/steer'  # luu khung hinh + trace.csv moi tran (bat 2026-11-20 de xem loi 'khong di chuyen trai phai'; '' = tat)
   enter_wait_s: 25    # P7-9: cho xac nhan vao tran chien dich toi da N giay (live #1: 10 s khong du -> khong lai, thua); khong xac nhan -> anh logs/inv/steer_no_battle/
 campaign:
+  skip_battle: true       # P13-10: tran 'Luot n/25' -> bam nut thoat/bo qua goc phai duoi (khong xem du 25 luot)
+  skip_wait_s: 5          # cho nut hien toi da N giay
   max_fights: 5            # so man toi da moi luot
   only_predicted_win: true # chi danh khi bang man ghi 'Thang toan dien'
   power_gain_pct: 5        # P1: khong du doan thang -> chi mo lai Chien dich khi luc chien tang N %

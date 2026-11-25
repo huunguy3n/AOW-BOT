@@ -162,6 +162,8 @@ def reachable(cx, cy, w, cur_x):
 # ---------- P7-8 (chu du an 2026-11-24, anh minigame_runner_gates_minus_plus): cong do "-X" ban du se lat "+Y" ----------
 GATE_MIN_W = 60          # bang do co so (cong) - nho hon la linh dich / dan
 GATE_SAFETY = 0.8        # chi lao vao cong khi du doan con du 20 % thoi gian (ban cham hon uoc luong -> van kip)
+GATE_DEFAULT_RATE = 1.0  # P13-10 (chu du an t72u: bot chua dung buff do): cong -2 xa -> ban 1/giay toi khi duong roi lao vao
+GATE_DEFAULT_MAX = 3    # ... ap dung cho cong -1..-3 (cong lon hon van phai do toc do that, nhu P7-8)
 GATE_OCR_MAX = 2         # doc so toi da 2 cong / khung (moi lan OCR ~0.1-0.2 s)
 GATE_RX = re.compile(r"([+-]?)\s*(\d{1,4})")
 
@@ -210,8 +212,12 @@ class GateTrack:
 def flip_ok(value, rate, cy, vy=VY_S, safety=GATE_SAFETY):
     """Cong am `value` (vd -5) dang tang `rate`/giay, cach doi quan (SQUAD_Y - cy) px, roi xuong vy px/giay -> kip lat
     thanh "+" truoc khi cham doi quan? Duong / chua doc duoc toc do -> False (giu luat cu: xa thi ban, gan thi ne)."""
-    if value is None or rate is None or rate <= 0:
-        return value is not None and value > 0
+    if value is None:
+        return False
+    if rate is None and -GATE_DEFAULT_MAX <= value <= 0:     # chi cong NHO (rui ro thap) khi chua do duoc toc do
+        rate = GATE_DEFAULT_RATE      # P13-10: chua do duoc toc do (cong vua hien) -> gia dinh toc do ban mac dinh
+    if rate is None or rate <= 0:
+        return value > 0
     t = max(0.0, (SQUAD_Y - cy) / vy)
     return value + rate * t * safety >= 1
 
@@ -351,7 +357,7 @@ def save_enter_fail(img, root="logs/inv/steer_no_battle", keep=30):
         return None
 
 
-RESULT_TPLS = ["campaign/btn_done", "campaign/btn_done_lose", "campaign/btn_retry"]
+RESULT_TPLS = ["campaign/btn_done", "campaign/btn_done_lose", "campaign/btn_retry", "campaign/btn_continue"]
 
 
 # 2 may chay song song (2026-11-20): luc 1 may dang lai quan, luong may kia tam dung thao tac (ctx.shot/tap goi
@@ -376,8 +382,8 @@ def result_of(vision, img):
     Thu tu: res_lose -> thua; res_win -> thang; con lai: nut "Dong" (btn_done) khop hon nut cua man thua -> thang."""
     if vision.find(img, "campaign/res_lose"):
         return "lose"
-    if vision.find(img, "campaign/res_win"):
-        return "win"
+    if vision.find(img, "campaign/res_win") or vision.find(img, "campaign/btn_continue"):
+        return "win"          # P13-10: man 'Thang loi' co nut 'Tiep tuc Chien dich'
     d = vision.best(img, "campaign/btn_done")
     dl = vision.best(img, "campaign/btn_done_lose")
     return "win" if d and d[2] >= 0.82 and (not dl or d[2] > dl[2]) else "lose"

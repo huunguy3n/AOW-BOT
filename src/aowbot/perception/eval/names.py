@@ -50,7 +50,8 @@ NAMES: Mapping[str, str] = MappingProxyType({
     "campaign/btn_challenge": "Nút Thách đấu", "campaign/btn_done": "Nút Xong (thắng)",
     "campaign/btn_done_lose": "Nút Xong (thua)", "campaign/btn_fight": "Nút Chiến đấu",
     "campaign/btn_idle_claim": "Nút Nhận (treo máy)", "campaign/btn_idle_get": "Nút Lấy thưởng treo máy",
-    "campaign/btn_open": "Nút mở Chiến dịch", "campaign/btn_retry": "Nút Thử lại",
+    "campaign/btn_open": "Nút mở Chiến dịch", "campaign/btn_retry": "Nút Thử lại", "campaign/btn_continue": "Nút Tiếp tục Chiến dịch",
+    "campaign/btn_back_victory": "Nút Trở lại (màn Thắng lợi)", "campaign/btn_skip_battle": "Nút thoát/bỏ qua trận",
     "campaign/pred_win": "Dự đoán Thắng toàn diện", "campaign/res_lose": "Kết quả Thua",
     "campaign/res_win": "Kết quả Thắng", "campaign/title": "Tiêu đề Chiến dịch",
     # --- Thành phố

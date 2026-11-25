@@ -87,8 +87,43 @@ def fight_one(ctx, only_win):
     return battle(ctx, pre_checked=only_win)
 
 
+SKIP_ROI = (430, 720, 110, 180)     # nut thoat/bo qua tran (goc phai duoi, duoi nut x2) - anh chien_dich_nut_bo_qua.png
+CONTINUE_ROI = (270, 420, 270, 130)  # man 'Thang loi': nut 'Tiep tuc Chien dich' (phai) - anh chien_dich_tiep_tuc.png
+
+
+def skip_turn_battle(ctx, wait_s=5.0):
+    """P13-10 (chu du an): tran 'Luot n/25' - bam nut thoat/bo qua goc phai duoi thay vi ngoi xem du 25 luot.
+    Cho toi wait_s giay de nut hien; khong thay (tran chay duong / khong co nut) -> False. -> True neu da bam."""
+    if not ctx.cfg.get("campaign", {}).get("skip_battle", True) or not ctx.v.has("campaign/btn_skip_battle"):
+        return False
+    t0 = time.time()
+    while time.time() - t0 < wait_s:
+        img = ctx.shot()
+        if ctx.v.find(img, "campaign/btn_skip_battle", th=0.8, roi=SKIP_ROI):
+            ctx.tap_tpl("campaign/btn_skip_battle", wait=1.5, th=0.8, roi=SKIP_ROI, fresh=False)
+            log.info("Chien dich: bam nut thoat/bo qua tran (khong xem du 25 luot)")
+            return True
+        if ctx.v.find(img, "campaign/btn_done") or ctx.v.find(img, "campaign/btn_continue"):
+            return False
+        time.sleep(0.5)
+    return False
+
+
+def continue_campaign(ctx):
+    """P13-10: man 'Thang loi' -> bam 'Tiep tuc Chien dich' (KHONG bam 'Tro lai'). -> True neu da bam."""
+    if not ctx.v.has("campaign/btn_continue"):
+        return False
+    if ctx.tap_tpl("campaign/btn_continue", wait=1.5, th=0.85, roi=CONTINUE_ROI):
+        log.info("Chien dich: Thang loi -> bam 'Tiep tuc Chien dich'")
+        return True
+    return False
+
+
 def close_result(ctx):
-    """Dong man ket qua tran (thang: 'Dong' giua; thua: 'Dong' trai - KHONG bam 'Bat dau lai')."""
+    """Dong man ket qua tran (thang: 'Dong' giua; thua: 'Dong' trai - KHONG bam 'Bat dau lai').
+    P13-10: man 'Thang loi' kieu moi co 'Tro lai' | 'Tiep tuc Chien dich' -> bam 'Tiep tuc Chien dich'."""
+    if continue_campaign(ctx):
+        return
     for _ in range(4):
         time.sleep(1.2)  # man ket qua con hieu ung -> nut chua nhan cham ngay
         if not ctx.tap_first(["campaign/btn_done", "campaign/btn_done_lose"], wait=1.5):
@@ -123,7 +158,8 @@ def battle(ctx, only_win=True, pre_checked=False):
             if not ok:
                 ctx.save_debug("campaign_no_fight")
                 return "error"
-    if ctx.cfg.get("battle", {}).get("steer", True):
+    skipped = skip_turn_battle(ctx, ctx.cfg.get("campaign", {}).get("skip_wait_s", 5.0))
+    if not skipped and ctx.cfg.get("battle", {}).get("steer", True):
         # tran kieu chay duong: giu ngon tay tren doi quan, nhat buff / ne nerf / ne vung tan cong
         from bot import steer
         bc = ctx.cfg.get("battle", {})
@@ -138,7 +174,8 @@ def battle(ctx, only_win=True, pre_checked=False):
     t0 = time.time()
     while time.time() - t0 < 180:  # tran tu danh
         img = ctx.shot()
-        if ctx.v.find(img, "campaign/btn_done") or ctx.v.find(img, "campaign/btn_done_lose"):
+        if (ctx.v.find(img, "campaign/btn_done") or ctx.v.find(img, "campaign/btn_done_lose")
+                or ctx.v.find(img, "campaign/btn_continue")):
             from bot.steer import result_of
             win = result_of(ctx.v, img) == "win"
             if not win:
