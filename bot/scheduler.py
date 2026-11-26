@@ -18,7 +18,7 @@ from bot import stepgate
 TRIGGERS = ("warday", "gather", "upgrade", "mainquest", "quests", "research", "rebels")
 DEFAULTS = {"max_gap_min": 240, "min_gap_min": 10, "batch_window_min": 5, "idle_check_min": 15,
             "gather_retry_min": 60, "unknown_return_min": 60, "build_every_min": 120, "research_every_min": 120, "extra_every_min": 180, "tutorial_every_min": 30,
-            "research_hq_min": 7, "daily_reset_utc": 0}
+            "research_hq_min": 7, "daily_reset_utc": 0, "intel_priority_hq": 15}
 
 
 @dataclass
@@ -416,6 +416,31 @@ def last_reset(now, hour_utc):
     return t if t <= now else t - day
 
 
+NO_IDLE_STRETCH = ("intel",)   # P13l: tra 0 vi bam hut / het quan -> KHONG gian chu ky (x2/x4 = toi 12 gio khong lam)
+
+
+def intel_priority(mem, idx, cfg):
+    """P13l (chu du an t98u: dau game Tinh bao la nguon tai nguyen chinh): nha chinh < schedule.intel_priority_hq (15)
+    hoac CHUA BIET cap -> Tinh bao vao MOI luot ghe va chay som. 0 = tat."""
+    need = sched_cfg(cfg or {}).get("intel_priority_hq", 15)
+    if not need:
+        return False
+    try:
+        return int(mem.fact(idx, "hq_level")) < int(need)
+    except (TypeError, ValueError):
+        return True
+
+
+def with_intel_step(mem, idx, steps, names, order, cfg, now):
+    """P13l: may uu tien Tinh bao -> them 'intel' vao luot du chua toi chu ky chay kem (buoc loi/ket dang tam bo van
+    bo). Giu thu tu `order`."""
+    if ("intel" not in names or "intel" in steps or mem.backoff_until(idx, "intel") > now
+            or not intel_priority(mem, idx, cfg)):
+        return steps
+    pos = {n: i for i, n in enumerate(order)}
+    return sorted({*steps, "intel"}, key=lambda n: pos.get(n, 99))
+
+
 def extra_due(mem, idx, step, sc, now):
     """Buoc chay kem: chi chay neu lan chay cuoi da qua extra_every_min, hoac (buoc theo ngay) chua chay tu luc reset."""
     t, _, _ = _last(mem, idx, step)
@@ -423,7 +448,8 @@ def extra_due(mem, idx, step, sc, now):
         return True
     if step in DAILY and t < last_reset(now, sc["daily_reset_utc"]):
         return True
-    return now - t >= sc["extra_every_min"] * 60 * value_factor(mem, idx, step)
+    factor = 1 if step in NO_IDLE_STRETCH else value_factor(mem, idx, step)
+    return now - t >= sc["extra_every_min"] * 60 * factor
 
 
 def value_factor(mem, idx, step, look=4, cap=4):
@@ -503,6 +529,7 @@ def decide_one(mem, idx, order, enabled, cfg, now):
                 steps.append(n)  # trigger toi han / uoc luong theo chu ky (ghe thi kiem tra luon)
         if steps:
             steps = with_build_steps(mem, idx, steps, names, order, cfg, now)   # P13e-3
+        steps = with_intel_step(mem, idx, steps, names, order, cfg, now)        # P13l
     return Visit(idx, at, steps, "; ".join(why) or "khong ro", full)
 
 
@@ -524,7 +551,8 @@ def piggyback_steps(mem, idx, order, enabled, cfg, now):
                 out.append(n)
         elif p.ready or (p.at is not None and p.at <= soon) or not p.confident:
             out.append(n)
-    return with_build_steps(mem, idx, out, names, order, cfg, now) if out else out
+    out = with_build_steps(mem, idx, out, names, order, cfg, now) if out else out
+    return with_intel_step(mem, idx, out, names, order, cfg, now)
 
 
 def decide(mem, insts, order, enabled_for, cfg_for, now=None):

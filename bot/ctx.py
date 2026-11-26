@@ -2,9 +2,10 @@
 import os, re, time, random, logging
 import cv2, numpy as np
 
-from bot import perf, unlock_popup
+from bot import map_menu, perf, resources, unlock_popup
 
 log = logging.getLogger("aow")
+MENU_WATCH = 3          # P13l: so khung chup sau 1 lan cham duoc kiem menu can cu nguoi choi / o dat trong
 
 
 class Stuck(BaseException):
@@ -74,6 +75,10 @@ class Ctx:
             self._exp_end(self._img)
         if self.wd_enabled:
             self._watch(self._img)
+        if self._menu_watch > 0:        # P13l (t104u): cham vua mo menu can cu / dat trong -> dong NGAY
+            self._menu_watch -= 1
+            if map_menu.dismiss_if_open(self, self._img):
+                return self._img
         return self._img
 
     def recent_frame(self, max_age=1.0):
@@ -112,11 +117,12 @@ class Ctx:
 
     def tap_tpl(self, name, wait=1.2, fresh=True, dy=0, **kw):
         p = self.find(name, fresh=fresh, **kw)
-        if not p or self.unlock_guard(p[0], p[1] + dy):
+        if not p or self.blocked_tap(p[0], p[1] + dy):
             return False
         log.debug("tap %s @%d,%d (%.2f)", name, p[0], p[1], p[2])
         self._exp_begin("tpl", p[0], p[1] + dy, name, p[2])
         self.dev.tap(p[0], p[1] + dy)
+        self._tapped(p[0], p[1] + dy)
         self._after_tap(wait * self.wait_scale)
         return True
 
@@ -125,10 +131,11 @@ class Ctx:
         for n in names:
             p = self.v.find(img, n, **kw)
             if p:
-                if self.unlock_guard(p[0], p[1], img):
+                if self.blocked_tap(p[0], p[1], img):
                     return None
                 self._exp_begin("first", p[0], p[1], n, p[2])
                 self.dev.tap(p[0], p[1])
+                self._tapped(p[0], p[1])
                 self._after_tap(wait * self.wait_scale)
                 return n
         return None
@@ -183,15 +190,40 @@ class Ctx:
         unlock_popup.dismiss(self)
         return True
 
+    _menu_watch = 0         # P13l: con bao nhieu khung can kiem menu ban do (map_menu)
+
+    def blocked_tap(self, x, y, img=None):
+        """MOI lan cham cua Ctx di qua day -> True = KHONG cham:
+          - nut "Den" cua popup mo khoa binh chung (P13k);
+          - menu can cu nguoi choi / o dat trong dang mo (P13l: khong bao gio bam nut tren do; menu duoc dong ngay);
+          - nut kim cuong cua popup "Thieu tai nguyen" / man "Bo sung tai nguyen" (P13l)."""
+        if self.unlock_guard(x, y, img):
+            return True
+        img = img if img is not None else getattr(self, "_img", None)
+        if img is None:
+            return False
+        if map_menu.dismiss_if_open(self, img):
+            return True
+        if resources.forbidden(img, self.v, x, y):
+            log.warning("Chan cham @%d,%d: nut kim cuong khi thieu tai nguyen (buoc %s)", x, y,
+                        getattr(self, "step", None))
+            return True
+        return False
+
+    def _tapped(self, x, y):
+        self._last_tap = (int(x), int(y), time.time())
+        self._menu_watch = MENU_WATCH
+
     def tap(self, x, y, wait=1.0, tpl=None):
         seen = getattr(self, "_img", None)     # khung ben goi dua vao de quyet dinh cham
         self.human_gate()
         from bot.device import clamp_xy
         x, y = clamp_xy(x, y, "ctx.tap")   # P13c: 1 cho chac, truoc ca nhat ky hoc
-        if self.unlock_guard(x, y, seen):
+        if self.blocked_tap(x, y, seen):
             return
         self._exp_begin("tap", x, y, tpl)
         self.dev.tap(x, y)
+        self._tapped(x, y)
         self._after_tap(wait * self.wait_scale)
 
     def _after_tap(self, wait_s):
@@ -334,6 +366,9 @@ class Ctx:
             img = img if img is not None else self.shot()
             if self.cancel_exit(img, why="close_popups"):
                 img = None
+                continue
+            if map_menu.dismiss_if_open(self, img):     # P13l: menu can cu nguoi choi khong co nut X -> Back
+                retried, img = False, None
                 continue
             unlock = unlock_popup.dismiss(self, img)     # P13k: "Mo khoa Binh chung nay" -> "Xac nhan"
             if unlock:

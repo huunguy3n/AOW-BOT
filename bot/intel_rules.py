@@ -14,26 +14,88 @@ Phan tich du lieu 20-22/11 (logs/pm-audit-1.txt: 64 log 'Tinh bao: unknown', 11 
 import re
 import time
 
+import cv2
+import numpy as np
+
 INTEL_PANEL_WAIT_S = 3.0        # bang nhiem vu / bang qua hien tre sau khi cham ghim (hieu ung)
 MARKER_ROI = (60, 200, 420, 420)  # x, y, w, h: ghim muc tieu sau "Di" nam giua man (do 263,363 / 267,388)
 MARKER_TH = 0.6
 REWARD_TH = 0.75
+ENABLED_SAT = 80                # P13l: nut co mau (S trung binh) moi bam duoc
+FADED_WHITE = 60                # P13l: diem trang trong dau ghim it hon -> ghim mo
+LOCKED = "locked"               # P13l: nhiem vu khong lam duoc (nut xam / cap phien quan bi khoa) -> bo ghim ca luot
+NPC_LOCKED = "npc_locked"
+NO_ENERGY = "no_energy"         # P13l: het the luc va khong con thuoc ("Dung", khong bao gio "Mua") -> dung vong ghim
+TARGET_LOOKS = 3                # so khung cho bang muc tieu hien sau moi lan cham tren ban do
 
 UNKNOWN_PANEL = "unknown_panel"        # cham ghim: khong ra bang co nut "Di", khong ra bang qua
 UNKNOWN_TARGET = "unknown_target"      # sau "Di": khong cham duoc muc tieu (khong ra Tan cong / Tiep te / Tap ket)
 UNKNOWN_AFTER = "unknown_attack"       # sau "Tan cong": khong ra man Chien dau / Xuat chinh
 UNKNOWNS = (UNKNOWN_PANEL, UNKNOWN_TARGET, UNKNOWN_AFTER, "unknown")
 DONE = ("win", "marched", "picked")
-STOP = ("no_march", "lose")
-SKIP = ("skipped", "lose_pred")         # lose_pred: man quan doan du doan khong thang -> bo ghim, khong tinh unknown
+# P13l: 'lose' khong con dung ca vong ghim - chi bo qua LOP ghim (bieu tuong + mau) vua thua (lost_gate)
+STOP = ("no_march", "no_energy")
+# lose_pred: man quan doan du doan khong thang; skip: Chien dich Tuong khong du doan thang -> bo ghim, khong tinh unknown
+SKIP = ("skipped", "lose_pred", "skip", "locked")
+
+
+def enabled_button(img, x, y, min_sat=ENABLED_SAT):
+    """P13l: nut bam duoc co mau (xanh ngoc S ~220); nut khoa mau XAM (S ~0 - nut "Nhat" / "Den" khi thieu yeu cau,
+    log 26/11: mau intel/btn_pickup, btn_go van khop 0,97). Anh khong phai mang (test cu) -> coi la bam duoc."""
+    if not isinstance(img, np.ndarray):
+        return True
+    patch = img[max(0, y - 10):y + 10, max(0, x - 35):x + 35]
+    if not patch.size:
+        return True
+    return float(cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)[..., 1].mean()) >= min_sat
+
+
+def faded_pin(img, x, y):
+    """P13l: ghim MO (dang co quan di toi / chua lam duoc): icon trang trong dau ghim bi mo, cham khong ra bang nao
+    (6/6 anh intel_unknown_panel 24-26/11 co dung 1 ghim mo). (x, y) = vong chan ghim (intel/pin_base). Do: ghim ro
+    >= 205 diem trang, ghim mo 0."""
+    if not isinstance(img, np.ndarray):
+        return False
+    x, y = int(x), int(y)
+    head = img[max(0, y - 60):max(0, y - 20), max(0, x - 16):x + 17]
+    if not head.size:
+        return False
+    hsv = cv2.cvtColor(head, cv2.COLOR_BGR2HSV)
+    if float(hsv[..., 2].mean()) < 40:         # o den: khong co ghim nao o day de ket luan "mo"
+        return False
+    return int(((hsv[..., 1] < 70) & (hsv[..., 2] > 190)).sum()) < FADED_WHITE
 
 
 def panel_kind(img, v):
-    """Anh sau khi cham ghim -> 'go' (bang nhiem vu co nut "Di") | 'reward' (bang "Chuc mung nhan duoc") | None."""
-    if v.find(img, "intel/btn_go"):
-        return "go"
+    """Anh sau khi cham ghim -> 'go' (bang nhiem vu co nut "Di") | 'locked' (P13l: nut duoi XAM, thieu yeu cau) |
+    'reward' (bang "Chuc mung nhan duoc") | None."""
+    p = v.find(img, "intel/btn_go")
+    if p:
+        return "go" if enabled_button(img, p[0], p[1]) else LOCKED
     if v.find(img, "common/msg_reward", th=REWARD_TH):
         return "reward"
+    return None
+
+
+def target_kind(img, v):
+    """P13l: bang / popup dang hien sau "Di" (hoac sau khi cham muc tieu tren ban do):
+    'potion' (bang Thuoc The Luc) | 'npc_locked' ("Toi da co the tan cong phan quan cap N") | 'pickup' | 'attack' |
+    'rally' | 'locked' (nut Nhat / Den XAM: thieu binh chung / tuong yeu cau - KHONG bam nut "Den" do) | None."""
+    if v.find(img, "intel/potion_title"):
+        return "potion"
+    if v.find(img, "rebels/npc_max_text", th=0.9):
+        return NPC_LOCKED
+    p = v.find(img, "intel/btn_pickup")
+    if p:
+        return "pickup" if enabled_button(img, p[0], p[1]) else LOCKED
+    p = v.find(img, "intel/btn_attack")
+    if p and enabled_button(img, p[0], p[1]):      # chu "Tan cong:" o man huan luyen khop mau cu 0,86 nhung khong co mau
+        return "attack"
+    if v.find(img, "rebels/btn_rally"):
+        return "rally"
+    p = v.find(img, "intel/btn_go")
+    if p and not enabled_button(img, p[0], p[1]):
+        return LOCKED
     return None
 
 
@@ -136,6 +198,29 @@ class Pickups:
         del self.until[i]
         del self.pos[i]
         return True
+
+
+def dead_pin(result):
+    """P13l: ket qua nay -> khong chon lai ghim do trong luot ghe may (3 duong goi: buoc intel, cham do, notify) - khong
+    vong lai bam hut / nhiem vu khoa. Dang nhat / chua xuat phat / huong dan / het quan: lan sau thu lai duoc."""
+    return is_unknown(result) and result != NOT_DEPARTED or result in ("skipped", "lose_pred", "skip", "lose", LOCKED)
+
+
+def lost_gate(entry, power, now, pct=5, ttl_h=24):
+    """P13l (chu du an t103u): lop ghim (bieu tuong + mau) da THUA - entry {"power": luc chien luc thua | None, "at"}.
+    Chi thu lai khi luc chien tang >= pct % so voi luc thua. -> (bo qua?, entry moi | None = quen lop nay).
+    Luc thua khong doc duoc luc chien: lay so doc duoc dau tien lam moc; khong bao gio doc duoc -> quen sau ttl_h gio."""
+    if not isinstance(entry, dict):
+        return False, None
+    now_p = power if isinstance(power, (int, float)) and power > 0 else None
+    base = entry.get("power")
+    if isinstance(base, (int, float)) and base > 0:
+        if now_p is not None and now_p * 100 >= base * (100 + pct):
+            return False, None
+        return True, entry
+    if now - float(entry.get("at") or 0) >= ttl_h * 3600:
+        return False, None
+    return True, entry if now_p is None else {**entry, "power": now_p}
 
 
 def should_rescan(done_since_scan, rescans, max_rescans):

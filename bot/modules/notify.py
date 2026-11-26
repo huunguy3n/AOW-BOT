@@ -12,7 +12,7 @@ Bo qua: chat, co lien minh (chi R4). Thu/chien dich/lien minh do cac buoc rieng 
 import time, logging
 import cv2
 import numpy as np
-from bot import guide_tile, intel_rules as IR, ocr, screens
+from bot import guide_tile, intel_pins, intel_rules as IR, map_menu, ocr, screens, world_target
 from bot.badges import red_dots, glow_tiles, nhan_tiles, tile_locked
 from bot.modules import campaign
 
@@ -328,6 +328,7 @@ def timed_login_chest(ctx, pages=3):
 # ---------- tinh bao ----------
 ENERGY_ROI =(440, 22, 52, 22)   # nang luong tinh bao (goc phai tren man Tinh bao)
 INTEL_COST = 5
+LOST_CLASSES = "intel_lost_classes"   # P13l: fact {lop ghim: {power, at}} - lop ghim Tinh bao da thua
 
 
 def energy(ctx):
@@ -472,6 +473,82 @@ def intel_stopped(ctx):
     return getattr(ctx, "intel_stop", None)
 
 
+def _dead_pins(ctx):
+    """P13l: ghim bam hut / bi khoa trong luot ghe nay (song qua ca 3 duong goi) -> [(x, y)] vong chan ghim."""
+    d = getattr(ctx, "_intel_dead", None)
+    if d is None:
+        d = ctx._intel_dead = []
+    return d
+
+
+def _is_dead(dead, x, y, tol=15):
+    return any(abs(x - a) <= tol and abs(y - b) <= tol for a, b in dead)
+
+
+def _lost_classes(ctx):
+    """P13l: {lop ghim: {power, at}} da thua - theo tung may, giu trong memory.db (khong co tri nho: trong luot ghe)."""
+    m = getattr(ctx, "mem", None)
+    v = m.fact(ctx.dev.idx, LOST_CLASSES) if m else getattr(ctx, "_intel_lost", None)
+    return dict(v) if isinstance(v, dict) else {}
+
+
+def _save_lost(ctx, lost):
+    ctx._intel_lost = lost
+    m = getattr(ctx, "mem", None)
+    if m:
+        m.set_fact(ctx.dev.idx, LOST_CLASSES, lost)
+
+
+def blocked_classes(ctx):
+    """Lop ghim dang bo qua (luc chien chua tang du ke tu luc thua) -> {lop: (luc chien luc thua, nay)}. Lop da du dieu
+    kien thu lai thi quen luon."""
+    lost = _lost_classes(ctx)
+    if not lost:
+        return {}
+    nc = ctx.cfg.get("notify", {})
+    p, now = _power(ctx), time.time()
+    out, keep = {}, {}
+    for cls, entry in lost.items():
+        skip, new = IR.lost_gate(entry, p, now, nc.get("intel_lose_power_pct", 5), nc.get("intel_lose_h", 24))
+        if skip:
+            keep[cls] = new
+            out[cls] = (new.get("power"), p)
+        else:
+            log.info("Tinh bao: thu lai lop %s (thua luc chien %s, nay %s)", cls, (entry or {}).get("power"), p)
+    if keep != lost:
+        _save_lost(ctx, keep)
+    return out
+
+
+def _power(ctx):
+    m = getattr(ctx, "mem", None)
+    if not m:
+        return None
+    from bot import stepgate
+    return stepgate.power(m, ctx.dev.idx)
+
+
+def note_fight(ctx, r, cls):
+    """P13l (chu du an t103u; log 26/11: #3 thua 14 tran / 12 lan ghe): thua tran -> nho DUNG lop ghim `cls` (bieu tuong
+    + mau) kem luc chien luc thua; cac lop khac van danh. Thang lop do -> quen."""
+    if r not in ("win", "lose"):
+        return
+    if not cls:
+        if r == "lose":
+            log.info("Tinh bao: thua tran nhung khong phan loai duoc ghim -> khong nho lop")
+        return
+    lost = _lost_classes(ctx)
+    if r == "win":
+        if lost.pop(cls, None) is not None:
+            _save_lost(ctx, lost)
+        return
+    p = _power(ctx)
+    lost[cls] = {"power": p, "at": time.time()}
+    _save_lost(ctx, lost)
+    log.info("Tinh bao: thua ghim %s (luc chien %s) -> bo qua lop nay toi khi luc chien tang >= %s%%", cls, p,
+             ctx.cfg.get("notify", {}).get("intel_lose_power_pct", 5))
+
+
 def intel(ctx, max_n):
     if intel_stopped(ctx):      # moi duong goi (buoc intel, cham do, notify, agent) deu qua day
         log.info("Tinh bao: da het quan doan ranh trong luot ghe nay -> bo qua (khong quet, khong chon ghim)")
@@ -483,6 +560,8 @@ def intel(ctx, max_n):
     done_keys = set()           # P7-4: ghim lam xong (tran thang / nhat) -> o quet lai co the la diem MOI
     rescans, done_scan = 0, 0
     city_trips = 0              # P13-5: ve thanh pho TOI DA 1 lan trong buoc (khi khong con cach nao thay icon Tinh bao)
+    dead = _dead_pins(ctx)      # P13l: ghim bam hut / bi khoa trong luot ghe -> khong chon lai
+    said = set()                # P13l: lop ghim da log "bo qua" trong lan goi nay
     for _ in range(max_n):
         if not ctx.find("intel/title"):
             if not ctx.find("campaign/btn_open"):
@@ -506,12 +585,26 @@ def intel(ctx, max_n):
             log.info("Tinh bao: nhan hop qua da xong @%d,%d%s", x, y, " (giai phong 1 cho nhat hop)" if freed else "")
         img = ctx.shot()
         pins = [p for p in ctx.v.find_all(img, "intel/pin_base", th=0.6, min_dist=15)  # vong mo, chong nhau
-                if (p[0] // 20, p[1] // 20) not in tried]
+                if (p[0] // 20, p[1] // 20) not in tried and not _is_dead(dead, p[0], p[1])]
+        bright = [p for p in pins if not IR.faded_pin(img, p[0], p[1])]
+        if len(bright) < len(pins):             # P13l: ghim mo (dang lam do) cham khong ra bang -> unknown_panel
+            log.info("Tinh bao: bo %d ghim mo (dang co quan di toi)", len(pins) - len(bright))
+        pins = bright
         if only_gold:   # chu du an 2026-11-21: "#1 chi lam mau vang" + "nhan them mau tim dau lau"
             pins = [p for p in pins if pin_gold(img, p[0], p[1]) or crate_pin(ctx, img, p)]   # + ghim hop tiep te (xanh)
             for sx, sy in special_pins(img):            # ghim mat vong (bi che) -> them theo mau dau ghim
-                if all(abs(sx - p[0]) > 30 or abs(sy + 35 - p[1]) > 40 for p in pins)                         and (sx // 20, (sy + 35) // 20) not in tried:
+                if all(abs(sx - p[0]) > 30 or abs(sy + 35 - p[1]) > 40 for p in pins) \
+                        and (sx // 20, (sy + 35) // 20) not in tried and not _is_dead(dead, sx, sy + 35):
                     pins.append((sx, sy + 35, 1.0))     # quy uoc ghim = vong, cham tai y - 35 = dau ghim
+        heads = intel_pins.find_pins(img, ctx.v) if pins else []     # P13l: lop = bieu tuong + mau
+        lost = blocked_classes(ctx) if pins else {}
+        if lost:
+            for p in pins:
+                cls = intel_pins.class_at(heads, p[0], p[1])
+                if cls in lost and cls not in said:
+                    said.add(cls)
+                    log.info("Tinh bao: bo qua %s (thua luc chien %s, nay %s)", cls, *lost[cls])
+            pins = [p for p in pins if intel_pins.class_at(heads, p[0], p[1]) not in lost]
         if not pins:
             # P7-4: hoan thanh tinh bao co the sinh diem moi -> quet lai (cho diem hien) toi khi khong con diem
             if IR.should_rescan(done_scan, rescans, nc.get("intel_rescans", 3)):
@@ -530,8 +623,14 @@ def intel(ctx, max_n):
         tried.add((x // 20, y // 20))
         ctx._intel_pin = (x, y - 35)               # P9-9: pickup() nho vi tri ghim hop
         ctx.tap(x, y - 35, wait=1.5)               # ghim (hinh giot nuoc) nam tren vong tron
+        cls = intel_pins.class_at(heads, x, y)
         r = intel_mission(ctx)
         log.info("Tinh bao: %s", r)
+        if r in ("win", "lose"):
+            log.info("Tinh bao: ghim lop %s -> %s", cls or "?", r)
+        note_fight(ctx, r, cls)
+        if IR.dead_pin(r):
+            dead.append((x, y))
         if r in IR.DONE:
             done += 1
             done_scan += 1
@@ -572,10 +671,12 @@ def rebels_pin(ctx):
     title = ctx.v.find(img, "rebels/popup_title", th=0.8)
     lv = rebels.popup_level(img, title) if title else None
     _, rec = rebels._mem(ctx)
-    if lv is None or not rebels.target_ok({"fail": rec.get("fail", {})}, lv, rc.get("fail_h", 12)):
-        log.info("Tinh bao: ghim Phan quan Lv.%s - bo (doc cap khong ra / vua du doan thua)", lv)
+    if lv is not None and not rebels.target_ok({"fail": rec.get("fail", {})}, lv, rc.get("fail_h", 12)):
+        log.info("Tinh bao: ghim Phan quan Lv.%s - bo (vua du doan thua o cap nay)", lv)
         ctx.back_out()
         return "skipped"
+    if lv is None:      # P13l: OCR cap hong khong phai ly do bo nhiem vu - du doan "Thang toan dien" van chan tran thua
+        log.info("Tinh bao: ghim Phan quan - khong doc duoc cap -> van thu (chi Xuat chinh khi du doan thang)")
     r = rebels.launch_rally(ctx, rc, rec, lv, record=False)
     return "marched" if r == 1 else "skipped"
 
@@ -589,13 +690,50 @@ def _intel_unknown(ctx, why):
 
 
 def wait_panel(ctx, timeout=IR.INTEL_PANEL_WAIT_S, interval=0.5):
-    """Cho bang sau khi cham ghim: 'go' | 'reward' | None (het gio). Bang qua hien kem hieu ung -> 1 khung la khong du."""
+    """Cho bang sau khi cham ghim: 'go' | 'locked' | 'reward' | None (het gio). Bang qua hien kem hieu ung -> 1 khung
+    la khong du; nut xam xem lai 1 khung (bang dang hien dan cung nhat mau)."""
     t0 = time.time()
     while True:
         k = IR.panel_kind(ctx.shot(), ctx.v)
+        if k == IR.LOCKED:
+            time.sleep(interval)
+            return IR.panel_kind(ctx.shot(), ctx.v)
         if k or time.time() - t0 >= timeout:
             return k
         time.sleep(interval)
+
+
+def _locked(ctx, why):
+    """P13l: nhiem vu khong lam duoc (nut xam / phien quan qua cap) -> dong bang bang nut X. KHONG BAO GIO bam "Den"."""
+    log.info("Tinh bao: nhiem vu khoa (%s) -> dong, bo ghim", why)
+    ctx.tap_first(ctx.POPUP_CLOSERS, wait=0.8)
+    return IR.LOCKED
+
+
+def potion_popup(ctx):
+    """P13l: bam "Tan cong" / "Nhat" ma hien bang Thuoc The Luc (het the luc) -> "Dung" binh 10 diem (KHONG BAO GIO
+    "Mua", tran intel_max_potions / luot) roi dong bang. -> True neu da dung 1 binh."""
+    nc = ctx.cfg.get("notify", {})
+    ok = False
+    if nc.get("intel_use_potions", True) and getattr(ctx, "_potions", 0) < nc.get("intel_max_potions", 20):
+        ok = use_potion10(ctx)
+        if ok:
+            ctx._potions = getattr(ctx, "_potions", 0) + 1
+            ctx.dismiss_reward()
+    if ctx.find("intel/potion_title"):
+        ctx.tap_first(ctx.POPUP_CLOSERS, wait=1.0)
+    log.info("Tinh bao: bang Thuoc The Luc -> %s", "dung 1 binh, thu lai" if ok else "khong con thuoc / het tran, dung")
+    return ok
+
+
+def _wait_target(ctx, looks=IR.TARGET_LOOKS):
+    """P13l: bang muc tieu hien tre sau khi cham tren ban do -> toi da `looks` khung -> IR.target_kind | None."""
+    for k in range(looks):
+        t = IR.target_kind(ctx.shot(), ctx.v)
+        if t or k == looks - 1:
+            return t
+        time.sleep(0.6)
+    return None
 
 
 def legion_march(ctx):
@@ -627,25 +765,42 @@ def confirm_departure(ctx, btn, tries=2, ok="marched"):
     """P7-4 (live #1: quan doan khong di chuyen): bam nut xuat phat roi KIEM quan doan that su di - nut da bien mat
     va (neu doc duoc) 'Hanh quan x/y' tang. Khong di -> bam lai 1 lan; van khong -> log loi + anh, 'not_departed'."""
     before = _marches(ctx)
-    for k in range(tries):
-        if not ctx.tap_tpl(btn, wait=2.0):
-            if k == 0:
+    k, drank = 0, False
+    while k < tries:
+        if not ctx.tap_tpl(btn, wait=2.0) and k == 0 and not drank:
+            ctx.back_out()
+            return _intel_unknown(ctx, IR.UNKNOWN_AFTER)
+        if ctx.find("intel/potion_title"):       # P13l: het the luc -> uong thuoc roi bam lai (khong tinh lan thu)
+            if drank or not potion_popup(ctx):
                 ctx.back_out()
-                return _intel_unknown(ctx, IR.UNKNOWN_AFTER)
+                return IR.NO_ENERGY
+            drank = True
+            continue
         gone = not ctx.find(btn)
         if IR.departed(before, _marches(ctx) if gone else None, gone):
             if ok == "marched":
                 ctx.march_sent()
             return ok
-        log.info("Tinh bao: bam %s nhung quan doan chua di (lan %d/%d)", btn.split("/")[-1], k + 1, tries)
+        k += 1
+        log.info("Tinh bao: bam %s nhung quan doan chua di (lan %d/%d)", btn.split("/")[-1], k, tries)
     log.warning("Tinh bao: quan doan KHONG xuat phat sau %d lan bam %s", tries, btn)
     ctx.back_out()
     return _intel_unknown(ctx, IR.NOT_DEPARTED)
 
 
+def _grey_pickup(ctx):
+    img = ctx.shot()
+    p = ctx.v.find(img, "intel/btn_pickup")
+    return bool(p) and not IR.enabled_button(img, p[0], p[1])
+
+
 def pickup(ctx):
     """P7-4: hop qua / tiep te tinh bao (moi mau): toi da intel_pickup_max hop dang nhat; day -> cho toi da
     intel_pickup_wait_max_s giay roi moi nhat tiep, van day -> bo ghim (lan sau). Kiem don vi that su di."""
+    if _grey_pickup(ctx):
+        time.sleep(0.8)                  # bang dang hien dan -> xem lai 1 khung
+        if _grey_pickup(ctx):            # log 26/11: nut xam bam 2 lan -> not_departed
+            return _locked(ctx, "nut 'Nhat' xam - thieu binh chung / tuong yeu cau")
     pk = _pickups(ctx)
     w = pk.wait_s(time.time())
     if w > 0:
@@ -666,14 +821,16 @@ FORMATION = ("campaign/btn_fight", "gather/btn_march", "rebels/btn_march_out")  
 
 
 def intel_mission(ctx):
-    """Dang mo bang nhiem vu tinh bao -> 'win'|'lose'|'marched'|'picked'|'no_march'|'skipped'|'lose_pred'|'guided'
-    |'unknown_*'."""
+    """Dang mo bang nhiem vu tinh bao -> 'win'|'lose'|'marched'|'picked'|'no_march'|'no_energy'|'skipped'|'skip'
+    |'lose_pred'|'locked'|'guided'|'unknown_*'."""
     kind = wait_panel(ctx)
     if kind == "reward":
         # ghim HOP QUA: cham la hien ngay bang "Chuc mung nhan duoc" (khong co nut "Di"). P5-1: 11/11 anh
         # intel_panel_unknown 22/11 la bang nay - truoc day chi xet 1 khung luc bang con dang hien -> 'unknown'
         ctx.dismiss_reward()
         return "picked"
+    if kind == IR.LOCKED:
+        return _locked(ctx, "nut 'Den' xam - thieu binh chung / tuong yeu cau")
     if kind != "go" or not ctx.tap_tpl("intel/btn_go", wait=3.0):
         ctx.tap_first(ctx.POPUP_CLOSERS, wait=0.8)
         return _intel_unknown(ctx, IR.UNKNOWN_PANEL)
@@ -681,6 +838,9 @@ def intel_mission(ctx):
     if not (ctx.wait_for("intel/btn_attack", timeout=2) or ctx.find("intel/btn_pickup", fresh=False)
             or ctx.find("rebels/btn_rally", fresh=False)):
         time.sleep(1.5)                                   # ban do / camera con dang truot toi muc tieu
+        t = IR.target_kind(ctx.shot(), ctx.v)
+        if t in (IR.LOCKED, IR.NPC_LOCKED):
+            return _locked(ctx, "bang muc tieu bi khoa: %s" % t)
         # P13j: huong dan xanh trong THANH PHO (o sang + cot sang / ban tay) -> bam dung vat. None = khong phai thanh pho
         # va khong co huong dan -> logic ghim ban do the gioi ben duoi
         guided = guide_tile.follow_city(ctx)
@@ -692,12 +852,30 @@ def intel_mission(ctx):
             m = ctx.v.find(img, "intel/marker_fight", th=IR.MARKER_TH, roi=IR.MARKER_ROI)
             # ghim tim/vang dau lau tren ban do (#1 2026-11-21) -> muc tieu ngay duoi ghim; lay ghim gan giua man nhat
             sp = sorted(special_pins(img), key=lambda p: abs(p[0] - 270) + abs(p[1] - 400))[:1]
-            spots = ([(m[0] + 5, m[1] + 45), (m[0], m[1])] if m else []) + [(x, y + 45) for x, y in sp]             + [(268, 405), (268, 438), (265, 365)]
-            for x, y in spots:
+            anchored = ([(m[0] + 5, m[1] + 45), (m[0], m[1])] if m else []) + [(x, y + 45) for x, y in sp]
+            spots = anchored + [(268, 405), (268, 438), (265, 365)]
+            npc = False
+            for i, (x, y) in enumerate(spots):
+                # P13l (t104u): khong cham can cu nguoi choi; diem co dinh (khong neo theo ghim) kiem rong hon; menu
+                # vua mo tren ban do (map_menu dong ngay) -> diem do vao danh sach den
+                near = (world_target.city_near(img, x, y) if i < len(anchored)
+                        else not world_target.blind_tap_ok(img, ctx.v, x, y))
+                if near or map_menu.blocked(ctx, x, y):
+                    log.info("Tinh bao: bo diem @%d,%d (can cu nguoi choi / diem da mo menu)", x, y)
+                    continue
                 ctx.tap(x, y, wait=1.5)
-                img = ctx.shot()
-                if any(ctx.v.find(img, n) for n in ("intel/btn_attack", "intel/btn_pickup", "rebels/btn_rally")):
+                t = _wait_target(ctx)           # P13l: cho bang hien (wait_scale 0,55 -> 1 khung la qua som)
+                if t == IR.NPC_LOCKED:          # phien quan ban do qua cap -> dong, thu diem ke
+                    npc = True
+                    ctx.tap_first(ctx.POPUP_CLOSERS, wait=0.8)
+                    continue
+                if t:
                     break
+            else:
+                if npc:
+                    return _locked(ctx, "phien quan cao hon cap toi da duoc danh")
+    if IR.target_kind(ctx.shot(), ctx.v) == IR.LOCKED:
+        return _locked(ctx, "bang muc tieu co nut xam")
     if ctx.find("intel/btn_pickup"):     # Tiep te vat tu / hop qua: don vi tinh bao rieng, khong ton doi (P7-4: toi da 2)
         return pickup(ctx)
     if guided in ("panel", "changed") and ctx.find("common/msg_reward", th=0.75):
@@ -714,10 +892,18 @@ def intel_mission(ctx):
         return _intel_unknown(ctx, IR.UNKNOWN_TARGET)
     # man doi hinh / bang hanh quan len cham: #0 2026-11-22 (anh 0015 -> 0016) mat ~4 s sau khi bam "Tan cong"; wait_scale 0,55
     # rut cho con ~1,4 s -> khong thay nut Chien dau -> back_out -> 'unknown' (moi ghim kiem deu 'unknown')
+    drank = False
     for _ in range(14):
         img = ctx.shot()
         if any(ctx.v.find(img, n) for n in FORMATION):
             break
+        if ctx.v.find(img, "intel/potion_title"):    # P13l (log 26/11 #1): het the luc sau "Tan cong" -> unknown_attack
+            if drank or not potion_popup(ctx):
+                return IR.NO_ENERGY
+            drank = True
+            if not ctx.tap_tpl("intel/btn_attack", wait=2.5):
+                return "skipped"
+            continue
         time.sleep(0.7)
     if ctx.find("campaign/btn_fight", fresh=False):  # Chien dich Tuong: tran tu danh
         return campaign.battle(ctx)

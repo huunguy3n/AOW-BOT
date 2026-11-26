@@ -7,7 +7,7 @@ import time, logging
 import cv2
 import numpy as np
 
-from bot import guide_tile, quest_rules, tapguard, unlock_popup
+from bot import guide_tile, map_menu, quest_rules, tapguard, unlock_popup, world_target
 
 log = logging.getLogger("aow")
 
@@ -18,6 +18,7 @@ QUEST_TAPS = [(30, 818), (150, 818)]   # icon nhiem vu goc trai duoi (ban ghi #4
 PAD = 40
 
 FIGHT_XY = (270, 921)    # nut Chien dau o man doi hinh (chu phu "The luc can bang" lam lech anh mau)
+ARROW_WHY = "mui ten xanh chi xuong"   # tien to ly do cua hanh dong 'target' (GUIDE_WHY)
 
 # Nguong do tren ban ghi: battle_top trong tran >=0.68, ngoai tran <=0.52; battle_flag ngoai tran <=0.34
 TH = {
@@ -46,20 +47,7 @@ def _formation_btn(v, img):
     return _f(v, img, "tutorial/btn_auto_formation") or v.find(img, "tutorial/btn_suggest_formation", th=0.85)
 
 
-def find_green_chevron(img):
-    """Mui ten XANH chi xuong (dau V kep, ~22x31 px) tren ban do the gioi: huong dan game chi vao quan Phien quan o
-    ngay duoi no (anh chu du an 2026-11-22: mui ten y~96, quan y~200). -> (x, y_cham) | None. Ham thuan."""
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    m = ((hsv[..., 0] >= 50) & (hsv[..., 0] <= 80) & (hsv[..., 1] >= 120) & (hsv[..., 2] >= 170)).astype("uint8")
-    m[:110], m[800:] = 0, 0
-    m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
-    n, _, st, c = cv2.connectedComponentsWithStats(m)
-    best = None
-    for i in range(1, n):
-        x, y, w, h, a = st[i]
-        if 16 <= w <= 36 and 22 <= h <= 46 and 1.0 <= h / w <= 1.8 and a >= 0.4 * w * h and (best is None or a > best[2]):
-            best = (int(c[i][0]), int(y + h + 95), a)
-    return best[:2] if best else None
+find_green_chevron = world_target.find_green_chevron   # mui ten xanh chi xuong -> (x, y chan mui ten)
 
 
 BEAM_DY = 35       # cham duoi chan cot sang cam (linh dung tren o do) - do khung 021/025: chan cot ~445, linh ~465..480
@@ -375,13 +363,17 @@ def is_battle(v, img):
 
 
 def decide(v, img, idle=0, state=None):
-    """-> (action, x, y, reason). action: tap | steer | wait
+    """-> (action, x, y, reason). action: tap | steer | wait | target | mapmenu | ...
     state: dict giu giua cac vong (vd da bam tu xep doi hinh chua)."""
     state = {} if state is None else state
     # 0. hop thoai "Roi tro choi?" (do phim Back) -> LUON bam Huy, khong bao gio Xac nhan
     p = v.find(img, "common/btn_cancel_exit", th=0.9)
     if p:
         return ("tap", p[0], p[1], "huy thoat game")
+    # P13l (t104u): menu can cu nguoi choi / o dat trong tren ban do -> CHI dong, xet truoc moi luat cham
+    k = map_menu.classify(img, v)
+    if k:
+        return ("mapmenu", 0, 0, map_menu.LOG_CITY if k == "city" else map_menu.LOG_LAND)
     # P13k: popup "Mo khoa Binh chung nay" -> chi "Xac nhan"; xet TRUOC moi luat huong dan (do: truoc day cham tieu de)
     p = unlock_popup.find(img, v)
     if p:
@@ -676,14 +668,17 @@ def decide(v, img, idle=0, state=None):
         if red_dots(img, (t3[0] + 40, t3[1] - 50, 60, 50)):
             state["daily_tab"] = state.get("daily_tab", 0) + 1
             return ("tap", t3[0], t3[1], "tab Nhiem vu hang ngay (cham do)")
-    # 6c. mui ten XANH chi xuong tren ban do -> cham quan/muc tieu ngay duoi (toi da 3 lan moi vi tri)
-    g = find_green_chevron(img)
-    if g:
-        key = (g[0] // 40, g[1] // 40)
+    # 6c. mui ten XANH chi xuong tren ban do -> cham VAT THE ngay duoi (phien quan / mo; khong offset co dinh, khong
+    #     can cu nguoi choi) roi lam tai cho (bot/modules/arrow.py). Toi da 2 lan moi vi tri / phien.
+    arrow = find_green_chevron(img)
+    if arrow:
+        key = (arrow[0] // 40, arrow[1] // 40)
         seen = state.setdefault("chevron_taps", {})
-        if seen.get(key, 0) < 3:
-            seen[key] = seen.get(key, 0) + 1
-            return ("tap", g[0], g[1], "mui ten xanh chi xuong -> cham muc tieu")
+        if seen.get(key, 0) < 2:
+            t = world_target.pick(img, v, arrow, state.get("world_blocked"))
+            if t:
+                seen[key] = seen.get(key, 0) + 1
+                return ("target", t.x, t.y, f"{ARROW_WHY} -> {t.kind}")
     # 6d. P4 - CHE DO follow, man khong co huong dan cua game nhung biet chac (129 anh follow_stuck 18-22/11):
     #     bang nhiem vu kieu moi (X do goc tren-phai) -> Nhan toan bo / Nhan / dong; ban do the gioi / Tinh bao -> ra
     #     (viec do cua buoc rebels/intel/gather; KHONG cham giua ban do: chon o dat "Chuyen thanh / Chiem linh").
@@ -732,6 +727,8 @@ def _follow_known(v, img, state, idle=0):
         b = v.find(img, "common/btn_back", th=0.85)
         return ("exit", b[0] if b else 0, b[1] if b else 0, "ban do Tinh bao -> ra (viec cua buoc intel)")
     if kind == "world":
+        if idle < 3 and find_green_chevron(img):
+            return ("wait", 0, 0, "mui ten xanh: cho thay muc tieu")     # P13l: con mui ten -> chua bo di
         return ("exit", 0, 0, "ban do the gioi khong co huong dan -> ra (viec cua rebels/gather)")
     if not v.find(img, "common/btn_to_world"):
         b = v.find(img, "common/btn_back", th=0.9)
@@ -760,7 +757,7 @@ def _pred_win(v, img):
     return predicted_win(v, img)
 
 
-GUIDE_WHY = ("ban tay", "mui ten V", "o do duoi", "V chi", guide_tile.WHY)
+GUIDE_WHY = ("ban tay", "mui ten V", "o do duoi", "V chi", guide_tile.WHY, ARROW_WHY)
 
 
 # P9-4 (live-run-2 11:03:07): man Su menh (o "+" xanh / ban xuc xac) bi doc nham la "ban tay xanh (cot sang)" -> follow
@@ -789,7 +786,7 @@ def guide_visible(v, img, blocked=None):
         act, x, y, why = decide(v, img, state={"follow": True, "guide_blocked": blocked})
     except Exception:
         return None
-    if act != "tap" or not any(k in why for k in GUIDE_WHY) or (blocked and blocked(x, y)):
+    if act not in ("tap", "target") or not any(k in why for k in GUIDE_WHY) or (blocked and blocked(x, y)):
         return None             # P13j: luat cu cung khong duoc cham lai cho da danh sach den
     return why
 
@@ -854,7 +851,8 @@ def run(ctx, max_steps=600, idle_limit=10, max_retry=5, follow=False, no_battle=
         return "weak_wait"
     tag = "follow" if follow else "tutorial"
     idle = quest_taps = retries = 0
-    state = {"follow": follow, "no_battle": no_battle}
+    state = {"follow": follow, "no_battle": no_battle,
+             "world_blocked": lambda x, y: map_menu.blocked(ctx, x, y)}
     if follow:      # P13j: toa do huong dan cham khong an (ca o buoc Tinh bao) -> khong cham lai trong luot ghe
         state["guide_blocked"] = guide_tile.blocked_by(ctx)
     trace = ctx.cfg.get("tutorial", {}).get("trace_dir")   # luu anh + quyet dinh tung buoc de xem lai
@@ -895,6 +893,17 @@ def run(ctx, max_steps=600, idle_limit=10, max_retry=5, follow=False, no_battle=
         if act == "weak":   # chi follow: de mainquest ghi nhan va doi luc chien tang
             ctx.back_out()
             return "weak"
+        if act in ("mapmenu", "target"):
+            if act == "mapmenu":                # P13l: khong bao gio bam nut tren menu nay, chi dong
+                map_menu.dismiss(ctx, img)
+                r = "menu"
+            else:                               # P13l: mui ten xanh tren ban do -> lam tai cho
+                from bot.modules import arrow as arrow_step
+                r = arrow_step.engage(ctx)
+            idle = 0 if r == "sent" else idle + 1
+            if idle > idle_limit:
+                return "stuck" if follow else False
+            continue
         if act == "steer":
             r = steer.run_battle(ctx.dev.adb, ctx.dev.serial, ctx.v, is_battle=is_battle,
                                  debug_dir=ctx.cfg.get("battle", {}).get("debug_dir"),

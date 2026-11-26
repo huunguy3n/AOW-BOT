@@ -73,6 +73,16 @@ def idle_slots(queues: dict[str, tuple[int, int] | None], max_builders: int = 1)
     return out
 
 
+def promote(order: list[str], step: str, build_first: bool) -> list[str]:
+    """P13l: dua `step` len som - ngay sau buoc dau luot (HEAD), va sau cac buoc xay khi dang co tho ranh
+    (build_first: "xay truoc khi tho ranh" van giu). Buoc khac giu nguyen thu tu."""
+    if step not in order:
+        return list(order)
+    keep = set(HEAD) | (set(SLOT_STEPS[0][1]) if build_first else set())
+    front = [n for n in order if n in keep]
+    return [*front, step, *(n for n in order if n not in keep and n != step)]
+
+
 def prioritize(order: list[str], idle: list[str], enabled: dict[str, bool] | None = None) -> list[str]:
     """Dua buoc cua cac hang cho dang ranh len ngay sau buoc dau luot (warday, tutorial); con lai giu nguyen thu tu."""
     head = [n for n in order if n in HEAD]

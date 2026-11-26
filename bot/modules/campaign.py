@@ -138,11 +138,13 @@ def battle(ctx, only_win=True, pre_checked=False):
     # nut "Tu xep doi hinh" (goc duoi phai) LUON bam truoc khi danh (chu du an 2026-11-21 #1: "chua bam toi uu!!!",
     # doi hinh chi 3 tuong, 1 tuong Lv.1) -> du doan thang/thua tinh theo doi hinh da toi uu
     auto_formation(ctx)
-    if only_win and ctx.find("campaign/btn_fight") and not predicted_win(ctx.v, ctx._img):
+    seen = ctx.find("campaign/btn_fight") if only_win else None
+    if seen and not predicted_win(ctx.v, ctx._img):
         log.info("Doi hinh khong du doan thang - bo")
         ctx.back_out(2)
         return "skip"
-    if not ctx.tap_tpl("campaign/btn_fight", wait=0.5):
+    # P13l: nut chua hien luc kiem du doan (man tai cham) -> khong cham ngay, vong cho ben duoi kiem du doan truoc
+    if (only_win and not seen) or not ctx.tap_tpl("campaign/btn_fight", wait=0.5):
         if legion_screen(ctx.v, ctx._img) and only_win and not pre_checked:
             log.info("Man quan doan khong hien du doan - khong danh")
             ctx.back_out(2)
@@ -151,6 +153,10 @@ def battle(ctx, only_win=True, pre_checked=False):
             t0, ok = time.time(), False
             while time.time() - t0 < 12 and not ok:   # man doi hinh tai cham tren may yeu (#0 2026-11-22: 'error' sau 9 s)
                 time.sleep(1.5)
+                if only_win and ctx.find("campaign/btn_fight") and not predicted_win(ctx.v, ctx._img):
+                    log.info("Doi hinh khong du doan thang - bo")
+                    ctx.back_out(2)
+                    return "skip"
                 if ctx.tap_tpl("campaign/btn_fight", wait=0.5):
                     ok = True
                 elif legion_screen(ctx.v, ctx._img) and (pre_checked or not only_win):

@@ -362,6 +362,11 @@ def try_target(ctx, rc, rec, tap, want=None):
     if not title:
         ctx.close_popups(1)
         return -2
+    return popup_target(ctx, rc, rec, img, title, want)
+
+
+def popup_target(ctx, rc, rec, img, title, want=None):
+    """Popup "Phan quan Co giap Lv.N" dang mo -> 1 xuat chinh | 0 dung han | -1 bo muc tieu nay."""
     lv = popup_level(img, title)
     rec_pw = re.sub(r"\D", "", ocr.text(img, (title[0] + 81, title[1] + 387, 95, 22), "0123456789,", scale=4) or "")
     if lv is None or not target_ok(rec, lv, rc.get("fail_h", 12)):

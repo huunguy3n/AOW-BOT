@@ -240,6 +240,9 @@ class Runner:
         steps = [n for n in self._timed_cfg(i)["timed_login_steps"] if cfg["modules"].get(n)]
         if scheduler.builder_idle_now(self.mem, i, cfg)[0]:   # P13e-3: tho ranh -> gop xay vao luot ngan (khong cho vong sau)
             steps += [n for n in scheduler.FORCE_BUILD if cfg["modules"].get(n) and n not in steps]
+        # P13l: may nha chinh thap -> Tinh bao ca trong luot ngan (cuoi hang doi, con thoi gian moi chay)
+        steps = scheduler.with_intel_step(self.mem, i, steps, [n for n, on in cfg["modules"].items() if on],
+                                          [*steps, "intel"], cfg, now)
         log.info("Dang nhap hen gio: ghe may %d (luot ngan: ruong -> %s), con cho %s", i, ",".join(steps) or "-",
                  ",".join(str(x) for x in ready[1:]) or "-")
         self.store.runner(state="running")
@@ -795,6 +798,7 @@ class Runner:
             lost = 0   # so buoc lien tiep goto() khong ve duoc thanh pho/ban do (vd canh tan thu toi den, #4 2026-11-19)
             rescues = 0  # P13g-2: so lan da cuu ket (dong popup / khoi dong lai game) trong luot nay
             queue = list(ORDER) + [("observe", observe)]
+            idle0 = None
             if (cfg.get("priority") or {}).get("idle_first", True) and not forced and not short:
                 try:   # o rong (tho 0/2, nghien cuu 0/1, huan luyen x/3) -> lam truoc (chu du an 2026-11-22)
                     ctx.ensure_city()
@@ -810,11 +814,29 @@ class Runner:
                     log.warning("Uu tien o rong: loi %s", e)
             byq = dict(queue)
             queue = [(n, byq[n]) for n in W.gather_last([n for n, _ in queue])]   # P7-1: gather luon cuoi luot
+            if not forced and enabled.get("intel") and scheduler.intel_priority(self.mem, idx, cfg):
+                # P13l: Tinh bao som (sau khien / xay khi tho ranh). Luot ngan: sau cac buoc nhan qua + xay
+                names = [n for n, _ in queue]
+                if short:
+                    names = [n for n in names if n not in ("intel", "observe")] + ["intel", "observe"]
+                else:
+                    build_first = ("build" in idle0 if idle0 is not None
+                                   else scheduler.builder_idle_now(self.mem, idx, cfg)[0])
+                    names = drain.promote(names, "intel", build_first)
+                    log.info("Uu tien Tinh bao (nha chinh %s): thu tu %s", self.mem.fact(idx, "hq_level"),
+                             ",".join(n for n in names[:names.index("intel") + 1] if enabled.get(n)))
+                queue = [(n, byq[n]) for n in names]
             if enabled.get("gather") and warday.gather_day(cfg) and not forced:
                 log.info("Ngay thu thap: gather cuoi luot, gui het quan doan con lai")
             off = [n for n, _ in ORDER if not enabled.get(n) and n != "tutorial"]
             if off and not forced:   # P7-5: buoc tat trong cai dat may -> ghi ro (live #1: quests tat, bo qua im lang)
-                log.info("Buoc dang tat (cai dat may / config): %s", ",".join(off))
+                # P13l: tach buoc tat that voi buoc lich khong xep vao luot (log 26/11 gop chung nen tuong bi tat)
+                for label, names in (("Buoc dang tat (cai dat may / config)",
+                                      [n for n in off if not cfg["modules"].get(n)]),
+                                     ("Buoc khong nam trong luot nay (lich)",
+                                      [n for n in off if cfg["modules"].get(n)])):
+                    if names:
+                        log.info("%s: %s", label, ",".join(names))
             ctx.quests_claim_only = False
             if not short and quest_rules.quests_mode(bool(enabled.get("quests")), cfg.get("quests"),
                                                      forced or explicit) == "claim":

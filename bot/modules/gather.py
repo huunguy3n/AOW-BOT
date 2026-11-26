@@ -228,6 +228,9 @@ def close_map_menu(ctx, before=None):
     O day khong dung ctx.press_back: menu mo thi nut 'Thanh pho' van hien -> is_home() van dung."""
     if before is not None and screens.same(before, ctx.shot()):
         return
+    seq = getattr(ctx, "_menu_closed_seq", None)
+    if seq is not None and seq == getattr(ctx.dev, "act_seq", None):
+        return                    # P13l: map_menu vua dong menu o dat -> khong Back lan nua
     ctx._exp_begin("back", None, None, "gather.close_map_menu")
     ctx.dev.back()
     time.sleep(0.8)
@@ -355,8 +358,11 @@ def try_dispatch(ctx, rtype, level, max_level):
     occupied = False
     for dx, dy in ((0, 0), (0, 12), (0, -12)):
         before = ctx.shot()
+        menus = getattr(ctx, "_menu_closed", 0)
         ctx.tap(cx + dx, cy + dy, wait=1.2)
         found = ctx.find("gather/btn_gather")
+        if getattr(ctx, "_menu_closed", 0) != menus and getattr(ctx, "last_menu", None) == "city":
+            return OCCUPIED       # P13l: can cu / quan nguoi choi (menu da dong) -> doi mo khac, khong thu lech
         xy = read_mine_xy(ctx._img)
         if own_tile(ctx, xy, time.time()):
             # P13g: "Tim" ra lai dung o da gui quan (dang hanh quan / dang thu thap) -> khong bam gi tren mo

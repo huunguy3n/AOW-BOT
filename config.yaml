@@ -187,6 +187,7 @@ schedule:
   backoff_base_min: 30    # buoc loi/ket lien tiep -> tam bo 30, 60, 120... phut
   backoff_cap_h: 6        # toi da tam bo N gio
   extra_every_min: 180    # buoc chay kem (qua, cham do...) toi thieu cach nhau N phut (x2/x4 khi trang tay lien tiep)
+  intel_priority_hq: 15   # P13l: nha chinh < N (hoac chua biet cap) -> Tinh bao vao MOI luot ghe va chay som; 0 = tat
 
 # Watchdog: phat hien ket -> luu anh logs/shots/*_stuck.png, force-stop game (KHONG xoa du lieu), mo lai, sang buoc ke
 watchdog:
@@ -237,6 +238,8 @@ notify:
   intel_pickup_wait_max_s: 120  # P7-4: day 2 hop -> cho toi da N giay, lau hon thi bo ghim hop nay (lan sau)
   intel_rescans: 3         # P7-4: lam xong nhiem vu co the sinh diem moi -> quet lai ban do toi da N lan
   intel_rescan_wait_s: 3   # P7-4: cho diem moi hien truoc khi quet lai
+  intel_lose_power_pct: 5  # P13l: thua 1 lop ghim (bieu tuong + mau) -> bo qua lop do toi khi luc chien tang >= N %
+  intel_lose_h: 24         # P13l: luc thua khong bao gio doc duoc luc chien -> quen lop do sau N gio
   recruit: true
   hero: true
   events: true            # o su kien cot phai (nhan qua an toan)
@@ -405,7 +408,8 @@ rebels:
   legion: Odin            # quan doan mac dinh (Odin/Thor/Loki/Hawk/Hulk); bot nho quan doan da thang
   fail_h: 12              # cap du doan khong thang -> khong thu lai cap do trong N gio (lui ve cap da thang)
   search_tries: 3         # P5-2: so cap thu trong 1 luot (cap ke tiep roi ha dan khi du doan thua / khong tim thay)
-  intel_rally_min_hq: 0   # P5-2: ghim tinh bao Phan quan Co giap tu mo tap ket chi khi nha chinh >= N (0 = moi cap, nhu cu)
+  intel_rally_min_hq: 15  # ghim tinh bao Phan quan Co giap tu mo tap ket chi khi nha chinh >= N (P13l: nha chinh < 15 chi
+                          # bo tap ket Co giap, cac ghim khac van lam; 0 = moi cap)
 warday:
   require_badge: true       # P13-4: chi bat khien kieu warday khi thay huy hieu 'can khien' ben phai dong ho khien (mode=on bo qua)
   # Lich tuan su kien (chu du an 2026-11-23): thu 7 = ngay chien tranh (giu khien LIEN TUC du 24h), thu 2 = ngay thu thap.
@@ -449,3 +453,10 @@ defense:
   gem_cap_daily: 2000     # tran kim cuong moi ngay moi tai khoan
   evacuate_troops: false  # gui toan bo quan ra khoi tru so di thu thap
   red_flash: true         # mep man hinh nhay do o thanh pho/ban do = dang bi tan cong (chua co anh mau canh bao)
+
+# P13l: thieu tai nguyen (luyen / xay / nang cap / nghien cuu) -> "Dung dao cu" -> goi nho nhat con trong tui
+# ("Dung"). KHONG BAO GIO nut kim cuong.
+resources:
+  refill: true           # false = chi dong popup
+  max_per_action: 4      # toi da N goi cho 1 thao tac
+  max_per_visit: 20      # toi da N goi / luot ghe

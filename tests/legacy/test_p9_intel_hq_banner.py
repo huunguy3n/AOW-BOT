@@ -57,6 +57,7 @@ def test_done_without_pos_keeps_old_behaviour():
 
 def test_pickup_records_pin_position(monkeypatch):
     ctx = types.SimpleNamespace(cfg={"notify": {}}, _intel_pin=(222, 498))
+    monkeypatch.setattr(notify, "_grey_pickup", lambda c: False)       # P13l: nut "Nhat" co mau (bam duoc)
     monkeypatch.setattr(notify, "confirm_departure", lambda c, b, ok="": "picked")
     assert notify.pickup(ctx) == "picked"
     assert ctx._intel_pickups.pos == [(222, 498)]
