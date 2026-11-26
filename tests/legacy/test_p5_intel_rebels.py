@@ -201,7 +201,7 @@ def test_config_keeps_join_off():
     with open("config.yaml", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     assert cfg["rebels"]["join_mech_rally"] is False
-    assert cfg["rebels"]["intel_rally_min_hq"] == 0
+    assert cfg["rebels"]["intel_rally_min_hq"] == 15   # P13l (chu du an): nha chinh < 15 bo tap ket Co giap
 
 
 # ---------- phat lai offline tren anh that (chi local, anh khong co trong git) ----------

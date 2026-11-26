@@ -16,7 +16,7 @@ Khong bao gio bam nut ton kim cuong (build.upgrade_here, campaign giu luat do).
 import logging
 import time
 
-from bot import build, ocr, quest_rules, tplneed
+from bot import build, ocr, quest_rules, tplneed, world_target
 from bot.modules import campaign
 
 log = logging.getLogger("aow")
@@ -24,6 +24,7 @@ BANNER = (150, 818)
 BANNER_TEXT_ROI = (36, 806, 480, 30)
 TARGET = (272, 445)   # muc tieu (vd o do Mo ruong lanh tho / phien quan) sau khi camera can giua
 NPC_ATTACK = "rebels/npc_attack"
+POTION = "intel/potion_title"       # bang Thuoc The Luc
 NPC_SEARCH = "rebels/npc_btn_search"   # P12-4 (t55u): "Tim kiem" khi "Toi da co the tan cong phan quan cap X!" (s193422)
 NPC_SEARCH_ROI = (100, 600, 340, 250)   # nut "Tan cong" bang phien quan (cat tu logs/human/20261121/002012-i3-mainquest-091)
 SUCCESS = ("win", "build_started", "follow_build_started", "npc_sent")
@@ -136,9 +137,19 @@ def npc_search(ctx):
     ctx.settle()
     a = ctx.find(NPC_ATTACK, th=0.85)
     if not a:
-        ctx.tap(*TARGET, wait=1.8)
+        tap_target(ctx, 1.8)
         a = ctx.wait_for(NPC_ATTACK, timeout=3, th=0.85)
     return a
+
+
+def tap_target(ctx, wait):
+    """Cham muc tieu giua man (camera da can giua). P13l (t104u): tren ban do the gioi KHONG cham khi quanh do la can
+    cu nguoi choi. -> True neu da cham."""
+    if not world_target.blind_tap_ok(ctx.shot(), ctx.v, *TARGET):
+        log.info("Muc tieu giua man @%d,%d giong can cu nguoi choi -> khong cham", *TARGET)
+        return False
+    ctx.tap(*TARGET, wait=wait)
+    return True
 
 
 def npc_attack(ctx, mq):
@@ -184,7 +195,7 @@ def _npc_attack_once(ctx, mq):
     if not p and npc_popup_action(ctx.shot(), ctx.v) == "search":
         p = npc_search(ctx)
     if not p:
-        ctx.tap(*TARGET, wait=1.8)
+        tap_target(ctx, 1.8)
         p = ctx.wait_for(NPC_ATTACK, timeout=3, th=0.85)
     if not p and npc_popup_action(ctx.shot(), ctx.v) == "search":
         p = npc_search(ctx)
@@ -193,6 +204,13 @@ def _npc_attack_once(ctx, mq):
         ctx.save_debug("mainquest_npc_none")
         ctx.back_out(2)
         return "npc_none"
+    return npc_engage(ctx, mq, p)
+
+
+def npc_engage(ctx, mq, p):
+    """Bang phien quan dang mo, `p` = nut "Tan cong" cua bang do: kiem cap / luc chien -> "Tan cong" -> man quan doan ->
+    xuat chinh. Het the luc -> chi "Dung" thuoc (khong bao gio "Mua"). Dung chung voi mui ten xanh tren ban do (P13l).
+    -> 'npc_sent' | 'npc_skip' | 'npc_contested' | 'npc_none'."""
     img = ctx._img
     title = ocr.text(img, quest_rules.NPC_TITLE_ROI, bright=None, psm=7) or ""
     digits = "".join(ch for ch in (ocr.text(img, quest_rules.NPC_POWER_ROI, "0123456789,.", psm=7) or "") if ch.isdigit())
@@ -205,7 +223,14 @@ def _npc_attack_once(ctx, mq):
         ctx.back_out(2)
         return "npc_skip"
     ctx.tap(p[0], p[1], wait=2.0)
+    if ctx.v.has(POTION) and ctx.find(POTION):         # P13l: het the luc -> "Dung" thuoc roi bam "Tan cong" lai
+        from bot.modules import notify
+        if not notify.potion_popup(ctx) or not ctx.tap_tpl(NPC_ATTACK, wait=2.0, th=0.85):
+            ctx.back_out(2)
+            return "npc_none"
     if not ctx.wait_for("gather/btn_march", timeout=5):
+        if ctx.v.has("rebels/btn_march_out") and ctx.find("rebels/btn_march_out"):
+            return _npc_march_new(ctx, why)            # man "Cai dat Quan doan" kieu moi
         ctx.save_debug("mainquest_npc_no_march")
         ctx.back_out(3)
         return "npc_none"
@@ -219,6 +244,22 @@ def _npc_attack_once(ctx, mq):
         return "npc_contested"
     if ctx.v.find(img, "gather/btn_march"):
         log.info("Phien quan: bam Xuat chinh khong di (man quan doan con)")
+        ctx.save_debug("mainquest_npc_not_sent")
+        ctx.back_out(3)
+        return "npc_none"
+    log.info("Phien quan: da xuat chinh (%s)", why)
+    return "npc_sent"
+
+
+def _npc_march_new(ctx, why):
+    """Man quan doan kieu moi: chi Xuat chinh khi du doan "Thang toan dien" (cung luat phan quan / tinh bao)."""
+    from bot.modules import rebels
+    if not rebels.pred_win(ctx.shot()):
+        log.info("Phien quan: man quan doan khong du doan thang -> bo")
+        ctx.back_out(3)
+        return "npc_skip"
+    ctx.tap_tpl("rebels/btn_march_out", wait=2.0)
+    if ctx.find("rebels/btn_march_out"):
         ctx.save_debug("mainquest_npc_not_sent")
         ctx.back_out(3)
         return "npc_none"
@@ -263,7 +304,7 @@ def step(ctx, mq, kind="unknown"):
     if r != "none":
         return "build_" + r
     if ctx.is_home():                         # camera da toi muc tieu tren thanh pho
-        ctx.tap(*TARGET, wait=3.0)
+        tap_target(ctx, 3.0)
         if ctx.wait_for("campaign/btn_fight", timeout=3):
             return _fight(ctx, mq)
         r = build.upgrade_here(ctx)

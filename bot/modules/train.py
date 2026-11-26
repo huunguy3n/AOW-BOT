@@ -12,7 +12,7 @@ Cap bi khoa: man hinh hien "Khi Xuong ... dat cap N se mo khoa" va KHONG co nut 
 import logging
 import time
 
-from bot import ocr, queues, tplneed
+from bot import ocr, queues, resources, tplneed
 
 log = logging.getLogger("aow")
 TPL_MAX = "train/btn_max"          # nut "Toi da" canh thanh so luong (chu du an chup tren #1 - P2)
@@ -83,6 +83,8 @@ def train_once(ctx, tc):
             return False
     use_max(ctx, tc)
     ctx.tap_tpl("train/btn_train", wait=1.5)
+    # P13l: popup "Thieu tai nguyen" -> bo sung bang goi trong tui ("Dung") roi bam Huan luyen lai; khong kim cuong
+    resources.retry(ctx, lambda: ctx.tap_tpl("train/btn_train", wait=1.5))
     if not started(ctx):
         log.info("Thieu tai nguyen huan luyen T%d (nut Huan luyen van con / hop thoai thieu)", tier)
         ctx.close_popups(2)          # chi nut X/Dong - KHONG bam 'Dung vat pham' / mua bang kim cuong

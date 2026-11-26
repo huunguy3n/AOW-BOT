@@ -11,7 +11,7 @@ Bo nhom "Con duong" (xay duong khong co ich).
 """
 import re, time, logging
 import cv2, numpy as np
-from bot import ocr
+from bot import ocr, resources
 from bot.badges import red_dots
 
 log = logging.getLogger("aow")
@@ -218,6 +218,8 @@ def _place(ctx, x, tries):
             bp = ctx.find("build/btn_construct", th=0.85, roi=(280, 870, 200, 90))
             ctx.last_build_s = build.read_build_time(ctx.shot(), bp[:2]) if bp else None
             ctx.tap_tpl("build/btn_construct", wait=2.5, th=0.85, roi=(280, 870, 200, 90))   # nut PHAI, khong phai "ngay"
+            resources.retry(ctx, lambda: ctx.tap_tpl("build/btn_construct", wait=2.5, th=0.85,       # P13l: thieu RSS
+                                                     roi=(280, 870, 200, 90)))
             if ctx.find("build/btn_construct", th=0.85, roi=(280, 870, 200, 90)):
                 log.info("Xay moi: bam 'Xay dung' nhung van o man xac nhan (thieu tai nguyen/tho?) - bo")
                 ctx.save_debug("construct_blocked")

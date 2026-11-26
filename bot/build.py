@@ -5,7 +5,7 @@ nut PHAI "Tang cap" (co dong ho). KHONG BAO GIO bam "Tang cap ngay" (nut trai, t
 "Mien phi" va khong co so (chu du an 2026-11-22; free_instant_button).
 """
 import os, re, time, logging
-from bot import hqlevel, ocr
+from bot import hqlevel, ocr, resources
 
 log = logging.getLogger("aow")
 LEVEL_ROI = (180, 148, 180, 26)   # "Cap hien tai N"
@@ -361,6 +361,8 @@ def upgrade_here(ctx, depth=0, max_depth=4, late=False):
         ctx.tap(free[0], free[1], wait=2.0, tpl="btn:tang_cap_ngay_mien_phi")
     else:
         ctx.tap_tpl("build/btn_upgrade", wait=2.0, fresh=False)
+        # P13l: nang nha chinh / cong trinh thieu tai nguyen -> "Dung dao cu" (goi trong tui) roi bam Tang cap lai
+        resources.retry(ctx, lambda: ctx.tap_tpl("build/btn_upgrade", wait=2.0))
     ctx.skip_dialogs()   # "Xuong kien truc bat dau tang cap, hay tang toc..." hien SAU khi da bat dau (do #5)
     # Thanh cong: man Tang cap dong lai, ve thanh pho. Con man / hien hop thoai -> thieu tai nguyen hoac
     # het tho -> DONG lai (khong bao gio xac nhan hop thoai co the ton kim cuong).

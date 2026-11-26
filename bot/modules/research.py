@@ -7,7 +7,7 @@ KHONG BAO GIO bam nut tang toc / nghien cuu ngay bang kim cuong.
 """
 import re, time, logging
 import cv2
-from bot import ocr
+from bot import ocr, resources
 from bot.vnames import fix_name
 
 log = logging.getLogger("aow")
@@ -264,6 +264,14 @@ def node(ctx, depth=0, max_depth=4):
     if go:
         x, y, text = go[0]                           # nut hanh dong o day bang
         ctx.tap(x, y, wait=1.5, tpl="btn:nghien_cuu")
+
+        def again():
+            more = start_buttons(ctx, ctx.shot())
+            if more:
+                ctx.tap(more[0][0], more[0][1], wait=1.5, tpl="btn:nghien_cuu")
+            return bool(more)
+
+        resources.retry(ctx, again)       # P13l: thieu tai nguyen -> goi trong tui roi bam "Nghien cuu" lai
         res = verify_start(ctx)
         if res == "started":
             log.info("Bat dau nghien cuu (nut '%s')", text)

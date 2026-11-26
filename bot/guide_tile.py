@@ -39,6 +39,11 @@ HAND_DROP = 85                  # dau ngon -> tam vat khi khong thay o (anh chu 
 BUILD_X_ROI = (440, 820, 100, 110)   # nut X cua che do xay (vien o cong trinh cung mau xanh)
 WHY = "o xanh huong dan"        # tien to ly do trong tutorial.decide (GUIDE_WHY)
 CITY = "common/btn_to_world"
+# P13l: muc tieu DICH trong thanh = o DO + cot sang CAM (kiem cheo phia tren), linh minh dung o XANH LAM ben canh
+RED_H = (172, 6)                # vong qua 180
+ORANGE_H = (7, 25)
+BLUE_H = (94, 116)
+PAIR_PX = 220                   # o xanh lam (linh minh) cach o do toi da
 
 # man / nut hien ra sau khi cham dung vat
 OPENED = ("intel/btn_attack", "intel/btn_pickup", "rebels/btn_rally", "campaign/btn_fight", "gather/btn_march",
@@ -52,7 +57,7 @@ NEAR = 40                       # huong dan dich qua nguong nay = da doi
 class Guide(NamedTuple):
     x: int
     y: int
-    kind: str                   # 'hand' | 'beam'
+    kind: str                   # 'hand' | 'beam' | 'enemy'
 
 
 def green_mask(img):
@@ -62,6 +67,33 @@ def green_mask(img):
     m[:PLAY_Y[0]] = 0
     m[PLAY_Y[1]:] = 0
     return m
+
+
+def colour_mask(img, h, s=150, v=170):
+    """Mat na mau theo dai H (h[0] > h[1] = vong qua 180), bo thanh tai nguyen / thanh nut duoi."""
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    hue = hsv[..., 0]
+    inside = (hue >= h[0]) & (hue <= h[1]) if h[0] <= h[1] else (hue >= h[0]) | (hue <= h[1])
+    m = (inside & (hsv[..., 1] >= s) & (hsv[..., 2] >= v)).astype(np.uint8)
+    m[:PLAY_Y[0]] = 0
+    m[PLAY_Y[1]:] = 0
+    return m
+
+
+def find_enemy(img, blocked=None):
+    """P13l (log 26/11 #6, intel_unknown_target): o DO co cot sang CAM phia tren va o XANH LAM (linh minh) ben canh
+    -> Guide(diem cham tren dich, 'enemy') | None."""
+    red = colour_mask(img, RED_H)
+    tiles = find_tiles(red)
+    if not tiles:
+        return None
+    beam = red | colour_mask(img, ORANGE_H)
+    blue = find_tiles(colour_mask(img, BLUE_H))
+    for _, cx, cy, w in tiles:
+        near = any(abs(bx - cx) <= PAIR_PX and abs(by - cy) <= PAIR_PX // 2 for _, bx, by, _ in blue)
+        if near and _ok(cx, cy + TAP_DY, blocked) and beam_rows(beam, cx, cy, w) >= BEAM_MIN:
+            return Guide(cx, cy + TAP_DY, "enemy")
+    return None
 
 
 def _diamond(w):
@@ -155,12 +187,14 @@ def _ok(x, y, blocked):
     return TAP_X[0] <= x <= TAP_X[1] and PLAY_Y[0] <= y <= PLAY_Y[1] and not (blocked and blocked(x, y))
 
 
-def find(v, img, blocked=None):
+def find(v, img, blocked=None, enemy=False):
     """Huong dan xanh dang hien -> Guide(diem CHAM, loai) | None. blocked(x, y) -> True: toa do da danh sach den.
       1. co ban tay -> vat duoi dau ngon: tam o xanh ngay duoi tay (on dinh khi tay nhap nho), khong thay o thi
          dau ngon + HAND_DROP;
       2. khong co tay -> o xanh co cot sang phia tren, CHI khi dang o thanh pho (cong buff tran chay duong cung la
-         khoi xanh co cot: 3 khung taught/battle)."""
+         khoi xanh co cot: 3 khung taught/battle);
+      3. enemy=True (chi duong Tinh bao sau "Di"): o DO + cot cam trong thanh (find_enemy); tutorial.decide da co
+         find_beam rieng cho o do."""
     if not isinstance(img, np.ndarray) or v.find(img, "common/btn_close", th=0.9, roi=BUILD_X_ROI):
         return None
     mask = green_mask(img)
@@ -180,7 +214,7 @@ def find(v, img, blocked=None):
     for _, cx, cy, w in tiles:
         if _ok(cx, cy + TAP_DY, blocked) and beam_rows(mask, cx, cy, w) >= BEAM_MIN:
             return Guide(cx, cy + TAP_DY, "beam")
-    return None
+    return find_enemy(img, blocked) if enemy else None
 
 
 # ---------- thao tac ----------
@@ -211,7 +245,7 @@ def tap_and_check(ctx, hit):
         img = ctx.shot()
         if opened(ctx.v, img):
             return "panel"
-        now = find(ctx.v, img)
+        now = find(ctx.v, img, enemy=hit.kind == "enemy")
         gone = now is None or abs(now.x - hit.x) > NEAR or abs(now.y - hit.y) > NEAR
         moved = moved + 1 if gone else 0
         if moved >= 2:
@@ -223,7 +257,7 @@ def tap_and_check(ctx, hit):
 
 
 def follow_city(ctx):
-    """Sau "Di": lam theo huong dan xanh trong thanh pho (toi da STEPS cham).
+    """Sau "Di": lam theo huong dan xanh (va o do dich, P13l) trong thanh pho (toi da STEPS cham).
       None      : khong co huong dan va KHONG o thanh pho -> ben goi dung logic ghim ban do the gioi;
       'panel'   : nut / bang da hien;
       'changed' : da cham, huong dan het ma khong co bang nao;
@@ -235,7 +269,7 @@ def follow_city(ctx):
             img = ctx.shot()
             if acted and opened(ctx.v, img):
                 return "panel"
-            hit = find(ctx.v, img, blocked)
+            hit = find(ctx.v, img, blocked, enemy=True)
             city = bool(ctx.v.find(img, CITY))
             if hit or not city:
                 break
