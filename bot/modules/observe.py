@@ -7,7 +7,8 @@ Thoi gian tuyet doi (epoch) de web tu dem nguoc:
 """
 import re, time, logging
 import cv2, numpy as np
-from bot import build, ocr, queues
+from bot import build, hqlevel, ocr, queues
+from bot.hqlevel import judge_hq, note_hq  # noqa: F401 - P13i: luat o bot.hqlevel, giu ten cu
 from aowbot.domain import marches
 
 log = logging.getLogger("aow")
@@ -55,34 +56,6 @@ def ocr_hq(img):
     return ocr_hq_ex(img)[0]
 
 
-def judge_hq(prev, reads):
-    """P13d-4 (live6c #5: ca luot HQ=4, cuoi luot doc 'cap 7' -> ghi 4->7 sai). Ham thuan. reads = [(cap, co_nhan), ...]
-    (cac lan doc doc lap). -> cap duoc ghi | None (khong ghi, giu cap cu).
-    - chua biet cap cu: nhan lan doc dau co so.
-    - bang cap cu: ok. +1 cap: ok. Nhay > +1 hoac GIAM: chi nhan khi >= 2 lan doc doc lap trung nhau, deu co nhan."""
-    got = [(lv, lab) for lv, lab in reads if lv]
-    if not got:
-        return None
-    for lv, _lab in got:
-        if prev is None or lv == prev or lv == prev + 1:
-            return lv
-        if len([g for g in got if g[0] == lv and g[1]]) >= 2:
-            return lv
-    return None
-
-
-def note_hq(m, idx, prev, lv, targets=None):
-    """P4: lich su cap nha chinh (fact 'hq_history' [[ts, cap], ...]) de do tieu chi 'moi farm len >= 1 cap / ngay'."""
-    from aowbot.domain import hqplan as dom
-    hist = m.fact(idx, "hq_history") or []
-    if not hist or hist[-1][1] != lv:
-        hist = ([*hist, [time.time(), lv]])[-60:]
-        m.set_fact(idx, "hq_history", hist)
-        t = dom.next_target(lv, targets or dom.DEFAULT_TARGETS)
-        log.info("Nha chinh: cap %s -> %s (muc tieu ke tiep %s)", prev, lv, t or "da dat het")
-    return hist
-
-
 def read_hq(ctx, every_h=6):
     """Cap nha chinh (Xuong kien truc) cho gather/research/lich. Cham avatar goc trai tren -> OCR -> quay lai.
     Chi doc khi chua biet hoac da cu hon every_h gio (ton ~5 s)."""
@@ -96,7 +69,7 @@ def read_hq(ctx, every_h=6):
         if r and r[0][0] and time.time() - r[0][0] < every_h * 3600:
             return m.fact(idx, "hq_level")
     ctx.ensure_city()
-    prev = m.fact(idx, "hq_level") if m else None
+    prev = hqlevel.stored(ctx)
     reads = []
     for attempt in range(3):
         ctx.tap(38, 38, wait=1.8)
@@ -110,7 +83,7 @@ def read_hq(ctx, every_h=6):
         ctx.ensure_city()
         if not lv or judge_hq(prev, reads) is not None or attempt == 2:
             break      # doc duoc hop ly; lech bat thuong -> mo lai bang doc doc lap de xac nhan (toi da 3 lan)
-    lv = judge_hq(prev, reads)
+    lv = hqlevel.record(ctx, reads, "bang Thong tin Chi huy truong (cham avatar)")   # P13i: cong ghi duy nhat
     if lv is None and any(r[0] for r in reads):
         log.warning("Nha chinh: doc %s (cu %s) bat thuong/khong xac nhan duoc - KHONG ghi cap (giu cap cu)",
                     [r[0] for r in reads], prev)
@@ -118,11 +91,6 @@ def read_hq(ctx, every_h=6):
         return prev
     if lv:
         log.info("Nha chinh (Xuong kien truc) cap %d", lv)
-        if getattr(ctx, "store", None):
-            ctx.store.update(idx, hq_level=lv)
-        if m:
-            m.set_fact(idx, "hq_level", lv)
-            note_hq(m, idx, prev, lv, ctx.cfg.get("build", {}).get("hq_targets"))
     else:
         log.info("Khong doc duoc cap nha chinh")
     return lv

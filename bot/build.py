@@ -5,7 +5,7 @@ nut PHAI "Tang cap" (co dong ho). KHONG BAO GIO bam "Tang cap ngay" (nut trai, t
 "Mien phi" va khong co so (chu du an 2026-11-22; free_instant_button).
 """
 import os, re, time, logging
-from bot import ocr
+from bot import hqlevel, ocr
 
 log = logging.getLogger("aow")
 LEVEL_ROI = (180, 148, 180, 26)   # "Cap hien tai N"
@@ -336,8 +336,9 @@ def upgrade_here(ctx, depth=0, max_depth=4, late=False):
         return "none"
     lv = screen_level(img)
     is_hq = bool(ctx.v.find(img, "build/title_hq"))
-    if is_hq and lv is not None and getattr(ctx, "store", None):
-        ctx.store.update(ctx.dev.idx, hq_level=lv)  # nho cap nha chinh cho phan huan luyen/web
+    ctx.last_is_hq = is_hq
+    if is_hq and lv is not None:   # nho cap cho huan luyen / web - P13i: qua cong, 1 lan doc khong ha cap
+        hqlevel.record(ctx, [(lv, True)], "man nang cap nha chinh (title_hq)")
     if is_hq and lv is not None and lv >= cap:
         log.info("Nha chinh da cap %d >= gioi han %d - khong nang", lv, cap)
         return "hq_cap"

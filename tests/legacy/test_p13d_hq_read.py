@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from bot import hqlevel
 from bot.modules import observe as O
 
 
@@ -69,3 +70,12 @@ def test_read_hq_does_not_write_suspect(monkeypatch):
     r = O.read_hq(c, every_h=0)
     assert r in {5, 4}
     assert c.mem.fact(0, "hq_level") in (4, 5)         # khong bao gio 7
+
+
+def test_one_lower_read_never_lowers_p13i():
+    assert O.judge_hq(7, [(6, True)]) is None
+    assert O.judge_hq(7, [(6, True), (7, True)]) == 7
+    c = _ctx(7, [])
+    c.mem.f[(0, "hq_level")] = 7
+    assert hqlevel.record(c, [(6, True)], "bang chi huy") is None
+    assert c.mem.fact(0, "hq_level") == 7

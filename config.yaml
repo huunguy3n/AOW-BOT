@@ -206,6 +206,8 @@ build:
   fill_idle: true      # P13f-2: sau MOI buoc doc lai tho xay; ranh -> chay NGAY upgrade/construct/mainquest/quests truoc buoc ke
   fill_rounds: 8       # so lan chen toi da moi luot ghe
   fill_retries: 2      # lan truoc khong xay duoc gi: chi thu lai khi them tho xong, hoac (toi da N lan) vua co them tai nguyen
+  wrench: true         # P13i: tho ranh -> TRUOC TIEN bam bong bong tron vang CO LE tren cong trinh (nang duoc ngay), uu
+                       # tien nha chinh (templates/build/wrench_bubble.png, bot/wrench.py); chi nang thuong / mien phi
   chain_max: 6         # so cong trinh lien tiep toi da trong 1 lan chay buoc upgrade (nang tuc thi / #1 2 tho)
   other_when_blocked: true  # nha chinh khong lam duoc ngay -> nang nha tai nguyen (templates/build/res_*.png) cho tho khong ranh
   other_retry_min: 30  # khong tim / khong nang duoc nha nao -> N phut sau moi tim lai

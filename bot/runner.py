@@ -9,7 +9,7 @@ from bot.device import LDConsole, Device
 from bot.ctx import Ctx, Stuck
 from bot import build, ocr
 from bot.memory import Memory
-from bot import hang, perf, quest_rules, queues, scheduler, stepgate, tapguard
+from bot import hang, hqlevel, perf, quest_rules, queues, scheduler, stepgate, tapguard
 from aowbot.domain import builders as builders_dom, drain, rollout
 from aowbot.domain import warday as W
 from bot.modules import expand, tutorial, mainquest, construct, city, rewards, alliance, quests, campaign, notify, research, train, rebels, gather, daily, observe, defense, intel, reddots, play, upgrade, heal, warday, mission, shield
@@ -658,6 +658,8 @@ class Runner:
             if k not in state:
                 continue
             v = json.loads(json.dumps(state[k], default=str))   # so sanh dang da luu (JSON)
+            if k == "hq_level" and hqlevel.lowers(v, known.get(k)):
+                continue        # P13i: chep state -> tri nho khong duoc ha cap nha chinh (bot/hqlevel.py)
             if k not in known or known[k] != v:
                 out[k] = state[k]
         return out

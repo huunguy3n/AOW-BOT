@@ -1,4 +1,7 @@
-"""Q2 - XAY THEO NHA CHINH (chu du an 2026-11-21): "tho ranh thi cu bam vao nha chinh, nha chinh thieu dieu kien gi
+"""P13i: con tho ranh thi VIEC DAU TIEN la bong bong tron vang co le noi tren cong trinh (bot/wrench.py) - uu tien nha
+chinh, khong co thi nha khac; sau do moi toi:
+
+Q2 - XAY THEO NHA CHINH (chu du an 2026-11-21): "tho ranh thi cu bam vao nha chinh, nha chinh thieu dieu kien gi
 thi xay them can cu do". Moi may, moi cap; nha chinh da toi build.hq_max_level (30 = toi da) -> bo muc tieu xay.
 
 Tim nha chinh: tu ban do the gioi bam ve thanh pho -> camera dat NHA CHINH (Xuong kien truc) giua man (~270,440;
@@ -10,7 +13,7 @@ Nha chinh / tien quyet dang xay ma con tho ranh, hoac thieu dieu kien -> nang nh
 import logging
 import time
 
-from bot import build, hqplan, ocr
+from bot import build, hqplan, ocr, tapguard, tplneed, wrench
 from aowbot.domain.blockers import normalize
 
 log = logging.getLogger("aow")
@@ -199,6 +202,105 @@ def goto_hq(ctx, again=False):
     return None
 
 
+# ---- P13i: bong bong CO LE tren cong trinh = nang duoc ngay -> lua chon DAU TIEN khi con tho ranh ----
+WRENCH_SCOPE = "wrench"     # pham vi danh sach den toa do (bot/tapguard.py)
+WRENCH_MISSES = 3           # so bong bong bam ma khong bat dau duoc gi toi da moi lan goi
+
+
+def _wrench_tpl(ctx):
+    if not ctx.cfg.get("build", {}).get("wrench", True):
+        return None
+    load = getattr(getattr(ctx, "v", None), "load", None)
+    if load is None:
+        return None
+    tpl = load(wrench.TPL, probe=True)
+    if tpl is None:
+        tplneed.has(ctx.v, wrench.TPL, "bong bong co le tren cong trinh")
+    return tpl
+
+
+def _hq_hit(ctx, img):
+    """Huy hieu nha chinh dang thay tren man (anh mau) -> (x, y, diem) | None."""
+    return find_hq(img, _templates(ctx), dys=[TAP_DY.get(n, 0) for n in _names(ctx)])
+
+
+def wrench_candidates(ctx, img, hq=None):
+    """-> [(x, y, diem, tren_nha_chinh)] bong bong co le tren anh, nha chinh truoc, bo toa do trong danh sach den."""
+    tpl = _wrench_tpl(ctx)
+    if tpl is None:
+        return []
+    found = wrench.find_bubbles(img, tpl)
+    if not found:
+        return []
+    guard = tapguard.of(ctx)
+    ranked = wrench.ordered(found, hq or _hq_hit(ctx, img))
+    return [b for b in ranked if not guard.blocked(WRENCH_SCOPE, b[0], b[1])]
+
+
+def tap_wrench(ctx, bubble):
+    """Bam 1 bong bong co le roi nang bang build.upgrade_here (chi 'Tang cap' / 'Nhay' / 'Mien phi', khong kim cuong,
+    khong mua / thue tho). -> ket qua cua upgrade_here."""
+    x, y, score, on_hq = bubble
+    log.info("Bong bong co le @%d,%d (khop %.2f) - %s -> bam", x, y, score,
+             "tren NHA CHINH (uu tien)" if on_hq else "nha khac")
+    ctx.last_is_hq = False
+    ctx.tap(x, y, wait=1.5)
+    res = build.upgrade_here(ctx)
+    hq_screen = bool(getattr(ctx, "last_is_hq", False))
+    log.info("Bong bong co le @%d,%d: sau khi bam -> %s%s", x, y, res, " (man nang cap nha chinh)" if hq_screen else "")
+    guard = tapguard.of(ctx)
+    ok = res in ("started", "no_builder")
+    # 'none' = bam ma khong ra menu / man nang cap (man khong doi, cham sai cho) -> vao danh sach den ngay
+    for _ in range(guard.limit if res == "none" else 1):
+        guard.record(WRENCH_SCOPE, x, y, ok, f"bong bong co le -> {res}")
+    if res == "started" and (on_hq or hq_screen):
+        hqplan.save(ctx, res)
+    ctx.back_out()
+    ctx.ensure_city()
+    return res
+
+
+def wrench_upgrades(ctx, recenter=False):
+    """Con tho ranh -> bam lan luot cac bong bong co le (nha chinh truoc, khong co thi nha khac). recenter: man hien
+    tai khong thay nha chinh -> dua camera ve nha chinh 1 lan roi moi chon.
+    -> (so cong trinh bat dau, ket qua lan bam cuoi | None)."""
+    if _wrench_tpl(ctx) is None:
+        return 0, None
+    cap = ctx.cfg.get("build", {}).get("chain_max", 6)
+    built, misses, res, tried = 0, 0, None, []
+    while built < cap and misses < WRENCH_MISSES:
+        if build.builder_state(ctx)[0] == 0:          # moi tho dung duoc dang ban (farm 1/2 = day)
+            break
+        ctx.ensure_city()
+        img = ctx.settle()
+        hq = _hq_hit(ctx, img)
+        if hq is None and recenter:
+            recenter = False
+            if recenter_hq(ctx):                      # camera ve nha chinh: giua man la nha chinh du chua co anh mau
+                img = ctx.settle()
+                hq = _hq_hit(ctx, img) or (*CENTER, 0.0)
+            else:
+                img = ctx.settle()
+        todo = [b for b in wrench_candidates(ctx, img, hq)
+                if all(abs(b[0] - x) > 25 or abs(b[1] - y) > 25 for x, y in tried)]
+        if not todo:
+            if res is None:
+                log.info("Bong bong co le: khong thay tren man")
+            break
+        res = tap_wrench(ctx, todo[0])
+        if res == "no_builder":
+            break
+        if res == "started":
+            built += 1
+            tried = []                                # man da doi: bong bong khac co the troi toi cho cu
+            if not build.quick_wait(ctx):
+                break
+        else:
+            misses += 1
+            tried.append(todo[0][:2])
+    return built, res
+
+
 # ---- P13f-2: nha chinh khong lam duoc ngay -> nang cong trinh huu ich khac (nha tai nguyen) cho tho khong ngoi khong
 # templates/build/res_*.png cat tu anh ADB (Xuong Thuc Pham, thap tai nguyen den xanh); them kieu moi: tha them res_*.png.
 RES_TH = 0.66                          # 253 anh da luu 24-26/11: dung nha >= 0.69, cho khac <= 0.59
@@ -245,6 +347,12 @@ def upgrade_resource(ctx, tries=3, pans=4):
     img = ctx.settle()
     pos, done = (0, 0), 0
     for step in range(pans + 1):
+        bubbles = wrench_candidates(ctx, img)         # P13i: thanh da luot -> bong bong co le truoc nha tai nguyen
+        if bubbles:
+            res = tap_wrench(ctx, bubbles[0])
+            if res in ("started", "no_builder"):
+                return res
+            img = ctx.settle()
         found = res_candidates(img, tpls)
         if found:
             x, y, score = found[0]
@@ -292,11 +400,15 @@ def other_buildings(ctx):
 
 
 def hq_chain(ctx):
-    """Nang theo nha chinh lien tiep chung nao tho con ranh. -> (so cong trinh bat dau, ket qua cuoi)."""
-    cap = ctx.cfg.get("build", {}).get("hq_max_level", 30)
-    m = getattr(ctx, "mem", None)
+    """Nang theo nha chinh lien tiep chung nao tho con ranh. -> (so cong trinh bat dau, ket qua cuoi).
+    Cap nha chinh chi duoc ghi trong build.upgrade_here (qua bot.hqlevel); 'hq_cap' khong ghi de them o day (P13i)."""
     built, res = 0, "none"
     for _ in range(ctx.cfg.get("build", {}).get("chain_max", 6)):
+        if built:                                     # P13i: con tho -> bong bong co le truoc khi tim nha chinh tiep
+            n, wres = wrench_upgrades(ctx)
+            built += n
+            if wres == "no_builder" or (n and build.builder_state(ctx)[0] == 0):
+                return built, "started" if n else "no_builder"
         ic = goto_hq(ctx, again=True) if built else goto_hq(ctx)
         if not ic:
             ctx.back_out()
@@ -309,8 +421,6 @@ def hq_chain(ctx):
         hqplan.save(ctx, res, busy_s=getattr(ctx, "last_busy", None))
         if res == "none" and ctx.cfg.get("build", {}).get("probe_plot_lock", True):
             build.probe_plot_lock(ctx)   # nut Nhay dan toi lo dat khoa? mo hop thoai o khoa de ghi chi phi (chua xac nhan)
-        if res == "hq_cap" and m:
-            m.set_fact(ctx.dev.idx, "hq_level", cap)
         ctx.back_out()
         ctx.ensure_city()
         if res != "started":
@@ -331,6 +441,10 @@ def run(ctx):
         log.info("Xay theo nha chinh: khong co tho ranh (%s)", why)
         hqplan.save(ctx, "no_builder")
         return 0
+    # P13i: bong bong co le TRUOC (nang duoc ngay); khong co / tho van ranh moi toi logic tim nha chinh
+    wbuilt, wres = wrench_upgrades(ctx, recenter=hq is None or hq < cap)
+    if wres == "no_builder" or (wbuilt and build.builder_state(ctx)[0] == 0):
+        return wbuilt
     built, res = 0, "none"
     if hq is not None and hq >= cap:
         log.info("Nha chinh cap %d >= %d - bo muc tieu xay nha chinh", hq, cap)
@@ -342,4 +456,4 @@ def run(ctx):
             log.info("Xay theo nha chinh: bo (%s)", why)
     if res not in ("started", "no_builder"):   # het viec / thieu dieu kien -> tho ranh lam nha khac
         built += other_buildings(ctx)
-    return built
+    return wbuilt + built

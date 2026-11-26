@@ -322,6 +322,12 @@ def run(ctx):
     from bot import hqplan
     if hqplan.yield_builder(ctx, "construct"):   # P13f: chi bo khi het tho ranh
         return nr
+    if ctx.cfg.get("modules", {}).get("upgrade", True):
+        from bot.modules import upgrade
+        n = upgrade.wrench_upgrades(ctx)[0]      # P13i: nang duoc ngay (bong bong co le) truoc khi xay moi
+        nr += n
+        if n and hqplan.yield_builder(ctx, "construct (sau bong bong co le)"):
+            return nr
     bu = block_until(ctx)
     if bu:
         log.info("Xay moi: moi the co cham do deu khong dat duoc (het cho/thieu tai nguyen) - bo toi %s, tho danh cho"
