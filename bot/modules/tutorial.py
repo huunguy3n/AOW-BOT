@@ -7,7 +7,7 @@ import time, logging
 import cv2
 import numpy as np
 
-from bot import guide_tile, quest_rules, tapguard
+from bot import guide_tile, quest_rules, tapguard, unlock_popup
 
 log = logging.getLogger("aow")
 
@@ -382,6 +382,10 @@ def decide(v, img, idle=0, state=None):
     p = v.find(img, "common/btn_cancel_exit", th=0.9)
     if p:
         return ("tap", p[0], p[1], "huy thoat game")
+    # P13k: popup "Mo khoa Binh chung nay" -> chi "Xac nhan"; xet TRUOC moi luat huong dan (do: truoc day cham tieu de)
+    p = unlock_popup.find(img, v)
+    if p:
+        return ("tap", p[0], p[1], unlock_popup.WHY)
     # 0a. CHE DO follow (sau tan thu): KHONG lam gi o man Chieu mo (ke ca khi chu V chi vao "Chieu mo 10 lan")
     #     -> quay ra. Chieu mo chi do buoc 'notify' quyet dinh theo tuy chon (do #5 2026-11-18: V dan vao Chieu mo
     #     cao cap, bot bam "10 lan" -> tieu 10 phieu).
@@ -930,6 +934,11 @@ def run(ctx, max_steps=600, idle_limit=10, max_retry=5, follow=False, no_battle=
                 else:
                     ctx.safe_back()   # o thanh pho khong bam Back (chi hien "Roi tro choi?")
             idle = 2
+            continue
+        if why == unlock_popup.WHY:      # P13k: co gioi han lan thu + danh sach den, khong cham lap toi max_steps
+            if unlock_popup.dismiss(ctx, img) is False:
+                return "stuck" if follow else False
+            idle = 0
             continue
         if act == "tap" and follow and any(k in why for k in GUIDE_WHY) and state["guide_blocked"](x, y):
             log.info("Follow: (%d,%d) trong danh sach den huong dan -> khong cham lai", x, y)

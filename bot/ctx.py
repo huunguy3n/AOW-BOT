@@ -2,7 +2,7 @@
 import os, re, time, random, logging
 import cv2, numpy as np
 
-from bot import perf
+from bot import perf, unlock_popup
 
 log = logging.getLogger("aow")
 
@@ -112,7 +112,7 @@ class Ctx:
 
     def tap_tpl(self, name, wait=1.2, fresh=True, dy=0, **kw):
         p = self.find(name, fresh=fresh, **kw)
-        if not p:
+        if not p or self.unlock_guard(p[0], p[1] + dy):
             return False
         log.debug("tap %s @%d,%d (%.2f)", name, p[0], p[1], p[2])
         self._exp_begin("tpl", p[0], p[1] + dy, name, p[2])
@@ -125,6 +125,8 @@ class Ctx:
         for n in names:
             p = self.v.find(img, n, **kw)
             if p:
+                if self.unlock_guard(p[0], p[1], img):
+                    return None
                 self._exp_begin("first", p[0], p[1], n, p[2])
                 self.dev.tap(p[0], p[1])
                 self._after_tap(wait * self.wait_scale)
@@ -168,10 +170,26 @@ class Ctx:
             self._img = None
         return waited
 
+    def unlock_guard(self, x, y, img=None):
+        """P13k: (x, y) roi vao nut "Den" cua popup "Mo khoa Binh chung nay" (vd mau intel/btn_go khop nut do 0,92)
+        -> KHONG bam; dong popup bang "Xac nhan". -> True neu da chan lan cham nay."""
+        if not unlock_popup.in_go_zone(x, y):
+            return False
+        img = img if img is not None else getattr(self, "_img", None)
+        if img is None or unlock_popup.find(img, self.v) is None:
+            return False
+        log.warning("Chan cham @%d,%d: nut 'Den' cua popup mo khoa binh chung (buoc %s)", x, y,
+                    getattr(self, "step", None))
+        unlock_popup.dismiss(self)
+        return True
+
     def tap(self, x, y, wait=1.0, tpl=None):
+        seen = getattr(self, "_img", None)     # khung ben goi dua vao de quyet dinh cham
         self.human_gate()
         from bot.device import clamp_xy
         x, y = clamp_xy(x, y, "ctx.tap")   # P13c: 1 cho chac, truoc ca nhat ky hoc
+        if self.unlock_guard(x, y, seen):
+            return
         self._exp_begin("tap", x, y, tpl)
         self.dev.tap(x, y)
         self._after_tap(wait * self.wait_scale)
@@ -317,6 +335,12 @@ class Ctx:
             if self.cancel_exit(img, why="close_popups"):
                 img = None
                 continue
+            unlock = unlock_popup.dismiss(self, img)     # P13k: "Mo khoa Binh chung nay" -> "Xac nhan"
+            if unlock:
+                retried, img = False, None
+                continue
+            if unlock is False:
+                return                                   # popup khong dong (danh sach den) -> khong bam gi them
             if self.tap_first(self.POPUP_CLOSERS, wait=0.8, img=img):
                 retried, img = False, None
                 continue
@@ -332,7 +356,8 @@ class Ctx:
         t0, home_since = time.time(), None
         while True:
             img = self.shot()
-            if any(self.v.find(img, n) for n in ["common/btn_cancel_exit", *self.POPUP_CLOSERS]):
+            if (any(self.v.find(img, n) for n in ["common/btn_cancel_exit", *self.POPUP_CLOSERS])
+                    or unlock_popup.find(img, self.v)):
                 return img
             now = time.time()
             if self.is_home(img):
@@ -348,6 +373,8 @@ class Ctx:
         Nut "Dong" cua man ket qua tran bam TRUOC nut "<" (chu du an 2026-11-20: "bam Dong truoc, dang bam < truoc")."""
         for _ in range(rounds):
             img = self.shot()                     # P13f-3: 1 khung cho ca 'o thanh pho?' va tim nut
+            if unlock_popup.dismiss(self, img):   # P13k: popup nay de lo nut ban do -> kiem TRUOC is_home
+                continue
             if self.is_home(img):
                 return
             if not self.tap_first(["campaign/btn_done", "campaign/btn_done_lose", "common/btn_back", "common/btn_back2"]
@@ -434,6 +461,12 @@ class Ctx:
                 screens.save_unknown(img, self.dev.idx, getattr(self, "step", "") or "")
                 act, arg, tpl = self._learned_action(img, L, act, arg)
             self._nav_last = scr
+            if tpl == unlock_popup.BTN:      # P13k: lan thu / danh sach den rieng, khong Back, khong cham ra ngoai
+                if unlock_popup.dismiss(self, img) is False:
+                    log.warning("goto(%s): popup mo khoa binh chung khong dong - dung", target)
+                    return False
+                prev = img
+                continue
             if stale >= 2 and act == "tap" and scr in ("city", "world"):
                 # cham nut chuyen ban do 2 lan khong doi: ban do the gioi chua mo (TK dang chuoi nhiem vu dau, #3 2026-11-19)
                 log.info("goto(%s): nut chuyen ban do khong co tac dung - dung", target)
@@ -575,7 +608,10 @@ class Ctx:
         che man hinh sau khi mo man nang cap / nhiem vu -> cham de qua. -> so lan cham."""
         n = 0
         for _ in range(rounds):
-            if not self.find("tutorial/dialog_next", th=0.9):
+            dialog = self.find("tutorial/dialog_next", th=0.9)
+            if self._img is not None and unlock_popup.dismiss(self, self._img):   # P13k
+                continue
+            if not dialog:
                 break
             self.tap(self.W // 2, 560, wait=1.0)
             n += 1
@@ -619,6 +655,11 @@ class Ctx:
             img = self.shot()
             if self.cancel_exit(img, "dismiss_reward"):   # REWARD_CLOSERS co 'Xac nhan' - khong duoc bam tren hop thoai thoat
                 continue
+            unlock = unlock_popup.dismiss(self, img)   # P13k: REWARD_CLOSERS cung khop nut nay -> di duong co gioi han
+            if unlock:
+                continue
+            if unlock is False:
+                return
             hit = None
             for n in self.REWARD_CLOSERS:
                 if not self.v.has(n):          # btn_reward_close la tuy chon

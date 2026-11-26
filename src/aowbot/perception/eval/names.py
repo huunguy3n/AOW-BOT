@@ -64,6 +64,8 @@ NAMES: Mapping[str, str] = MappingProxyType({
     "common/btn_confirm_hero": "Nút Xác nhận tướng", "common/btn_free": "Nút Miễn phí", "common/btn_free_text": "Chữ Miễn phí",
     "common/btn_net_retry": "Nút Thử lại (lỗi mạng)", "common/btn_rebuild": "Nút Xây dựng lại",
     "common/btn_to_city": "Nút về Thành phố", "common/btn_to_world": "Nút ra Bản đồ thế giới", "common/btn_x": "Nút X đóng",
+    "common/btn_confirm_unlock": "Nút Xác nhận (mở khóa binh chủng)",
+    "common/unlock_troop_title": "Tiêu đề Mở khóa Binh chủng (mặt nạ chữ)",
     "common/btn_x_offer": "Nút X (ưu đãi)", "common/btn_x_red": "Nút X đỏ", "common/btn_x_small": "Nút X nhỏ",
     "common/msg_reward": "Bảng Nhận được phần thưởng", "common/tap_to_close": "Chữ Chạm để đóng",
     "common/tap_to_continue": "Chữ Chạm để tiếp tục", "common/splash_logo": "Màn nạp game (logo OEG)",

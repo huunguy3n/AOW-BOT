@@ -5,6 +5,7 @@ logs/shots, tests/fixtures (tools/check_screens.py). Ctx.goto() thuc thi hanh do
 
 Thu tu uu tien (man chong len nhau: popup tren thanh pho...):
   exit_dialog  hop thoai "Thoat game?"          -> Huy
+  popup        "Mo khoa Binh chung nay"         -> "Xac nhan" (bot/unlock_popup.py, khong bao gio "Den")
   reward       bang nhan thuong                 -> cham dong
   popup        nut dong/xac nhan popup quen biet -> cham
   city / world nut chuyen ban do (goc duoi phai) -> xong, hoac cham de doi
@@ -17,7 +18,7 @@ Chi dung anh mau DA CO trong templates/ (thieu -> coi nhu khong thay, dung quy u
 import os, threading, time
 import cv2, numpy as np
 
-from bot import perf
+from bot import perf, unlock_popup
 
 POPUPS = ["common/btn_confirm_hero", "common/btn_net_retry", "common/btn_rebuild", "common/btn_x", "common/btn_close",
           "common/btn_x_small", "common/btn_x_red", "common/tap_to_continue", "common/tap_to_close"]
@@ -66,6 +67,9 @@ def _identify(img, v):
     p = _find(v, img, "common/btn_cancel_exit")
     if p:
         return "exit_dialog", ("common/btn_cancel_exit", p)
+    p = unlock_popup.find(img, v)      # P13k: nut ban do van lo ra duoi popup -> phai xet truoc city / world
+    if p:
+        return "popup", (unlock_popup.BTN, p)
     p = _find(v, img, "common/msg_reward", th=0.75)
     if p:
         return "reward", ("common/msg_reward", p)
