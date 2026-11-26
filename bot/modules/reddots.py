@@ -500,6 +500,11 @@ def run(ctx, final=False):  # noqa: C901 - vong quet giu nguyen cau truc cu
                 ignored.add(k)
                 log.info("Cham do %s @%d,%d: buoc rieng '%s' chay sau trong luot nay - de no lam", kind, x, y, step_later)
                 continue
+            if kind == "intel" and notify.intel_stopped(ctx):     # P13j: het quan doan ranh -> khong mo lai
+                dead.add(k)
+                ignored.add(k)
+                log.info("Cham do intel @%d,%d: het quan doan ranh trong luot ghe nay - bo qua", x, y)
+                continue
             ok, gate = allowed(kind, ctx.cfg)
             if not ok:
                 dead.add(k)

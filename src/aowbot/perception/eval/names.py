@@ -110,6 +110,7 @@ NAMES: Mapping[str, str] = MappingProxyType({
     "ally/tab_territory": "Thẻ Lãnh thổ (liên minh)", "ally/btn_contest": "Nút Tranh Đoạt Cứ Điểm",
     "ally/btn_contest_claim": "Nút Nhận lợi nhuận cứ điểm", "ally/tech_vinh_cuu": "Nhãn Liên minh vĩnh cửu",
     "intel/potion_10": "Hàng Thuốc thể lực 10 điểm", "intel/btn_buy_potion": "Nút Mua thuốc (không bấm)",
+    "intel/point_hand": "Bàn tay chỉ xuống (hướng dẫn trong thành)",
     "mission/icon": "Biểu tượng Sứ mệnh", "mission/title": "Tiêu đề Sứ mệnh", "mission/tab_daily": "Thẻ Nhiệm vụ hằng ngày",
     "mission/gift_icon": "Biểu tượng Quà kỳ diệu", "mission/free_chest": "Rương miễn phí Quà kỳ diệu",
     "mission/cart": "Biểu tượng xe đẩy (cửa hàng xúc xắc)", "mission/shop_title": "Tiêu đề Cửa hàng xúc xắc",

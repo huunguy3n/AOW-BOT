@@ -12,6 +12,9 @@ log = logging.getLogger("aow")
 
 def run(ctx):
     nc = ctx.cfg.get("notify", {})
+    if notify.intel_stopped(ctx):      # P13j: khong ve thanh pho, khong cham gi
+        log.info("Tinh bao: da het quan doan ranh trong luot ghe nay -> bo qua buoc")
+        return 0
     if not ctx.find("campaign/btn_open"):      # P9-9: icon Tinh bao co ca tren ban do the gioi -> khong bat ve thanh pho
         ctx.ensure_city()
     if not ctx.find("campaign/btn_open"):

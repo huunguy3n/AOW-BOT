@@ -16,12 +16,14 @@ class TapGuard:
         self.limit, self.cell = limit, cell
         self.fails: dict = {}
         self.black: dict = {}          # khoa -> ly do
+        self.zones: list = []          # P13j: (pham vi, x, y) cam ca vung quanh diem (ban)
 
     def key(self, scope, x, y):
         return (scope, int(x) // self.cell, int(y) // self.cell)
 
     def blocked(self, scope, x, y):
-        return self.key(scope, x, y) in self.black
+        near = any(s == scope and abs(x - zx) <= self.cell and abs(y - zy) <= self.cell for s, zx, zy in self.zones)
+        return near or self.key(scope, x, y) in self.black
 
     def record(self, scope, x, y, effect, why="khong hieu ung"):
         """Ghi ket qua 1 lan cham. -> True neu vua dua vao danh sach den."""
@@ -35,6 +37,12 @@ class TapGuard:
             log.info("Danh sach den (%s) @%d,%d: %d lan %s - bo qua toi het lan ghe", scope, x, y, self.fails[k], why)
             return True
         return False
+
+    def ban(self, scope, x, y, why):
+        """P13j: cam NGAY toa do (1 lan cham vo hieu) va vung +-cell quanh no - diem nhan lai lech vai pixel van bi chan."""
+        self.zones.append((scope, int(x), int(y)))
+        self.black[self.key(scope, x, y)] = why
+        log.info("Danh sach den (%s) @%d,%d: %s - bo qua toi het lan ghe", scope, x, y, why)
 
     def keep(self, scope, pts):
         """Loc toa do chua bi danh sach den."""

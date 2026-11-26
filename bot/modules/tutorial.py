@@ -7,7 +7,7 @@ import time, logging
 import cv2
 import numpy as np
 
-from bot import quest_rules
+from bot import guide_tile, quest_rules, tapguard
 
 log = logging.getLogger("aow")
 
@@ -533,6 +533,10 @@ def decide(v, img, idle=0, state=None):
         if p:
             x = max(12, min(528, p[0] - PAD + dx))
             return ("tap", x, p[1], "mui ten V ngang")
+    # P13j: trong thanh, ban tay TRANG chi xuong + bong bong tron o giua -> bam VAT duoi dau ngon (khong bam bong bong)
+    g = guide_tile.find(v, img, state.get("guide_blocked")) if state.get("follow") else None
+    if g and g.kind == "hand":
+        return ("tap", g.x, g.y, guide_tile.WHY + " (ban tay) -> vat trong o")
     # 2 pha nhap nhay cua ban tay (hand_green2 cat tu man mo thung tiep te, chu du an gui 2026-11-19: mau cu chi khop 0.79)
     p = _f(v, img, "tutorial/hand_green") or _f(v, img, "tutorial/hand_green2")
     if p:
@@ -609,6 +613,9 @@ def decide(v, img, idle=0, state=None):
     p = v.find(img, "common/btn_close", th=0.9)
     if p:
         return ("tap", p[0], p[1], "dong popup (X)")
+    # 5c2. P13j: o sang XANH LA + cot sang (khong co ban tay) -> bam vat trong o; truoc find_beam (cot CAM / o DO)
+    if g:
+        return ("tap", g.x, g.y, guide_tile.WHY + " (cot sang) -> vat trong o")
     # 5d. linh tren o do (kiem cheo hong phia tren) -> cot sang cam chieu xuong -> cham chan cot
     p = find_beam(img)
     if p:
@@ -749,7 +756,7 @@ def _pred_win(v, img):
     return predicted_win(v, img)
 
 
-GUIDE_WHY = ("ban tay", "mui ten V", "o do duoi", "V chi")
+GUIDE_WHY = ("ban tay", "mui ten V", "o do duoi", "V chi", guide_tile.WHY)
 
 
 # P9-4 (live-run-2 11:03:07): man Su menh (o "+" xanh / ban xuc xac) bi doc nham la "ban tay xanh (cot sang)" -> follow
@@ -768,17 +775,19 @@ def no_follow_screen(v, img):
     return None
 
 
-def guide_visible(v, img):
+def guide_visible(v, img, blocked=None):
     """Man dang co huong dan cua game (ban tay xanh, mui ten V, o do duoi muc tieu) -> ly do, hoac None.
     Chu du an 2026-11-21: huong dan hien ra GIUA cac buoc khac (quet cham do, quan sat) va phai cham tay
     (logs/human/20261121 anh 9-12) -> runner kiem tra sau moi buoc va lam theo."""
     if no_follow_screen(v, img):
         return None
     try:
-        act, _, _, why = decide(v, img, state={"follow": True})
+        act, x, y, why = decide(v, img, state={"follow": True, "guide_blocked": blocked})
     except Exception:
         return None
-    return why if act == "tap" and any(k in why for k in GUIDE_WHY) else None
+    if act != "tap" or not any(k in why for k in GUIDE_WHY) or (blocked and blocked(x, y)):
+        return None             # P13j: luat cu cung khong duoc cham lai cho da danh sach den
+    return why
 
 
 def follow(ctx, max_steps=40, no_battle=False):
@@ -842,6 +851,8 @@ def run(ctx, max_steps=600, idle_limit=10, max_retry=5, follow=False, no_battle=
     tag = "follow" if follow else "tutorial"
     idle = quest_taps = retries = 0
     state = {"follow": follow, "no_battle": no_battle}
+    if follow:      # P13j: toa do huong dan cham khong an (ca o buoc Tinh bao) -> khong cham lai trong luot ghe
+        state["guide_blocked"] = guide_tile.blocked_by(ctx)
     trace = ctx.cfg.get("tutorial", {}).get("trace_dir")   # luu anh + quyet dinh tung buoc de xem lai
     for step in range(max_steps):
         img = ctx.shot()
@@ -919,6 +930,22 @@ def run(ctx, max_steps=600, idle_limit=10, max_retry=5, follow=False, no_battle=
                 else:
                     ctx.safe_back()   # o thanh pho khong bam Back (chi hien "Roi tro choi?")
             idle = 2
+            continue
+        if act == "tap" and follow and any(k in why for k in GUIDE_WHY) and state["guide_blocked"](x, y):
+            log.info("Follow: (%d,%d) trong danh sach den huong dan -> khong cham lai", x, y)
+            idle += 1
+            if idle > idle_limit:
+                return "stuck"
+            time.sleep(1.5)
+            continue
+        if act == "tap" and why.startswith(guide_tile.WHY):
+            state["backs"] = 0
+            hit, history = guide_tile.Guide(x, y, "follow"), state.setdefault("guide_taps", [])
+            if guide_tile.repeated(history, hit):
+                tapguard.of(ctx).ban("guide", x, y, "cham 2 lan huong dan van hien lai")
+                continue
+            history.append((x, y))
+            idle = idle + 1 if guide_tile.tap_and_check(ctx, hit) == "nochange" else 0
             continue
         if act == "tap":
             if not why.startswith(("man la", "dung yen")):

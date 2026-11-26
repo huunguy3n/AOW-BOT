@@ -72,6 +72,10 @@ PICKUP_BUSY = "pickup_busy"     # da co PICKUP_MAX hop dang nhat -> cho het gio 
 PICKUP_MAX = 2                  # hop qua tinh bao (moi mau) toi da 2 hop dang nhat cung luc
 PICKUP_S = 90                   # thoi gian nhat 1 hop (uoc luong; cau hinh notify.intel_pickup_s)
 SKIP = SKIP + (PICKUP_BUSY, NOT_DEPARTED)
+# P13j: da cham theo huong dan xanh trong thanh, huong dan het ma khong co bang nao -> sang ghim ke (tick xanh nhan sau)
+GUIDED = "guided"
+SKIP = SKIP + (GUIDED,)
+NO_MARCH = "no_march"           # P13j: het quan doan ranh -> DUNG buoc Tinh bao toi het luot ghe may
 
 
 def departed(before, after, screen_gone):

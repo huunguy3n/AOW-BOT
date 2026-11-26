@@ -7,7 +7,7 @@ import collections, contextlib, json, logging, threading, time, traceback
 
 from bot.device import LDConsole, Device
 from bot.ctx import Ctx, Stuck
-from bot import build, ocr
+from bot import build, guide_tile, ocr
 from bot.memory import Memory
 from bot import hang, hqlevel, perf, quest_rules, queues, scheduler, stepgate, tapguard
 from aowbot.domain import builders as builders_dom, drain, rollout
@@ -678,7 +678,7 @@ class Runner:
         try:
             recent = getattr(ctx, "recent_frame", None)
             img = recent(0.6) if recent else None
-            why = tutorial.guide_visible(ctx.v, img if img is not None else ctx.shot())
+            why = tutorial.guide_visible(ctx.v, img if img is not None else ctx.shot(), guide_tile.blocked_by(ctx))
             if not why:
                 return
             from bot.modules import quests as _q
@@ -1034,7 +1034,8 @@ class Runner:
                     self.mem.log_nav(visit, idx, name, ctx.nav)
                 # P13f-3: buoc khong cham / vuot gi -> man khong the hien huong dan moi: bo kiem (~1,5 s/lan)
                 touched = seq0 is None or getattr(ctx.dev, "act_seq", None) != seq0
-                if touched and name not in ("tutorial", "mainquest", "quests", "observe") and cfg.get("guide_follow", True):
+                if (touched and name not in ("tutorial", "mainquest", "quests", "observe") and cfg.get("guide_follow", True)
+                        and not (name == "intel" and notify.intel_stopped(ctx))):   # P13j: buoc Tinh bao da dung
                     with span("follow_guide"):
                         self._follow_guide(ctx)
                 try:
