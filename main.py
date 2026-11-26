@@ -83,6 +83,23 @@ def build_parser():
     return ap
 
 
+def check_import_paths(base=BASE, environ=None, module_file=None):
+    """P13g-1: ghi ro ma dang chay tu dau. aowbot lay tu thu muc khac -> bao loi (False); PYTHONPATH dang dat ->
+    canh bao (lan chay 09:17 26/11 thua huong PYTHONPATH cua worktree cu)."""
+    if module_file is None:
+        import aowbot
+        module_file = aowbot.__file__
+    where = os.path.normcase(os.path.abspath(module_file))
+    ok = where.startswith(os.path.normcase(os.path.join(base, "src")) + os.sep)
+    log.info("Ma dang chay: %s | aowbot: %s", base, os.path.dirname(os.path.abspath(module_file)))
+    pp = (os.environ if environ is None else environ).get("PYTHONPATH")
+    if pp:
+        log.warning("PYTHONPATH dang dat (%s) - nen de trong; run.bat tu xoa bien nay", pp)
+    if not ok:
+        log.error("aowbot KHONG lay tu %s - ma bi lech giua cac thu muc", os.path.join(base, "src"))
+    return ok
+
+
 def launch_web(runner, store, ring, port, auto_all=False, serve_fn=None):
     """Mo web; auto_all -> runner.start() TRUOC serve() (serve chan luong) de vong auto chay ngay.
     Van tuan thu max_running/HARD_MAX_RUNNING (runner lo). Nut Bat dau/Dung tren web van dung binh thuong."""
@@ -97,6 +114,7 @@ def launch_web(runner, store, ring, port, auto_all=False, serve_fn=None):
 def main():
     a = build_parser().parse_args()
     setup_log()          # truoc khi doc YAML: loi cu phap config cung duoc ghi vao log
+    check_import_paths()
     try:
         with open(a.config, encoding="utf-8") as f:
             cfg = yaml.safe_load(f)

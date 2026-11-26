@@ -5,6 +5,8 @@ Dung cho tran danh can lai (nhat buff, ne nerf, ne tan cong) - can nhieu khung h
 import subprocess, threading, time
 import numpy as np
 
+from bot.device import normalize_frame
+
 
 class FrameStream:
     def __init__(self, adb, serial, w=540, h=960):
@@ -55,7 +57,7 @@ class FrameStream:
                 w, h = np.frombuffer(hdr[:8], np.uint32)
                 data = self._read(int(w) * int(h) * 4, proc)
                 rgba = np.frombuffer(data, np.uint8).reshape(int(h), int(w), 4)
-                self.frame = rgba[..., [2, 1, 0]].copy()  # -> BGR cho OpenCV
+                self.frame = normalize_frame(rgba[..., [2, 1, 0]].copy())[0]  # BGR cho OpenCV, he 540x960
                 self.t = time.time()
                 self.count += 1
         except Exception:

@@ -1,5 +1,5 @@
-"""P7-1 (chu du an 2026-11-24, live #1): gather CUOI luot moi ngay; thu 2 gui het quan doan; mo cap 1 'toobig'."""
-import time
+"""P7-1 (chu du an 2026-11-24, live #1): gather CUOI luot moi ngay; thu 2 gui het quan doan; mo cap 1 'toobig'.
+P13g: tri nho gather_top (bat dau thap hon cap 8) da bo - xem tests/legacy/test_p13g_gather_same_mine.py."""
 from types import SimpleNamespace
 
 from aowbot.domain import drain
@@ -34,17 +34,6 @@ def test_drain_prioritize_then_gather_last_still_last():
     assert W.gather_last([*pr, "observe"])[-2:] == ["gather", "observe"]
 
 
-def test_fit_and_start_level_lift_poisoned_top():
-    # live #1: gather_top:metal = 1 (ghi tu quan doan 8795) nhung quan doan lon (154397) cho het cap 2 (80000)
-    assert GR.fit_level(CAPS, "metal", 154397, 1, 8) == 2
-    assert GR.start_level(1, GR.fit_level(CAPS, "metal", 154397, 1, 8), 8) == 2
-    assert GR.start_level(1, GR.fit_level(CAPS, "metal", 517590, 1, 8), 8) == 4
-    assert GR.start_level(None, None, 8) == 8                 # chua biet gi -> do tu cap 8
-    assert GR.start_level(6, 3, 8) == 6                       # tri nho cao hon -> giu
-    assert GR.fit_level(CAPS, "metal", 8795, 1, 8) is None    # quan doan qua nho cho moi cap
-    assert GR.fit_level(CAPS, "alloy", 15000, 1, 8) == 3      # cap 1-2 alloy khong co trong bang -> bo
-
-
 def test_too_big_levels_skips_remaining_levels_by_table():
     assert GR.too_big_levels(CAPS, "metal", 100000, 5, 1) == [4, 3]
     assert GR.too_big_levels(CAPS, "metal", 8795, 2, 1) == [1]
@@ -60,16 +49,6 @@ class Mem:
 
     def set_fact(self, idx, key, value):
         self.f[(idx, key)] = value
-
-
-def test_too_big_at_min_level_does_not_write_gather_top():
-    c = SimpleNamespace(mem=Mem(), dev=SimpleNamespace(idx=1))
-    gather.note_load(c, 8795)                           # cua so het han -> max = quan doan nho
-    gather.remember_too_big(c, "metal", 1, 8795, 1)
-    assert c.mem.fact(1, "gather_top:metal") is None    # truoc P7-1: ghi 1 -> chi thu cap 1 mai mai
-    c.mem.f[(1, "march_load_max")] = [517590, time.time()]
-    gather.remember_too_big(c, "metal", 8, 517590, 1)
-    assert c.mem.fact(1, "gather_top:metal") == 7
 
 
 def test_monday_gather_sends_all_no_rebel_reserve(monkeypatch):

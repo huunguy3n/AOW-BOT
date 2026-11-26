@@ -95,6 +95,24 @@ def clamp_xy(x, y, who=""):
     return cx, cy
 
 
+def frame_scale(w, h):
+    """P13g-2: khung DOC dung ti le 540:960 -> he so toa do may / 540 (1.0 = dung chuan); ti le khac (man ngang
+    luc mo may...) -> None. Ham thuan."""
+    if h <= w or abs(w * SCREEN_H - h * SCREEN_W) > h * 2:
+        return None
+    return w / SCREEN_W
+
+
+def normalize_frame(img):
+    """-> (khung 540x960, he so) | (khung goc, None). May bi doi do phan giai (#0 26/11/2026: 720x1280) -> thu nho
+    ve he toa do chuan (ADR-0003) de anh mau / ROI / toa do cu van dung."""
+    h, w = img.shape[:2]
+    s = frame_scale(w, h)
+    if s is None or (w, h) == (SCREEN_W, SCREEN_H):
+        return img, s
+    return cv2.resize(img, (SCREEN_W, SCREEN_H), interpolation=cv2.INTER_AREA), s
+
+
 class Device:
     """Mot instance LDPlayer qua ADB. Instance N -> emulator-(5554+2N)."""
 
@@ -104,6 +122,30 @@ class Device:
         self.serial = serial or f"emulator-{5554 + 2 * idx}"
 
     perf = None   # bot.perf.Perf cua lan ghe (runner gan) - A-MEAS-1
+    scale = 1.0       # P13g-2: toa do may = toa do 540x960 x scale (theo khung doc gan nhat)
+    odd_size = None   # (w, h) cua khung khong dung ti le da canh bao
+
+    def _normalize(self, img):
+        out, s = normalize_frame(img)
+        size = (img.shape[1], img.shape[0])
+        if s is None:
+            if size != self.odd_size:
+                self.odd_size = size
+                log.warning("[#%s] Khung chup %dx%d khong dung ti le man doc 540x960 - de nguyen", self.idx, *size)
+            return img
+        if s != self.scale:
+            if s != 1.0:
+                log.warning("[#%s] Man hinh may la %dx%d, khac 540x960 -> thu nho anh va nhan toa do cham x%.3f. "
+                            "Nen dat lai do phan giai may #%s trong LDPlayer: 540x960, DPI 240", self.idx, *size, s,
+                            self.idx)
+            else:
+                log.info("[#%s] Man hinh ve lai 540x960", self.idx)
+            self.scale = s
+        return out
+
+    def _dev_xy(self, x, y):
+        """Toa do 540x960 -> toa do may."""
+        return int(round(x * self.scale)), int(round(y * self.scale))
 
     @staticmethod
     def _kind(args):
@@ -226,7 +268,7 @@ class Device:
             except cv2.error:
                 img = None
             if img is not None:
-                return img
+                return self._normalize(img)
             timeouts = timeouts + 1 if timed_out else 0
             if timeouts >= self.shot_max_timeouts:
                 raise ScreencapError(f"Khong chup duoc man hinh ({timeouts} lan timeout {self.shot_timeout:.0f} s)")
@@ -274,14 +316,14 @@ class Device:
         x, y = clamp_xy(x, y, "tap")
         self.act_seq = getattr(self, "act_seq", 0) + 1     # G3: ctx.ensure_city biet co thao tac nao tu lan kiem truoc
         self._mine(x, y, time.time())
-        self._cmd("shell", "input", "tap", int(x), int(y))
+        self._cmd("shell", "input", "tap", *self._dev_xy(x, y))
 
     def swipe(self, x1, y1, x2, y2, ms=300):
         x1, y1 = clamp_xy(x1, y1, "swipe")
         x2, y2 = clamp_xy(x2, y2, "swipe")
         self.act_seq = getattr(self, "act_seq", 0) + 1
         self._mine(x1, y1, time.time())
-        self._cmd("shell", "input", "swipe", int(x1), int(y1), int(x2), int(y2), int(ms))
+        self._cmd("shell", "input", "swipe", *self._dev_xy(x1, y1), *self._dev_xy(x2, y2), int(ms))
 
     def type_digits(self, s, clear=4, enter=False):
         """P7-10/P10-3: go SO vao o nhap dang co tieu diem (o "Cap" tim kiem). Chi chu so (khong bao gio go chu tu do).

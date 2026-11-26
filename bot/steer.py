@@ -430,7 +430,7 @@ def result_of(vision, img):
     return "win" if d and d[2] >= 0.82 and (not dl or d[2] > dl[2]) else "lose"
 
 
-def run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None, enter_wait=10):
+def run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None, enter_wait=10, scale=1.0):
     global _battle_owner
     with _battle_cv:
         while _battle_owner not in (None, threading.get_ident()):
@@ -440,7 +440,7 @@ def run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None,
         if debug_dir:
             os.makedirs(debug_dir, exist_ok=True)
         active_serials.add(serial)
-        return _run_battle(adb, serial, vision, timeout, debug_dir, is_battle, enter_wait)
+        return _run_battle(adb, serial, vision, timeout, debug_dir, is_battle, enter_wait, scale)
     finally:
         active_serials.discard(serial)
         with _battle_cv:
@@ -448,12 +448,12 @@ def run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None,
             _battle_cv.notify_all()
 
 
-def _run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None, enter_wait=10):
+def _run_battle(adb, serial, vision, timeout=150, debug_dir=None, is_battle=None, enter_wait=10, scale=1.0):
     """Da bam 'Chien dau'. Lai den khi hien man ket qua. -> 'win' | 'lose' | 'error'
     is_battle(vision, img) -> bool: bo nhan dien tran rieng (vd tran tan thu khong co battle_hud)."""
     in_battle_fn = is_battle or in_battle
     s = FrameStream(adb, serial)
-    fg = Finger(adb, serial)
+    fg = Finger(adb, serial, scale=scale)
     x = 270
     miss = 0
     gates = GateTrack()

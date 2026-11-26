@@ -65,7 +65,7 @@ NAMES: Mapping[str, str] = MappingProxyType({
     "common/btn_to_city": "Nút về Thành phố", "common/btn_to_world": "Nút ra Bản đồ thế giới", "common/btn_x": "Nút X đóng",
     "common/btn_x_offer": "Nút X (ưu đãi)", "common/btn_x_red": "Nút X đỏ", "common/btn_x_small": "Nút X nhỏ",
     "common/msg_reward": "Bảng Nhận được phần thưởng", "common/tap_to_close": "Chữ Chạm để đóng",
-    "common/tap_to_continue": "Chữ Chạm để tiếp tục",
+    "common/tap_to_continue": "Chữ Chạm để tiếp tục", "common/splash_logo": "Màn nạp game (logo OEG)",
     # --- Nhiệm vụ hằng ngày
     "daily/btn_chest_claim": "Nút Nhận rương", "daily/chest_1": "Rương điểm năng động (đủ điểm)",
     "daily/claim_1": "Nút Nhận nhiệm vụ", "daily/open_1": "Biểu tượng Nhiệm vụ", "daily/tab_2_main": "Thẻ Chính/Chương",

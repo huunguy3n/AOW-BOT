@@ -127,7 +127,8 @@ class HumanWatch:
                 threading.Thread(target=self._finish_touch, args=(ev, d), daemon=True).start()
                 down = None
             elif code == "SYN_REPORT" and down is not None and rx is not None and ry is not None:
-                pt = (round(rx * SX), round(ry * SY))
+                s = getattr(self.dev, "scale", 1.0)     # P13g-2: may chay do phan giai khac 540x960
+                pt = (round(rx * SX / s), round(ry * SY / s))
                 if not down["pts"] or down["pts"][-1] != pt:
                     down["pts"].append(pt)
 

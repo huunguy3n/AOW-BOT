@@ -1,13 +1,16 @@
 """Gui quan di mo cho den khi MOI doi hanh quan deu da di (Hanh quan x/y voi x == y).
 
-Thu tu: alloy > metal > food (config). Moi loai tim tu cap CAO NHAT (8) ha dan xuong, cap nao thoa
-(tai trong doi >= tru luong mo) thi xuat chinh. Cap (loai, cap) tim that bai bi bo qua trong luot nay.
+Thu tu loai theo gather.priority (config / web). Moi loai tim tu cap CAO NHAT (gather.max_level = 8) ha dan
+8 -> 7 -> 6 ... (chu du an t92u 26/11/2026), cap nao thoa (tai trong doi >= tru luong mo) thi xuat chinh. Cap
+(loai, cap) tim that bai bi bo qua trong luot nay; mo biet chac qua tai moi quan doan thi bo qua khong mo ban do.
 
-Tri nho (chu du an 2026-11-21): cap cao nhat con thoa cua tung loai (gather_top:<loai>) va loai bi khoa theo cap
-nha chinh (gather_locked:<loai>) duoc NHO lai, lan sau bat dau thang tu do. Chi do lai tu cap 8 khi doi "chu ky"
-(gather_sig) = [cap nha chinh, so lan tuong tang cap] thay doi (nha chinh len cap / tuong trong quan doan len cap).
+P13g-3: KHONG gui 2 quan doan toi cung 1 mo - doc toa do mo sau khi Tim kiem, trung o vua gui -> bo, ha cap; trung
+`same_mine_type_limit` lan -> chuyen loai uu tien ke tiep.
+
+Tri nho: loai bi khoa theo cap nha chinh (gather_locked:<loai>), xoa khi "chu ky" (gather_sig) = [cap nha chinh, so
+lan tuong tang cap] thay doi.
 """
-import re, time, logging
+import collections, re, time, logging
 import cv2
 from bot import gather_rules, ocr, screens, tplneed
 
@@ -21,6 +24,11 @@ TOO_BIG = "toobig"  # mo con nhieu hon tai trong doi quan (doi khong cho het) ->
 OWN = "own"              # doi cua minh dang di toi chinh mo nay (cung loai/cap, cung thoi gian di) -> khong Xuat chinh
 CONTESTED = "contested"  # hop thoai "Co Chi huy truong khac dang hanh quan den..." -> Huy (khong gay chien), doi mo khac
 OCCUPIED = "occupied"    # mo da co nguoi (anh mau gather/mine_occupied) -> doi mo khac, khong bam nut tren mo
+BADLEVEL = "badlevel"    # P13g: o "Cap" khong ra cap can tim -> khong bam Tim (se ra lai mo cap khac)
+GATHER_TYPES = ("alloy", "metal", "food", "oil")
+# P13g: vung doc toa do mo: thanh duoi ban do, duoi menu o (co / khong co dong tru luong), thanh duoi tren nen roi
+XY_ROIS = (((206, 692, 160, 22), {}), ((226, 536, 112, 19), {"pad": 8}), ((226, 524, 112, 19), {"pad": 8}),
+           ((232, 693, 130, 20), {"bright": 180, "pad": 8}))
 MSG_BAND = (0, 270, 540, 110)        # thong bao noi giua man (bot/game_msg.py)
 DLG_BAND = (40, 400, 460, 110)       # than hop thoai xac nhan Xuat chinh (y 425-490)
 
@@ -109,6 +117,15 @@ def plus_minus_plan(cur, level):
     return ("+" if cur < level else "-", abs(level - cur))
 
 
+def step_of(ctx):
+    """Buoc nhay cua o "Cap" o TAB dang mo. Chi Co giap (phan quan) co buoc 5; tab MO TAI NGUYEN luon buoc 1.
+    P13g-3 (log #1 26/11 07:28 -> 07:29, 09:40 -> 09:42): buoc 5 hoc o buoc phan quan dinh vao ctx -> thu thap trong
+    cung luot ghe doi cap 3 / 2 / 1 thanh 5 -> "Tim" ra dung 1 mo cap 5, gui doi 80692 vao mo 560000."""
+    if getattr(ctx, "search_tab", None) in GATHER_TYPES:
+        return 1
+    return getattr(ctx, "level_step", 1) or 1
+
+
 def snap_level(level, step):
     """Ham thuan P12-4: o 'Cap' chi nhan boi so cua step (live4 #1 s184116/s184141: Co giap 5 -> 10 -> 5 moi lan bam
     +/-, cap 7/8/9 khong ton tai) -> cap hop le gan nhat <= level (toi thieu step)."""
@@ -126,7 +143,7 @@ def set_level(ctx, level, misses=2):
     if not (minus and plus):
         log.debug("Khong thay nut +/- cap, dung cap mac dinh cua game")
         return True
-    miss, target = 0, snap_level(level, getattr(ctx, "level_step", 1))
+    miss, target = 0, snap_level(level, step_of(ctx))
     for _ in range(40):
         cur = read_level(ctx)
         if cur is None:
@@ -135,7 +152,7 @@ def set_level(ctx, level, misses=2):
         plan = plus_minus_plan(cur, target)
         if plan is None:
             if target != level:
-                log.info("O Cap: buoc %s -> dung cap %d thay cho %d", getattr(ctx, "level_step", 1), target, level)
+                log.info("O Cap: buoc %s -> dung cap %d thay cho %d", step_of(ctx), target, level)
             return True
         btn = plus if plan[0] == "+" else minus
         ctx.dev.tap(btn[0], btn[1])
@@ -147,7 +164,8 @@ def set_level(ctx, level, misses=2):
                 return False
             continue
         miss = 0
-        if new is not None and abs(new - cur) > 1 and new % abs(new - cur) == 0:
+        if (new is not None and abs(new - cur) > 1 and new % abs(new - cur) == 0
+                and getattr(ctx, "search_tab", None) not in GATHER_TYPES):   # tab mo: nhay > 1 = doc nham, khong hoc
             ctx.level_step = abs(new - cur)
             t2 = snap_level(level, ctx.level_step)
             if t2 != target:
@@ -165,7 +183,7 @@ def type_level(ctx, level):
     plus = ctx.find("gather/btn_level_plus", fresh=False)
     if not (minus and plus) or not hasattr(ctx.dev, "type_digits"):
         return set_level(ctx, level)
-    level = snap_level(level, getattr(ctx, "level_step", 1))   # P12-4: buoc 5 (Co giap) da biet -> go boi so
+    level = snap_level(level, step_of(ctx))                    # P12-4: buoc 5 (Co giap) da biet -> go boi so
     ctx.tap(minus[0] + LEVEL_TAP_DX[0], minus[1] + LEVEL_TAP_DX[1], wait=0.8)   # o "Cap" (KHONG phai thanh truot)
     ctx.dev.type_digits(int(level))
     time.sleep(0.5)
@@ -199,6 +217,7 @@ def select_tab(ctx, rtype, name=None):
     if not p:
         return False
     ctx.tap(p[0], p[1] - 30, wait=1.0)  # cham vao hinh mo phia tren chu
+    ctx.search_tab = rtype              # P13g: step_of biet dang o tab nao
     return True
 
 
@@ -252,7 +271,34 @@ def cap_bounds(ctx, rtype, level):
     return (lo, hi)
 
 
-def read_amount(ctx, g, tries=3, known_cap=None, bounds=None):
+def read_mine_xy(img):
+    """Toa do o dang o giua ban do / dang mo menu -> (x, y) | None."""
+    for roi, kw in XY_ROIS:
+        xy = gather_rules.parse_xy(ocr.text(img, roi, **kw))
+        if xy:
+            return xy
+    return None
+
+
+TILES_KEY = "own_tiles"       # fact: [[x, y, luc gui], ...] - giu rieng vi 'dispatches' chi giu 10 lan gan nhat
+
+
+def _block_min(ctx):
+    return ctx.cfg["gather"].get("own_tile_block_min", gather_rules.OWN_TILE_BLOCK_MIN)
+
+
+def _tiles(ctx):
+    m = _mem(ctx)
+    return list((m.fact(ctx.dev.idx, TILES_KEY) if m else None) or [])
+
+
+def own_tile(ctx, xy, now):
+    """O (x, y) nay vua co quan doan cua minh gui toi -> dict lan gui | None."""
+    sent = _dispatches(ctx) + [{"xy": e[:2], "t": e[2]} for e in _tiles(ctx)]
+    return gather_rules.same_mine(sent, xy, now, _block_min(ctx))
+
+
+def read_amount(ctx, g, tries=3, known_cap=None, bounds=None, seen=None):
     """Tru luong mo duoi icon mo. Lan chay that 2026-11-19 doc ra None (anh chup luc bang mo chua hien xong)
     -> chup lai toi da 'tries' lan. (ROI rong hon da thu: doc sai -> chi dung ROI cau hinh.)"""
     rois = [tuple(g.get("node_amount_roi", [230, 521, 120, 17]))]
@@ -260,6 +306,8 @@ def read_amount(ctx, g, tries=3, known_cap=None, bounds=None):
     for i in range(tries):
         for roi in rois:
             v = ocr.label_number(img, roi)
+            if v and seen is not None:
+                seen.append(v)
             if plausible(v, g, known_cap, bounds):
                 return v
             if v:
@@ -287,6 +335,12 @@ def try_dispatch(ctx, rtype, level, max_level):
         log.debug("%s khong co cap %d", rtype, level)
         ctx.back_out()
         return NOT_FOUND
+    shown = read_level(ctx)        # P13g: doc lai o "Cap" truoc khi Tim - sai cap = ra lai mo cap khac
+    if shown is not None and shown != level:
+        log.warning("gather: o 'Cap' dang la %d, can %d (%s) - khong tim", shown, level, rtype)
+        ctx.back_out()
+        return BADLEVEL
+    level_ok = shown == level      # khong doc duoc -> khong tin bang dung tich theo cap, phai doc duoc tru luong
     if ctx.cfg["gather"].get("only_full", True):  # o "Chi tim kiem tai nguyen o diem tai nguyen day"
         ctx.tap_tpl("gather/chk_full_off", wait=0.6)
     ctx.tap_tpl("gather/btn_search_go", wait=3.0)
@@ -302,7 +356,14 @@ def try_dispatch(ctx, rtype, level, max_level):
     for dx, dy in ((0, 0), (0, 12), (0, -12)):
         before = ctx.shot()
         ctx.tap(cx + dx, cy + dy, wait=1.2)
-        if ctx.find("gather/btn_gather"):
+        found = ctx.find("gather/btn_gather")
+        xy = read_mine_xy(ctx._img)
+        if own_tile(ctx, xy, time.time()):
+            # P13g: "Tim" ra lai dung o da gui quan (dang hanh quan / dang thu thap) -> khong bam gi tren mo
+            log.info("  mo %s cap %d tai X:%d Y:%d da co quan doan cua minh - khong gui nua", rtype, level, *xy)
+            close_map_menu(ctx, before)
+            return OWN
+        if found:
             break
         # mo da co nguoi (doi nguoi khac dang thu thap): KHONG bam nut nao tren bang mo (Tan cong / Trinh sat...)
         if tplneed.has(ctx.v, "gather/mine_occupied", "bang mo dang bi chiem") and                 ctx.find("gather/mine_occupied", fresh=False):
@@ -318,10 +379,17 @@ def try_dispatch(ctx, rtype, level, max_level):
     only_full = g.get("only_full", True)
     known = _mem(ctx).fact(ctx.dev.idx, f"mine_cap:{rtype}:{level}") if _mem(ctx) else None
     cap = gather_rules.table_cap(g.get("mine_caps"), rtype, level) or (int(known) if known else None)
+    if not level_ok:
+        cap = None                 # P13g: khong chac cap -> khong dung dung tich theo cap
     # P3: biet dung tich mo day -> chi doc 1 lan (OCR hong thi dung dung tich), khong biet -> doc lai toi 3 lan nhu cu
+    seen = []
     read = read_amount(ctx, g, tries=1 if (cap and only_full) else 3, known_cap=cap,
-                       bounds=cap_bounds(ctx, rtype, level))
+                       bounds=cap_bounds(ctx, rtype, level), seen=seen)
     amount, src = gather_rules.choose_amount(read, cap, only_full)
+    big = gather_rules.bigger_mine(seen, g.get("mine_caps"), rtype, level)
+    if big:
+        log.warning("  doc %d duoi mo = dung tich cap cao hon cap %d -> tinh theo %d", big, level, big)
+        amount, src = big, "ocr-lon"
     ctx.tap_tpl("gather/btn_gather", wait=1.5, fresh=False)
     if ctx.find("gather/msg_type_locked"):
         log.info("Chua du cap de thu thap %s - bo qua loai nay", rtype)
@@ -355,7 +423,7 @@ def try_dispatch(ctx, rtype, level, max_level):
     if m:  # nho: dung tich mo day theo (loai, cap) + tai trong doi -> lan sau bo qua cap qua suc cho ma khong mo ban do
         if load:
             m.set_fact(ctx.dev.idx, "march_load", load)
-        if amount and only_full:
+        if amount and only_full and level_ok and not big:
             m.set_fact(ctx.dev.idx, f"mine_cap:{rtype}:{level}", max(amount, int(known or 0)))
     # Chu du an 2026-11-19: LUON dam bao tai trong doi >= tru luong mo (doi cho het mo).
     # Khong doc duoc 1 trong 2 so -> khong gui (khong dam bao duoc). Phong thu so tan tat kiem tra nay.
@@ -370,13 +438,14 @@ def try_dispatch(ctx, rtype, level, max_level):
             ctx.back_out()
             return TOO_BIG
     now = time.time()
-    if travel and gather_rules.own_target(_dispatches(ctx), rtype, level, now, travel=travel):
+    if travel and gather_rules.own_target(_dispatches(ctx), rtype, level, now, travel=travel, xy=xy):
         # P3: cung loai/cap + cung thoi gian di voi doi minh vua gui ma chua toi = CUNG MO -> bam Xuat chinh se hien hop
         # thoai "Chi huy truong khac..." (truoc P3 bot Huy o do = Huy oan, 7 lan 21-22/11) -> khong bam, doi cap khac
         log.info("  mo %s cap %d: doi minh dang toi dung mo nay (di %ss) - khong xuat chinh", rtype, level, travel)
         ctx.back_out()
         return OWN
-    disp = {"type": rtype, "level": level, "amount": amount, "load": load, "travel": travel, "t": now}
+    disp = {"type": rtype, "level": level, "amount": amount, "load": load, "travel": travel, "t": now,
+            "xy": list(xy) if xy else None}
     ctx.tap_tpl("gather/btn_march", wait=2.0)
     img = ctx.shot()
     contested = ctx.v.has("gather/dlg_contested") and ctx.v.find(img, "gather/dlg_contested")
@@ -407,6 +476,7 @@ def try_dispatch(ctx, rtype, level, max_level):
         return FULL if kind == "march_full" else NO_TROOPS
     ctx.last_dispatch = disp          # chi ghi khi THAT SU da gui (khong con bang / hop thoai)
     record_dispatch(ctx, disp)
+    remember_tile(ctx, disp)
     return OK
 
 
@@ -418,6 +488,14 @@ def _dispatches(ctx):
     if last and last not in out:
         out.append(last)
     return out
+
+
+def remember_tile(ctx, d):
+    m = _mem(ctx)
+    if not m or not d or not d.get("xy"):
+        return
+    keep = [e for e in _tiles(ctx) if d["t"] - e[2] <= _block_min(ctx) * 60]
+    m.set_fact(ctx.dev.idx, TILES_KEY, [*keep, [*d["xy"], round(d["t"])]])
 
 
 def record_dispatch(ctx, d):
@@ -450,9 +528,6 @@ def hq_level(ctx):
     return hq
 
 
-GATHER_TYPES = ("alloy", "metal", "food", "oil")
-
-
 def rebels_reserve(ctx):
     """So quan doan DE DANH cho buoc phan quan (0|1): phan quan can 1 quan doan ranh nhung thu thap lap day ca 5/5 truoc nen buoc
     rebels luon 'het quan doan ranh' (#1 2026-11-22: 4 lan ghe lien tiep). Chi de khi phan quan con den han (nha chinh >=
@@ -474,25 +549,18 @@ def rebels_reserve(ctx):
 
 
 def sync_memory(ctx):
-    """Chu ky tri nho: doi (cap nha chinh, so lan tuong tang cap) -> xoa cap/loai khoa da nho de do lai tu cap cao nhat."""
+    """Chu ky tri nho: doi (cap nha chinh, so lan tuong tang cap) -> xoa loai mo bi khoa da nho de thu lai."""
     m = _mem(ctx)
     if not m:
         return
     idx = ctx.dev.idx
-    if not m.fact(idx, "gather_fix_v2"):
-        # 1 lan: gather_top bi ghi tu tai trong cua quan doan nho (xem note_load) -> do lai tu cap cao nhat
-        for t in GATHER_TYPES:
-            m.set_fact(idx, f"gather_top:{t}", None)
-        m.set_fact(idx, "gather_fix_v2", True)
-        log.info("gather: xoa gather_top cu (ghi tu quan doan nho) - do lai mo tu cap cao nhat")
     sig = [hq_level(ctx), m.fact(idx, "hero_ups", 0)]
     old = m.fact(idx, "gather_sig")
     if old == sig:
         return
-    log.info("gather: nha chinh / tuong doi %s -> %s - do lai mo tu cap cao nhat", old, sig)
+    log.info("gather: nha chinh / tuong doi %s -> %s - thu lai loai mo bi khoa", old, sig)
     m.set_fact(idx, "gather_sig", sig)
     for t in GATHER_TYPES:
-        m.set_fact(idx, f"gather_top:{t}", None)
         m.set_fact(idx, f"gather_locked:{t}", None)
 
 
@@ -529,7 +597,7 @@ LOAD_WINDOW_S = 3 * 86400     # tai trong lon nhat cua cac quan doan duoc nho to
 def note_load(ctx, load):
     """Nho tai trong LON NHAT trong cac quan doan da thay. Moi doi gui di dung 1 quan doan (Odin/Thor/Loki/Hawk/Hulk) co tai
     trong rieng: #1 2026-11-22 doc 44767 / 72383 / 75495 / 289534 / 517590 trong cung 1 gio. Cai da dung 'tai trong lan truoc'
-    lam bo qua cap cao khi quan doan nho vua di, roi nho cap thap (gather_top=1) -> chi thu mo cap 1-2."""
+    lam bo qua cap cao khi quan doan nho vua di."""
     m = _mem(ctx)
     if not m or not load:
         return
@@ -561,18 +629,6 @@ def too_big_known(ctx, rtype, lv, min_lv):
     return bool(cap and load and load < cap)
 
 
-def remember_too_big(ctx, rtype, lv, load, min_lv):
-    """Mo cap `lv` lon hon tai trong quan doan DANG CHON. Chi ghi nho cho ca loai (gather_top) khi quan doan do da la quan
-    doan LON NHAT biet; quan doan nho hon chi bo qua cap nay trong lan nay."""
-    m = _mem(ctx)
-    if lv <= min_lv:
-        # P7-1 (live #1 2026-11-24): cap thap nhat qua tai = quan doan dang ranh qua nho, KHONG phai thong tin ve loai mo
-        # -> khong ghi gather_top (truoc day ghi 1 -> lan sau chi thu cap 1 du quan doan lon cho het cap cao hon)
-        return
-    if m and load and load >= (max_load(ctx) or 0):
-        m.set_fact(ctx.dev.idx, f"gather_top:{rtype}", max(min_lv, lv - 1))
-
-
 def run(ctx, limit=None):
     """limit: gui toi da N doi roi dung (agent gui tung doi, xac minh tung lan - B4); None = toi khi day."""
     g = ctx.cfg["gather"]
@@ -594,6 +650,7 @@ def run(ctx, limit=None):
     mem, idx = _mem(ctx), ctx.dev.idx
     reserve = rebels_reserve(ctx)
     exhausted = set()
+    own_hits = collections.Counter()   # P13g: so lan "Tim" ra lai mo cua chinh minh, theo loai
     sent = attempts = 0
     unknown_reads = 0
     while attempts < g.get("max_attempts", 40):
@@ -615,10 +672,7 @@ def run(ctx, limit=None):
         for rtype in g["priority"]:
             if mem and mem.fact(idx, f"gather_locked:{rtype}"):
                 continue                      # tri nho: loai nay chua du cap nha chinh de thu thap
-            stored = mem.fact(idx, f"gather_top:{rtype}") if mem else None
-            fit = gather_rules.fit_level(g.get("mine_caps"), rtype, max_load(ctx), min_lv, max_lv)
-            top = gather_rules.start_level(stored, fit, max_lv)
-            for lv in range(top, min_lv - 1, -1):
+            for lv in range(max_lv, min_lv - 1, -1):     # P13g: moi loai do tu cap cao nhat ha dan
                 if (rtype, lv) in exhausted:
                     continue
                 if g.get("load_ge_mine", True) and too_big_known(ctx, rtype, lv, min_lv):
@@ -646,17 +700,23 @@ def run(ctx, limit=None):
                     if mem:
                         mem.set_fact(idx, f"gather_locked:{rtype}", True)
                     break
-                if result == TOO_BIG:   # chi nho khi quan doan nay la lon nhat biet (xem remember_too_big)
+                if result == TOO_BIG:
                     load_ = getattr(ctx, "_gather_load", None)
-                    remember_too_big(ctx, rtype, lv, load_, min_lv)
                     # P7-1: cap thap hon ma bang van > tai trong -> bo luon (khong mo ban do tung cap); het cap -> loai khac
                     skip = gather_rules.too_big_levels(g.get("mine_caps"), rtype, load_, lv, min_lv)
                     if skip:
                         log.info("  %s: quan doan ranh (tai %s) khong cho het cap %s - bo qua", rtype, load_,
                                  ",".join(map(str, skip)))
                         exhausted.update((rtype, x) for x in skip)
-                if result in (NOT_FOUND, ERROR, TOO_BIG, UNREAD, OWN, CONTESTED, OCCUPIED):
+                if result in (NOT_FOUND, ERROR, TOO_BIG, UNREAD, OWN, CONTESTED, OCCUPIED, BADLEVEL):
                     exhausted.add((rtype, lv))
+                if result == OWN:        # P13g: trung mo vua chiem -> ha cap; van trung -> loai uu tien ke tiep
+                    own_hits[rtype] += 1
+                    if own_hits[rtype] >= g.get("same_mine_type_limit", 2):
+                        log.info("  %s: %d lan tim ra mo cua minh -> chuyen loai uu tien ke tiep", rtype,
+                                 own_hits[rtype])
+                        exhausted.update((rtype, x) for x in range(min_lv, max_lv + 1))
+                        break
             if result in (OK, FULL, NO_TROOPS, NO_SEARCH):
                 break
         if result == OK:

@@ -165,7 +165,8 @@ def battle(ctx, only_win=True, pre_checked=False):
         bc = ctx.cfg.get("battle", {})
         # P7-9: nhan tran rong hon + cho vao tran lau hon (live #1: khong xac nhan duoc tran -> khong lai, thua)
         r = steer.run_battle(ctx.dev.adb, ctx.dev.serial, ctx.v, debug_dir=bc.get("debug_dir"),
-                             is_battle=steer.campaign_battle, enter_wait=bc.get("enter_wait_s", steer.ENTER_WAIT_S))
+                             is_battle=steer.campaign_battle, enter_wait=bc.get("enter_wait_s", steer.ENTER_WAIT_S),
+                             scale=getattr(ctx.dev, "scale", 1.0))
         if r in ("win", "lose"):
             if r == "lose":
                 ctx.save_debug("campaign_result")

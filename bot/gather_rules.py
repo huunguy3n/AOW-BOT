@@ -43,12 +43,14 @@ def choose_amount(read, cap, only_full=True, lo=0.9, hi=1.25):
     return (read, "ocr") if read else (None, None)
 
 
-def own_target(dispatches, rtype, level, now, travel=None, tol_s=5, tol_pct=0.03, slack_s=60):
+def own_target(dispatches, rtype, level, now, travel=None, tol_s=5, tol_pct=0.03, slack_s=60, xy=None):
     """Doi cua minh dang DI (chua toi) toi mo (loai, cap) nay -> dict lan gui | None.
     travel=None: kiem truoc khi tim (moi doi cung loai/cap con dang di); co travel: phai trung thoi gian di
-    (+-max(tol_s, tol_pct) - cung mo = cung khoang cach)."""
+    (+-max(tol_s, tol_pct) - cung mo = cung khoang cach). P13g: biet toa do ca hai ben ma KHAC nhau -> mo khac."""
     for d in reversed(dispatches or []):
         if d.get("type") != rtype or d.get("level") != level:
+            continue
+        if xy and d.get("xy") and tuple(d["xy"]) != tuple(xy):
             continue
         t, tr = d.get("t"), d.get("travel")
         if not t or not tr:
@@ -88,27 +90,39 @@ def skip_until(kind, now, cfg):
     return now + mins * 60 if mins else None
 
 
-# ---------- P7-1 (live #1 2026-11-24): mo cap 1 'toobig' ----------
-def fit_level(caps, rtype, load, min_lv, max_lv):
-    """Cap CAO NHAT trong [min_lv, max_lv] co dung tich (bang) <= tai trong `load` | None (khong cap nao vua / chua biet).
-    Cap khong co trong bang (None) bo qua - khong dam chac doi cho het."""
-    if not load:
+# ---------- P13g-3 (chu du an t92u 26/11/2026): khong bao gio gui 2 quan doan toi cung 1 mo ----------
+# Toa do o thanh duoi ban do "# 32 X: 234 Y: 326" (tam ban do = mo vua tim) / duoi menu o "#32X:234Y:326"
+_XY = re.compile(r"X\W{0,4}(\d{1,4})\W{0,4}Y\W{0,4}(\d{1,4})", re.I)
+OWN_TILE_BLOCK_MIN = 480     # o vua gui quan toi: khong gui lai trong N phut (doi di + thu thap)
+
+
+def parse_xy(text):
+    """Chu OCR toa do -> (x, y) | None."""
+    m = _XY.search(text or "")
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def same_mine(dispatches, xy, now, block_min=OWN_TILE_BLOCK_MIN):
+    """Lan gui cua MINH toi dung o (x, y) nay trong block_min phut gan day (bat ke loai / cap / doi da toi hay
+    chua) -> dict lan gui | None. Khong doc duoc toa do -> None (con luat thoi gian di own_target)."""
+    if not xy:
         return None
-    for lv in range(max_lv, min_lv - 1, -1):
-        cap = table_cap(caps, rtype, lv)
-        if cap and cap <= load:
-            return lv
+    for d in reversed(dispatches or []):
+        if d.get("xy") and tuple(d["xy"]) == tuple(xy) and d.get("t") and now - d["t"] <= block_min * 60:
+            return d
     return None
 
 
-def start_level(stored_top, fit, max_lv):
-    """Cap bat dau do cho 1 loai mo: tri nho gather_top (cap cao nhat con thoa) nhung KHONG thap hon cap ma quan doan lon
-    nhat da biet (fit) cho het theo bang. Live #1 2026-11-24: gather_top:metal = 1 (ghi tu quan doan nho 8795) -> chi thu
-    mo cap 1 du quan doan lon cho het cap 4."""
-    top = stored_top or max_lv
-    if fit is not None and fit > top:
-        top = fit
-    return max(1, min(max_lv, top))
+# ---------- P7-1 (live #1 2026-11-24): mo cap 1 'toobig' ----------
+def bigger_mine(reads, caps, rtype, level):
+    """Cac so OCR duoc duoi mo: co so TRUNG DUNG dung tich mo day cua 1 cap CAO HON cap dang tim (vd doc 560000 khi
+    tim cap 2) -> mo tren man that su lon hon -> tra so do (lon nhat) de ap luat tai trong; khong -> None.
+    P13g (log #1 26/11 07:30: doc '560000' bi loai 'khong hop ly' roi dung dung tich bang 160000)."""
+    row = (caps or DEFAULT_CAPS).get(rtype) or []
+    higher = {int(c) for c in row[level:] if c}
+    here = table_cap(caps, rtype, level) or 0
+    hit = [v for v in reads or [] if v in higher and v > here]
+    return max(hit) if hit else None
 
 
 def too_big_levels(caps, rtype, load, lv, min_lv):

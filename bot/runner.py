@@ -46,6 +46,20 @@ def with_fill(rest, fill, mods):
     return [(n, mods[n]) for n in fill] + [x for x in rest if x[0] not in fill]
 
 
+def step_error_line(name, e):
+    """P13g-2: dong loi dau tien phai co ten va noi dung loi (truoc: 'Loi o buoc observe:' trong, loi nam o
+    traceback cac dong sau)."""
+    return f"Loi o buoc {name}: {type(e).__name__}: {e}"
+
+
+def lost_plan(lost, rescues, rescue_max):
+    """Ham thuan P13g-2: `lost` buoc lien tiep khong ve duoc thanh pho -> None | 'rescue' (tu buoc thu 2, con luot
+    cuu) | 'give_up' (tu buoc thu 3, het cach)."""
+    if lost >= 2 and rescues < rescue_max:
+        return "rescue"
+    return "give_up" if lost >= 3 else None
+
+
 class Stop(Exception):
     pass
 
@@ -566,6 +580,46 @@ class Runner:
         log.info("May #%d da chay lai sau khi treo -> tiep tuc (buoc %s: thu lai 1 lan neu chua thu)", idx, name)
         return True
 
+    def _rescue_city(self, ctx, idx, pkg, cfg):
+        """P13g-2: ket (khong ve duoc thanh pho) -> thu lan luot, dung o cach dau tien thanh cong: 1) Huy hop thoai
+        thoat + dong popup roi di lai (goto lo phim Back / nut quay lai / ban do -> thanh pho); 2) khoi dong lai GAME
+        (force-stop, KHONG xoa du lieu). -> True neu da o thanh pho."""
+        ways = (("dong popup roi di lai", lambda: ctx.close_popups(rounds=6, settle=2)),
+                ("khoi dong lai game", lambda: self._restart_game(ctx, idx, pkg, cfg)))
+        for label, act in ways:
+            try:
+                ctx.wd_reset(300)
+                log.warning("Cuu ket #%d: %s", idx, label)
+                act()
+                if ctx.goto("city", rounds=8):
+                    log.info("Cuu ket #%d: da ve thanh pho (%s)", idx, label)
+                    return True
+            except (Exception, Stuck) as e:
+                log.warning("Cuu ket #%d: %s loi %s: %s", idx, label, type(e).__name__, e)
+        return False
+
+    def _final_try(self, ctx, label, fn):
+        """P13g-2: viec phu cuoi luot (khien / nhan qua / quet cham do) loi KHONG duoc lan sang buoc observe.
+        May da khong chup duoc man hinh -> bo qua. -> ket qua cua fn | None."""
+        if getattr(ctx.dev, "dead", False):
+            return None
+        try:
+            return fn()
+        except Exception as e:
+            log.warning("%s: loi %s: %s", label, type(e).__name__, e)
+        if not getattr(ctx.dev, "dead", False):
+            try:
+                ctx.ensure_city()
+            except Exception as e:
+                log.warning("%s: sau loi khong ve duoc thanh pho: %s: %s", label, type(e).__name__, e)
+        return None
+
+    def _recover_after_final(self, ctx, idx, pkg, cfg, done, name):
+        """P13g-2 (#1 26/11 10:55): ADB hong luc quet cham do cuoi luot -> cuu may TRUOC roi van chay buoc `name`
+        (observe) -> 1 neu da cuu duoc, 0 neu khong (buoc se loi va di theo duong P9-1 nhu cu)."""
+        log.warning("May #%d khong chup duoc man hinh o viec cuoi luot -> cuu may truoc buoc %s", idx, name)
+        return int(bool(self._recover_device(ctx, idx, pkg, cfg, done, name)))
+
     def _backoff(self, cfg, idx, name, res, note):
         """Loi/ket lien tiep -> tam bo buoc (chi co tac dung o che do smart). warn/miss khong tinh."""
         if name == "observe":
@@ -736,6 +790,7 @@ class Runner:
             recovers = 0  # P9-1: so lan da khoi dong lai may treo trong luot nay
             blind = 0  # so buoc lien tiep khong chup duoc man hinh (may treo du adb van 'device')
             lost = 0   # so buoc lien tiep goto() khong ve duoc thanh pho/ban do (vd canh tan thu toi den, #4 2026-11-19)
+            rescues = 0  # P13g-2: so lan da cuu ket (dong popup / khoi dong lai game) trong luot nay
             queue = list(ORDER) + [("observe", observe)]
             if (cfg.get("priority") or {}).get("idle_first", True) and not forced and not short:
                 try:   # o rong (tho 0/2, nghien cuu 0/1, huan luyen x/3) -> lam truoc (chu du an 2026-11-22)
@@ -886,27 +941,24 @@ class Runner:
                     ctx.visit_pending = {n for n, _ in queue[qi:]}   # P10-5: reddots de cham do cho buoc con cho
                     final, claimed_end = name == "observe" and not short and not forced and not final_done, None
                     if final and enabled.get("shield"):
-                        try:   # P10-7: khien CUOI luot - tat / con < 1h -> gia han (dau luot da chay buoc shield)
-                            with span("shield_end"):
-                                log.info("Khien cuoi luot: kiem lai")
-                                shield.run(ctx)
-                        except Exception as e:
-                            log.warning("Khien cuoi luot: loi %s", e)
-                            ctx.ensure_city()
+                        # P10-7: khien CUOI luot - tat / con < 1h -> gia han (dau luot da chay buoc shield)
+                        with span("shield_end"):
+                            log.info("Khien cuoi luot: kiem lai")
+                            self._final_try(ctx, "Khien cuoi luot", lambda: shield.run(ctx))
                     if final and enabled.get("reddots", True):
-                        try:   # P10-5: nhan qua cuoi luot (thu bao cao moi, qua lien minh, chieu mo) truoc observe
-                            with span("final_claims"):
-                                claimed_end = reddots.final_claims(ctx)
-                        except Exception as e:
-                            log.warning("Nhan qua cuoi luot: loi %s", e)
-                            ctx.ensure_city()
+                        # P10-5: nhan qua cuoi luot (thu bao cao moi, qua lien minh, chieu mo) truoc observe
+                        with span("final_claims"):
+                            claimed_end = self._final_try(ctx, "Nhan qua cuoi luot",
+                                                          lambda: reddots.final_claims(ctx))
                         if reddots.rcfg(cfg)["final_sweep"]:
-                            try:   # P13d-1: quet lai 1 vong cham do cuoi luot (bo qua tan suat + tri nho vo ich)
-                                with span("reddots_final"):
-                                    claimed_end = reddots.run(ctx, final=True) or claimed_end
-                            except Exception as e:
-                                log.warning("Quet cham do cuoi luot: loi %s", e)
-                                ctx.ensure_city()
+                            # P13d-1: quet lai 1 vong cham do cuoi luot (bo qua tan suat + tri nho vo ich)
+                            with span("reddots_final"):
+                                swept = self._final_try(ctx, "Quet cham do cuoi luot",
+                                                        lambda: reddots.run(ctx, final=True))
+                            claimed_end = swept or claimed_end
+                    if final and getattr(ctx.dev, "dead", False):
+                        # P13g-2 (#1 26/11 10:55): ADB hong luc quet cham do -> cuu may TRUOC roi van quan sat
+                        recovers += self._recover_after_final(ctx, idx, pkg, cfg, recovers, name)
                     if final:
                         final_done = True
                         # P13f-2: nhan qua cuoi luot mat vai phut -> cong trinh ngan da xong: xay tiep roi moi observe
@@ -944,10 +996,10 @@ class Runner:
                     self._restart_game(ctx, idx, pkg, cfg)
                     continue
                 except Exception as e:
-                    log.error("Loi o buoc %s:\n%s", name, traceback.format_exc())
+                    log.error("%s\n%s", step_error_line(name, e), traceback.format_exc())
                     shot = ctx.save_debug(name)
                     res, note = "err", f"{type(e).__name__}: {e}"
-                    st.update(idx, last_error=f"{name}: loi (anh {shot})")
+                    st.update(idx, last_error=f"{name}: {note} (anh {shot})")
                     blind = blind + 1 if "Khong chup duoc man hinh" in str(e) else 0
                     if not blind:  # may con chup duoc -> ve thanh pho roi sang buoc ke
                         try:
@@ -966,7 +1018,7 @@ class Runner:
                         self.mem.log_perf(visit, idx, name, pf.drain())
                     if self._recover_device(ctx, idx, pkg, cfg, recovers, name):
                         recovers += 1
-                        blind = 0
+                        blind = lost = 0
                         if retry_after_recover(name, res, retried):
                             # P12-6 (live4 #2: upgrade 0 % - ScreencapError, may treo, khoi dong lai, bo buoc): lam lai
                             # DUNG 1 lan buoc dang do
@@ -993,9 +1045,20 @@ class Runner:
                 last_ran = (name, ret)
                 if ctx.nav and name not in ("tutorial", "observe"):
                     lost = 0 if any(a == "done" for _, a, _ in ctx.nav) else lost + 1
-                if lost >= 3:
-                    raise RuntimeError("3 buoc lien tiep khong ve duoc thanh pho (man cuoi %s) - bo luot may nay"
-                                       % (ctx.nav[-1][0] if ctx.nav else "?"))
+                plan = lost_plan(lost, rescues, int((cfg.get("nav") or {}).get("rescue_max", 1)))
+                if plan and name != "observe":
+                    last_scr = ctx.nav[-1][0] if ctx.nav else "?"
+                    if plan == "rescue":
+                        rescues += 1
+                        log.warning("%d buoc lien tiep khong ve duoc thanh pho (man cuoi %s) -> cuu ket [lan %d]",
+                                    lost, last_scr, rescues)
+                        if self._rescue_city(ctx, idx, pkg, cfg):
+                            lost = 0
+                        elif not getattr(ctx.dev, "dead", False):   # may treo: buoc ke se cuu may (P9-1)
+                            plan = "give_up"
+                    if plan == "give_up":
+                        raise RuntimeError("%d buoc lien tiep khong ve duoc thanh pho (man cuoi %s), da cuu %d lan - "
+                                           "bo luot may nay" % (lost, last_scr, rescues))
                 # (blind >= 2: lan dau thay o #2 2026-11-19 - P9-1 xu ly cung cho voi Device.dead o tren)
             sk, ck = getattr(ctx, "city_skips", 0), getattr(ctx, "city_checks", 0)
             if sk or ck:   # G3: do hieu qua bo kiem tra thanh pho

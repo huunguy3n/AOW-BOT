@@ -882,14 +882,15 @@ def run(ctx, max_steps=600, idle_limit=10, max_retry=5, follow=False, no_battle=
             return "weak"
         if act == "steer":
             r = steer.run_battle(ctx.dev.adb, ctx.dev.serial, ctx.v, is_battle=is_battle,
-                                 debug_dir=ctx.cfg.get("battle", {}).get("debug_dir"))
+                                 debug_dir=ctx.cfg.get("battle", {}).get("debug_dir"),
+                                 scale=getattr(ctx.dev, "scale", 1.0))
             log.info("Tan thu - tran: %s", r)
             idle = 0
             continue
         if act == "drag":
             from bot.touch import Finger
             fx, fy = state.get("drag_from", (240, 870))
-            fg = Finger(ctx.dev.adb, ctx.dev.serial)
+            fg = Finger(ctx.dev.adb, ctx.dev.serial, scale=getattr(ctx.dev, "scale", 1.0))
             try:
                 fg.down(fx, fy)
                 time.sleep(0.4)                       # nhan giu the cong trinh

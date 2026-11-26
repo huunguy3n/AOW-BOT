@@ -1,4 +1,4 @@
-"""Gather: tai trong thay doi theo QUAN DOAN (Odin/Thor/...): chi cap vuot quan doan LON NHAT moi bi bo/ghi nho."""
+"""Gather: tai trong thay doi theo QUAN DOAN (Odin/Thor/...): chi cap vuot quan doan LON NHAT moi bi bo."""
 import time
 from types import SimpleNamespace
 
@@ -44,12 +44,3 @@ def test_too_big_known_uses_max_load_so_big_levels_are_not_skipped_after_small_l
     gather.note_load(c2, 517590)
     assert gather.too_big_known(c2, "food", 8, 1)           # khong quan doan nao cho het -> bo qua dung
     assert not gather.too_big_known(c2, "food", 1, 1)       # cap thap nhat luon thu
-
-
-def test_small_legion_too_big_does_not_poison_gather_top():
-    c = ctx()
-    gather.note_load(c, 517590)
-    gather.remember_too_big(c, "metal", 8, 44767, 1)        # quan doan nho: chi bo cap nay lan nay
-    assert c.mem.fact(1, "gather_top:metal") is None
-    gather.remember_too_big(c, "metal", 8, 517590, 1)       # quan doan lon nhat van khong cho het: ghi nho
-    assert c.mem.fact(1, "gather_top:metal") == 7

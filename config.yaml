@@ -83,7 +83,7 @@ daily:
 gather:
   # alloy = Xuong Hop Kim, metal = Xuong Luyen Kim, oil = Xuong Loc Dau, food = Xuong Thuc Pham
   priority: [alloy, metal, food]  # alloy > metal > food (co the them oil)
-  max_level: 8         # do mo tu cap 8 ha dan (chu du an 2026-11-21); tri nho cap thoa luu o gather_top:<loai>, do lai chi khi nha chinh/tuong len cap; hop kim thap nhat cap 3
+  max_level: 8         # moi loai do tu cap nay ha dan 8 -> 7 -> 6 ... (chu du an t92u 26/11/2026); hop kim thap nhat cap 3
   min_level: 1
   max_attempts: 40                # gioi han an toan moi tai khoan
   # so "x/y" trong khung "Hanh quan x/y" goc trai tren (x, y, w, h) - chi hien khi co doi dang di
@@ -113,6 +113,9 @@ gather:
   contested_skip_min: 20    # hop thoai "Chi huy truong khac dang hanh quan den..." -> Huy, tam bo (loai, cap) N phut (KHONG bao gio Tiep tuc)
   occupied_skip_min: 30     # mo dang bi chiem (anh mau gather/mine_occupied) -> tam bo (loai, cap) N phut
   notfound_skip_min: 30     # tim kiem khong ra mo (loai, cap) -> tam bo N phut (truoc P3: moi lan ghe tim lai)
+  # --- P13g: khong bao gio gui 2 quan doan toi cung 1 mo ---
+  own_tile_block_min: 480   # o (toa do X/Y) vua gui quan toi: "Tim" ra lai o do trong N phut thi bo
+  same_mine_type_limit: 2   # 1 loai mo ra lai mo cua minh N lan trong luot -> chuyen loai uu tien ke tiep
 observe:
   read_hq: true            # doc cap nha chinh (cham avatar) khi gia tri da cu hon 6 gio
 
@@ -152,6 +155,7 @@ cycle:
 # Dieu huong theo nhan dien man (bot/screens.py, giai doan B): ensure_city/ensure_world dung ctx.goto();
 # false = cach cu (back_out + nut chuyen ban do). Man la luu vao logs/unknown/ de dan nhan.
 nav:
+  rescue_max: 1          # P13g: ket (2 buoc lien tiep khong ve duoc thanh pho) -> dong popup / khoi dong lai game, toi da N lan / luot roi moi bo luot
   smart: true
   skip_recheck_s: 6.0   # G3: ensure_city ngay sau 1 lan da xac nhan thanh pho (khong thao tac o giua) thi bo qua; 0 = tat   P13-2: 3 -> 6 s
 

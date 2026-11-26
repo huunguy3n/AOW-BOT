@@ -10,7 +10,7 @@ Thu tu uu tien (man chong len nhau: popup tren thanh pho...):
   city / world nut chuyen ban do (goc duoi phai) -> xong, hoac cham de doi
   dialog       hoi thoai tan thu (Tiep)          -> cham
   panel        bang co nut quay lai              -> cham quay lai
-  loading      man toi / gan nhu mot mau          -> doi
+  loading      man nap game / toi / mot mau       -> doi
   unknown      khong nhan ra                     -> phim Back + luu mau vao logs/unknown/ de dan nhan
 Chi dung anh mau DA CO trong templates/ (thieu -> coi nhu khong thay, dung quy uoc vision.py).
 """
@@ -24,13 +24,16 @@ POPUPS = ["common/btn_confirm_hero", "common/btn_net_retry", "common/btn_rebuild
 BACKS = ["campaign/btn_done", "campaign/btn_done_lose", "common/btn_back", "common/btn_back2"]  # "Dong" truoc "<"
 # bang co the dong bang phim Back (khong co nut quay lai rieng) - them tu anh "unknown" 2026-11-19
 BACK_KEY = ["gather/btn_search_go"]
+# P13g-2: man nap game (logo OEG tren cung, thanh "Vao Game .. %") - truoc day 'unknown' -> bam Back luc dang nap
+SPLASH = "common/splash_logo"
 TOGGLE = {"city": "common/btn_to_world", "world": "common/btn_to_city"}  # o man X thi thay nut chuyen sang man kia
 # Vung tim (x, y, w, h) cho tung anh mau - do tren 240 anh logs/ ngay 2026-11-19 (vi tri co dinh + bien 40px).
 # Giam thoi gian identify tu ~0,4 s xuong vai chuc ms. Anh mau khong co trong ROI = tim ca man.
 ROI = {"common/btn_to_world": (0, 860, 130, 100), "common/btn_to_city": (0, 860, 130, 100),
        "common/btn_close": (430, 0, 110, 960), "common/btn_x": (430, 0, 110, 330), "common/btn_x_small": (460, 0, 80, 90), "common/btn_x_red": (450, 0, 90, 90),
        "common/btn_back": (0, 0, 130, 960), "common/btn_back2": (0, 0, 130, 960),
-       "tutorial/dialog_next": (440, 840, 100, 100), "common/msg_reward": (60, 170, 420, 130)}
+       "tutorial/dialog_next": (440, 840, 100, 100), "common/msg_reward": (60, 170, 420, 130),
+       "common/splash_logo": (100, 0, 220, 60)}
 UNKNOWN_DIR = os.path.join("logs", "unknown")
 UNKNOWN_MAX = 300
 
@@ -82,7 +85,7 @@ def _identify(img, v):
     n, p = _hit(v, img, BACK_KEY)
     if n:
         return "panel_key", (n, p)
-    if is_loading(img):
+    if _find(v, img, SPLASH) or is_loading(img):
         return "loading", None
     return "unknown", None
 

@@ -193,9 +193,11 @@ class Ctx:
 
 @pytest.fixture
 def fake_ocr(monkeypatch):
-    texts = {"load": "517590", "travel": "00:16:48", "msg": ""}
+    texts = {"load": "517590", "travel": "00:16:48", "msg": "", "level": "1"}
 
     def text(img, roi, *a, **k):
+        if tuple(roi[:2]) == (272, 797):                          # o "Cap" (khong thay nut '-' -> level_box mac dinh)
+            return texts["level"]
         if tuple(roi[:2]) == (300, 843):
             return texts["load"]
         if tuple(roi[:2]) == (350, 905):
