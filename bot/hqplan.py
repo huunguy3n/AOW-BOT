@@ -34,12 +34,12 @@ def yield_builder(ctx, step):
     """Buoc xay khac co phai nhuong tho cho nha chinh? Chi tinh khi tho dang RANH (con ban thi buoc do khong xay duoc
     gi nen khong gay tranh). True -> buoc nen bo qua phan xay."""
     from bot import build
-    maxb = ctx.cfg.get("build", {}).get("max_builders", 1)
+    maxb = build.max_builders(ctx)
     ok, why = dom.reserve(load(ctx), time.time(), maxb)
     if not ok:
         return False
     b = build.builders(ctx)
-    if b is not None and b[0] >= min(maxb, b[1]):
+    if b is not None and b[0] >= min(build.max_builders(ctx, b[1]), b[1]):
         return False
     log.info("Bo buoc %s: %s", step, why)
     return True

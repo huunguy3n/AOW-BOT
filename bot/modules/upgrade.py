@@ -29,11 +29,11 @@ def hq_label(img, px, py):
 
 
 def builder_idle(ctx):
-    """Con tho dung duoc dang ranh? (farm dung 1 tho - tho thu 2 phai thue; #1 dung 2: build.max_builders)."""
+    """Con tho dung duoc dang ranh? So tho hieu luc = so o game bao (P13e-1: 0/2 -> dung 2, khong thue tho)."""
     b = build.builders(ctx)
-    maxb = ctx.cfg.get("build", {}).get("max_builders", 1)
     if b is None:
         return True, "khong doc duoc so tho - van thu"
+    maxb = build.max_builders(ctx, b[1])
     return b[0] < min(maxb, b[1]), f"tho {b[0]}/{b[1]} (dung toi da {maxb})"
 
 

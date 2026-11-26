@@ -20,6 +20,21 @@ def builders(ctx, img=None):
     return (int(m.group(1)), int(m.group(2))) if m else None
 
 
+def max_builders(ctx, total=None):
+    """P13e-1: so tho xay hieu luc = so o game bao (y trong 'x/y', fact builders_total) kep boi tran cau hinh; chua biet
+    -> build.max_builders. Khong bao gio thue tho bang kim cuong."""
+    from aowbot.domain import builders as dom
+    bc = ctx.cfg.get("build", {})
+    if total is None:
+        m = getattr(ctx, "mem", None)
+        try:
+            total = m.fact(ctx.dev.idx, "builders_total") if m else None
+        except Exception:  # noqa: BLE001
+            total = None
+    return dom.effective_max(bc.get("max_builders", 1), total, bc.get("use_game_slots", True),
+                             bc.get("max_builders_cap", 2))
+
+
 def screen_level(img):
     import re
     m = re.search(r"(\d+)", ocr.text(img, LEVEL_ROI, "0123456789"))
@@ -218,7 +233,7 @@ def quick_wait(ctx):
         ctx.ensure_city()
     ctx.ensure_city()
     ok_wait, why_wait = should_quick_wait(getattr(ctx, "visit_pending", None), None,
-                                          ctx.cfg.get("build", {}).get("max_builders", 1))
+                                          max_builders(ctx, None))
     if not ok_wait:
         log.info("Xay: %s", why_wait)
         return False
@@ -230,7 +245,7 @@ def quick_wait(ctx):
         return False
     t0 = time.time()
     deadline = t0 + ts[0] + 6
-    maxb = bc.get("max_builders", 1)
+    maxb = max_builders(ctx)
     log.info("Xay nhanh (con %d s <= %d s) - cho xong de xay tiep", ts[0], quick)
     while time.time() < deadline:
         time.sleep(4)

@@ -7,7 +7,7 @@ Thoi gian tuyet doi (epoch) de web tu dem nguoc:
 """
 import re, time, logging
 import cv2, numpy as np
-from bot import ocr, queues
+from bot import build, ocr, queues
 from aowbot.domain import marches
 
 log = logging.getLogger("aow")
@@ -207,7 +207,9 @@ def run(ctx):
                     ctx.mem.set_fact(ctx.dev.idx, f"queue_{k}", list(v))
     if b and getattr(ctx, "mem", None):
         ctx.mem.set_fact(ctx.dev.idx, "builders_busy", b[0])
-        log.info("Tho xay: %d/%d dang xay (dung toi da %d)", b[0], b[1], ctx.cfg.get("build", {}).get("max_builders", 1))
+        if b[1] >= 1:
+            ctx.mem.set_fact(ctx.dev.idx, "builders_total", b[1])   # P13e-1: so o game bao -> so tho hieu luc
+        log.info("Tho xay: %d/%d dang xay (dung toi da %d)", b[0], b[1], build.max_builders(ctx, b[1]))
     note_heal(ctx, cimg)
     base_state(ctx, cimg, b)
     world = ctx.world_ready() if hasattr(ctx, "world_ready") else True
@@ -365,7 +367,7 @@ def base_state(ctx, img, builders=None):
     bars = sorted(t for _, _, t in progress_bars(img) if t)
     info["queues"] = [{"until": now + t} for t in bars]
     if builders:
-        info["builders"] = {"busy": builders[0], "max": ctx.cfg.get("build", {}).get("max_builders", 1)}
+        info["builders"] = {"busy": builders[0], "max": build.max_builders(ctx, builders[1])}
     m = getattr(ctx, "mem", None)
     if m:
         m.clear_timers(ctx.dev.idx, "build:")

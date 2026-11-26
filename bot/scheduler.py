@@ -12,7 +12,7 @@ Thu tu buoc trong 1 lan ghe van theo ORDER (runner), lich chi chon buoc nao + lu
 import json, time
 from dataclasses import dataclass, field
 
-from aowbot.domain import marches, rollout, warday
+from aowbot.domain import builders as builders_dom, marches, rollout, warday
 from bot import stepgate
 
 TRIGGERS = ("warday", "gather", "upgrade", "mainquest", "quests", "research", "rebels")
@@ -127,7 +127,30 @@ def plan_gather(mem, idx, sc, now, cfg=None):
     return Plan(at <= now, at, why, confident=conf)
 
 
-BUILD_STEPS = ("upgrade", "mainquest", "quests")
+BUILD_STEPS = ("upgrade", "construct", "mainquest", "quests")   # P13e-3: construct cung la buoc xay (lich + chuoi 'tho ranh')
+
+
+def build_slots(mem, idx, cfg):
+    """P13e-1: so tho xay hieu luc cua may = so o game bao (fact builders_total) kep boi cau hinh (xem domain.builders)."""
+    bc = (cfg or {}).get("build") or {}
+    total = mem.fact(idx, "builders_total")
+    try:
+        total = int(total) if total is not None else None
+    except (TypeError, ValueError):
+        total = None
+    return builders_dom.effective_max(bc.get("max_builders", 1), total, bc.get("use_game_slots", True),
+                                      bc.get("max_builders_cap", 2))
+
+
+def builder_idle_now(mem, idx, cfg):
+    """May dang co tho RANH theo tri nho (observe lan truoc)? -> (bool, busy, toi_da)."""
+    busy = mem.fact(idx, "builders_busy")
+    maxb = build_slots(mem, idx, cfg)
+    try:
+        busy = int(busy) if busy is not None else None
+    except (TypeError, ValueError):
+        busy = None
+    return busy is not None and busy < maxb, busy, maxb
 
 
 def build_streak(rows, since=0):
@@ -158,7 +181,7 @@ def build_gap_s(streak, sc):
 def plan_build(mem, idx, sc, now, step, cfg=None):
     # so tho dang xay (observe doc icon bua "x/y") < so tho dung duoc (farm 1, TK chinh #1: 2) -> co tho ranh: xay ngay
     busy = mem.fact(idx, "builders_busy")
-    maxb = ((cfg or {}).get("build") or {}).get("max_builders", 1)
+    maxb = build_slots(mem, idx, cfg)
     if busy is not None and busy < maxb:
         t, _, _ = _last(mem, idx, step)
         gap = sc["min_gap_min"] * 60
@@ -368,7 +391,7 @@ def plan_step(mem, idx, step, sc, now, enabled, cfg=None):
         if hq is not None and hq >= cap:
             return None
         return plan_build(mem, idx, sc, now, step, cfg)
-    if step in ("mainquest", "quests"):
+    if step in ("mainquest", "quests", "construct"):
         return plan_build(mem, idx, sc, now, step, cfg)
     if step == "research":
         return plan_research(mem, idx, sc, now)
@@ -425,6 +448,23 @@ def last_visit_end(mem, idx):
     return r[0][0] if r and r[0][0] else None
 
 
+FORCE_BUILD = ("construct", "upgrade", "mainquest")   # P13e-3: tho ranh -> 3 buoc nay luon vao luot (neu may bat chung)
+
+
+def with_build_steps(mem, idx, steps, names, order, cfg, now):
+    """P13e-3: may dang co tho RANH (tri nho) -> them construct/upgrade/mainquest vao luot du bi stepgate gian chu ky /
+    thieu trigger (lan 02:15, 04:51, 07:35 #5: construct+mainquest bi tat). Buoc bi loi-backoff (watchdog) van bo qua.
+    Giu thu tu `order`."""
+    idle, _, _ = builder_idle_now(mem, idx, cfg)
+    if not idle:
+        return steps
+    add = [n for n in FORCE_BUILD if n in names and n not in steps and mem.backoff_until(idx, n) <= now]
+    if not add:
+        return steps
+    pos = {n: i for i, n in enumerate(order)}
+    return sorted(set(steps) | set(add), key=lambda n: pos.get(n, 99))
+
+
 def decide_one(mem, idx, order, enabled, cfg, now):
     """-> Visit (at co the > now = chua toi luc)."""
     sc = sched_cfg(cfg)
@@ -462,6 +502,8 @@ def decide_one(mem, idx, order, enabled, cfg, now):
                     steps.append(n)  # buoc chay kem (theo chu ky rieng / sau reset ngay / moc the luc)
             elif p.ready or (p.at is not None and p.at <= ready_at) or not p.confident:
                 steps.append(n)  # trigger toi han / uoc luong theo chu ky (ghe thi kiem tra luon)
+        if steps:
+            steps = with_build_steps(mem, idx, steps, names, order, cfg, now)   # P13e-3
     return Visit(idx, at, steps, "; ".join(why) or "khong ro", full)
 
 
@@ -483,7 +525,7 @@ def piggyback_steps(mem, idx, order, enabled, cfg, now):
                 out.append(n)
         elif p.ready or (p.at is not None and p.at <= soon) or not p.confident:
             out.append(n)
-    return out
+    return with_build_steps(mem, idx, out, names, order, cfg, now) if out else out
 
 
 def decide(mem, insts, order, enabled_for, cfg_for, now=None):

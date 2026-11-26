@@ -104,7 +104,7 @@ class HqCtx:
 
 
 def test_upgrade_skips_when_no_idle_builder(monkeypatch):
-    c = HqCtx(builders=(1, 2))
+    c = HqCtx(builders=(2, 2))
     monkeypatch.setattr(upgrade.build, "builders", lambda ctx: ctx.b)
     monkeypatch.setattr(upgrade, "goto_hq", lambda ctx: pytest.fail("khong duoc toi nha chinh"))
     assert upgrade.run(c) == 0

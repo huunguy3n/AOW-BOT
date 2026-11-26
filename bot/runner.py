@@ -7,10 +7,10 @@ import collections, contextlib, json, logging, threading, time, traceback
 
 from bot.device import LDConsole, Device
 from bot.ctx import Ctx, Stuck
-from bot import ocr
+from bot import build, ocr
 from bot.memory import Memory
 from bot import hang, perf, quest_rules, queues, scheduler, stepgate, tapguard
-from aowbot.domain import drain, rollout
+from aowbot.domain import builders as builders_dom, drain, rollout
 from aowbot.domain import warday as W
 from bot.modules import expand, tutorial, mainquest, construct, city, rewards, alliance, quests, campaign, notify, research, train, rebels, gather, daily, observe, defense, intel, reddots, play, upgrade, heal, warday, mission, shield
 
@@ -217,6 +217,8 @@ class Runner:
         self._timed_tries[(i, w[0])] = self._timed_tries.get((i, w[0]), 0) + 1
         cfg = self.store.cfg_for(self.base_cfg, i)
         steps = [n for n in self._timed_cfg(i)["timed_login_steps"] if cfg["modules"].get(n)]
+        if scheduler.builder_idle_now(self.mem, i, cfg)[0]:   # P13e-3: tho ranh -> gop xay vao luot ngan (khong cho vong sau)
+            steps += [n for n in scheduler.FORCE_BUILD if cfg["modules"].get(n) and n not in steps]
         log.info("Dang nhap hen gio: ghe may %d (luot ngan: ruong -> %s), con cho %s", i, ",".join(steps) or "-",
                  ",".join(str(x) for x in ready[1:]) or "-")
         self.store.runner(state="running")
@@ -433,6 +435,38 @@ class Runner:
             self._join_all()
             self.store.runner(state="stopped")
             log.info("Runner da dung")
+
+    def _fill_builders(self, ctx, idx, cfg, enabled, st, t_visit):
+        """P13e-2: truoc observe - doc lai tho xay; con tho RANH thi chay lai cac buoc xay (construct, upgrade, mainquest,
+        quests) toi `build.fill_rounds` vong, dung khi vong truoc khong bat dau them viec nao. -> ten buoc can chen."""
+        bc = cfg.get("build") or {}
+        if time.time() - t_visit > (cfg.get("drain") or {}).get("max_visit_min", 30) * 60 + 600:
+            return []
+        try:
+            if st["marks"] is not None:       # vong truoc: co buoc nao lam duoc viec khong?
+                st["progressed"] = any(drain.worked(ctx.visit_done.get(n)) for n in st["marks"])
+            ctx.ensure_city()
+            qs = queues.read(self.vision, ctx.shot(), observe.known_totals(ctx))
+            bq = qs.get("build")
+            if not bq:
+                return []
+            maxb = build.max_builders(ctx, bq[1])
+            idle = builders_dom.idle_count(bq[0], min(maxb, bq[1]))
+            steps = builders_dom.fill_steps(idle, st["rounds"], int(bc.get("fill_rounds", 2)), st["progressed"], enabled)
+        except Exception as e:   # khong de loi doc hang cho lam hong luot ghe
+            log.warning("Lap tho ranh: loi %s", e)
+            return []
+        if not steps:
+            if st["rounds"]:
+                log.info("Lap tho ranh: dung sau %d vong (%d tho ranh)", st["rounds"], idle)
+            return []
+        st["rounds"] += 1
+        st["marks"] = steps
+        for n in steps:   # ret cu khong duoc tinh la 'lam duoc viec' o vong nay (buoc co the bi stepgate bo qua)
+            ctx.visit_done.pop(n, None)
+        log.info("Lap tho ranh vong %d: %d/%d tho dang xay, con %d ranh -> chay lai %s", st["rounds"], bq[0], maxb, idle,
+                 ",".join(steps))
+        return steps
 
     def defend_now(self, idx):
         """Nut 'Bat khien' tren web: chay rieng may nay, chi phong thu (ep) + quan sat."""
@@ -698,7 +732,8 @@ class Runner:
                 try:   # o rong (tho 0/2, nghien cuu 0/1, huan luyen x/3) -> lam truoc (chu du an 2026-11-22)
                     ctx.ensure_city()
                     qs0 = queues.read(self.vision, ctx.shot(), observe.known_totals(ctx))
-                    idle0 = drain.idle_slots(qs0, cfg.get("build", {}).get("max_builders", 1))
+                    bq0 = qs0.get("build")
+                    idle0 = drain.idle_slots(qs0, build.max_builders(ctx, bq0[1] if bq0 else None))   # P13e-1
                     if idle0:
                         names = drain.prioritize([n for n, _ in ORDER], idle0, enabled)
                         by0 = dict(ORDER)
@@ -722,6 +757,8 @@ class Runner:
             qi, done, rerun = 0, {}, collections.Counter()
             retried = set()           # P12-6: buoc da thu lai sau khi cuu may treo
             drained = False
+            fill_state = {"rounds": 0, "progressed": True, "marks": None}   # P13e-2: lap tho ranh cuoi luot
+            fill_off = not (cfg.get("build") or {}).get("fill_idle", True)
             ctx.visit_done = done   # reddots: biet buoc nao vua chay xong ma khong lam duoc gi
             ctx.ally_mine = None   # P13b: None | 'deferred' (hoan cuoi luot) | 'sent' | 'done'
             ctx.visit_kinds = set()   # P13-2: viec reddots da xu ly trong lan ghe nay (rewards / mission khong lam lai)
@@ -760,6 +797,12 @@ class Runner:
                             by = dict(ORDER)
                             queue[qi - 1:qi - 1] = [(n, by[n]) for n in extra]
                             name, mod = queue[qi - 1]
+                if name == "observe" and not short and not forced and not fill_off:
+                    fill = self._fill_builders(ctx, idx, cfg, enabled, fill_state, t_visit)   # P13e-2
+                    if fill:
+                        by = dict(ORDER)
+                        queue[qi - 1:qi - 1] = [(n, by[n]) for n in fill]
+                        name, mod = queue[qi - 1]
                 if name != "observe" and not enabled.get(name):
                     continue
                 hq_ = self.mem.fact(idx, "hq_level")
