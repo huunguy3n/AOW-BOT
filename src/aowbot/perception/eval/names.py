@@ -37,6 +37,7 @@ NAMES: Mapping[str, str] = MappingProxyType({
     "build/btn_bar_close": "Nút đóng thanh Xây dựng", "build/btn_construct": "Nút Xây dựng",
     "build/btn_jump": "Nút Nhảy tới", "build/btn_place_ok": "Nút ✓ Đặt công trình", "build/btn_upgrade": "Nút Nâng cấp",
     "build/heal_bubble": "Bong bóng chữa trị (bệnh viện)", "build/btn_upgrade_icon": "Biểu tượng Nâng cấp", "build/card_lock": "Thẻ công trình bị khóa", "build/plot_lock": "Ổ khóa lô đất (chưa mở)", "build/plot_unlock": "Ổ khóa mở (mở rộng thành phố)",
+    "build/res_food": "Nhà tài nguyên: Xưởng Thực Phẩm", "build/res_tower": "Nhà tài nguyên: tháp đèn xanh",
     "build/icon_builder": "Biểu tượng Thợ xây", "build/icon_hammer": "Biểu tượng Búa xây dựng",
     "build/msg_no_builder": "Thông báo hết thợ xây", "build/title_construct": "Tiêu đề bảng Xây dựng",
     "build/title_hq": "Tiêu đề Nhà chính",

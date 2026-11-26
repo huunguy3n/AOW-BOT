@@ -2,7 +2,7 @@
 
 Moi lan buoc 'upgrade' chay xong ghi ket qua vao HqPlan (luu facts 'hq_plan'). Muc dich:
   - nho "nha chinh dang cho gi" + gio thuc day (thay vi khoa mu / tu kham pha lai moi lan ghe);
-  - tho xay (farm chi 1 tho) duoc DANH CHO nha chinh: buoc xay khac (quests, construct) nhuong khi `reserve` dung;
+  - P13f-2: khong buoc xay nao phai nhuong khi tho dang RANH; `reserve` chi dung khi tho dang BAN lam tien quyet;
   - ket qua 'none' (khong toi duoc man nang cap) lien tiep -> lui lich theo cap so nhan, khong lap vo ich.
 Khong goi thiet bi, khong doc dong ho: nhan `now` tu ngoai.
 """
@@ -91,20 +91,13 @@ def should_attempt(plan: HqPlan | None, now: float) -> tuple[bool, str]:
     return True, plan.status.value
 
 
-def reserve(plan: HqPlan | None, now: float, builders_max: int) -> tuple[bool, str]:
-    """Buoc xay khac (quests, construct) co phai nhuong tho cho nha chinh khong?
-    Chi khi farm chi 1 tho (builders_max <= 1) va ke hoach dang giu cho (reserve_until)."""
-    if plan is None or builders_max > 1:
+def reserve(plan: HqPlan | None, now: float, idle_builders: int | None) -> tuple[bool, str]:
+    """"Nhuong tho cho nha chinh" - P13f-2 (chu du an t90u 26/11): KHONG bao gio bo qua xay khi tho dang RANH (hoac chua
+    doc duoc). Chi dung khi het tho ranh va tho dang lam nha chinh / tien quyet cua no (CHAIN, WAIT_BUILDER)."""
+    if idle_builders is None or idle_builders > 0 or plan is None:
         return False, ""
-    if plan.status in (Status.MAXED, Status.UNREACHED):
-        return False, ""
-    if plan.status is Status.WAIT_BUILDER and now < plan.wake_at:
-        # P13d-3: nha chinh/dieu kien DANG xay (hoac vua gap "het tho"; live6c #5: ke hoach noi wait_builder
-        # nhung cuoi luot tho 0/2 RANH, construct bi nhuong ca luot). Chua toi gio nha chinh can tho ->
-        # tho ranh lam viec khac, dung ngoi khong.
-        return False, ""
-    if now < plan.reserve_until:
-        return True, f"nhuong tho cho nha chinh ({plan.status.value}, con {(plan.reserve_until - now) / 60:.0f} phut)"
+    if plan.status in (Status.CHAIN, Status.WAIT_BUILDER) and now < max(plan.reserve_until, plan.wake_at):
+        return True, f"tho dang lam nha chinh / tien quyet ({plan.status.value})"
     return False, ""
 
 

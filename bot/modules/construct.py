@@ -320,7 +320,7 @@ def run(ctx):
         nr = 0
         ctx.ensure_city()
     from bot import hqplan
-    if hqplan.yield_builder(ctx, "construct"):   # G1: tho ranh dang danh cho nha chinh
+    if hqplan.yield_builder(ctx, "construct"):   # P13f: chi bo khi het tho ranh
         return nr
     bu = block_until(ctx)
     if bu:
@@ -337,6 +337,8 @@ def run(ctx):
             break
         ctx.skip_dialogs()            # xay xong hay mo khoa tinh nang -> hoi thoai huong dan (vd "mo khoa lien minh")
         ctx.ensure_city()
+        if built and hqplan.yield_builder(ctx, "construct (xay tiep)"):   # P13f: moi tho da ban -> khong keo them the
+            break
         img = ctx.shot()
         h = ctx.v.find(img, "build/icon_hammer", th=0.85, roi=HAMMER_ROI)
         if not h:
@@ -379,10 +381,11 @@ def run(ctx):
             attempted = True
             res = place(ctx, x)
             if res == "ok":
+                from bot import build
+                build.note_started(ctx)
                 built += 1
                 done = True
                 skips.pop(key, None)
-                from bot import build
                 build.quick_wait(ctx)     # xay nhanh -> cho xong, vong sau xay tiep (chu du an 2026-11-22)
                 log.info("Xay moi: da xay 1 cong trinh (nhom @%d,%d)", g[0], g[1])
             else:

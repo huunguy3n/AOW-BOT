@@ -193,8 +193,12 @@ build:
   hq_max_level: 30     # khong nang nha chinh qua cap nay (chu du an 2026-11-21: xay o moi cap; HQ30 = toi da -> bo muc tieu xay)
   max_builders: 1      # P13f-1: so tho xay DUNG DUOC cua may. Farm 1 (game bao x/2 nhung o thu 2 phai mua bang tien that); #1 = 2
                        # (data/settings.json instances.1.build.max_builders). Farm 1/2 = DAY. Bot khong thue / mua tho.
-  fill_idle: true      # P13e-2: cuoi luot con tho ranh -> chay lai construct/upgrade/mainquest/quests
-  fill_rounds: 2       # so vong lap toi da moi luot (dung som khi vong truoc khong bat dau them viec)
+  fill_idle: true      # P13f-2: sau MOI buoc doc lai tho xay; ranh -> chay NGAY upgrade/construct/mainquest/quests truoc buoc ke
+  fill_rounds: 8       # so lan chen toi da moi luot ghe
+  fill_retries: 2      # lan truoc khong xay duoc gi: chi thu lai khi them tho xong, hoac (toi da N lan) vua co them tai nguyen
+  chain_max: 6         # so cong trinh lien tiep toi da trong 1 lan chay buoc upgrade (nang tuc thi / #1 2 tho)
+  other_when_blocked: true  # nha chinh khong lam duoc ngay -> nang nha tai nguyen (templates/build/res_*.png) cho tho khong ranh
+  other_retry_min: 30  # khong tim / khong nang duoc nha nao -> N phut sau moi tim lai
   recenter_world: true # P13-1: truoc khi cham nha chinh -> ra the gioi roi vao lai thanh pho (camera dat nha chinh giua man)
   follow_quests: true  # xay/nang nha theo nut "Den" cua nhiem vu
   quick_s: 660         # xay xong trong <= N giay (thanh tien do tren thanh pho) -> cho xong roi xay tiep lien tuc; 0 = tat

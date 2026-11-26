@@ -110,9 +110,12 @@ def test_upgrade_skips_when_no_idle_builder(monkeypatch):
     assert upgrade.run(c) == 0
 
 
-def test_upgrade_at_hq_cap_does_nothing(monkeypatch):
-    monkeypatch.setattr(upgrade, "goto_hq", lambda ctx: pytest.fail("HQ30: bo muc tieu xay"))
-    assert upgrade.run(HqCtx(hq=30)) == 0
+def test_upgrade_at_hq_cap_never_goes_to_hq(monkeypatch):
+    seen = []
+    monkeypatch.setattr(upgrade.build, "builders", lambda ctx: ctx.b)
+    monkeypatch.setattr(upgrade, "goto_hq", lambda ctx: pytest.fail("HQ30: bo muc tieu xay nha chinh"))
+    monkeypatch.setattr(upgrade, "other_buildings", lambda ctx: seen.append(1) or 0)
+    assert upgrade.run(HqCtx(hq=30)) == 0 and seen == [1]      # P13f: tho ranh van duoc nang nha khac
 
 
 def test_upgrade_starts_from_hq(monkeypatch):

@@ -167,9 +167,6 @@ def run(ctx):
     if not ctx.cfg.get("build", {}).get("follow_quests", True):
         log.info("Tat xay theo nhiem vu - bo qua")
         return claimed
-    from bot import hqplan
-    if hqplan.yield_builder(ctx, "quests"):   # G1: tho ranh dang danh cho nha chinh
-        return claimed
     tabs = []
     if q.get("story", True):
         tabs.append(None)                # tab Chuong mo san khi vao bang
@@ -185,8 +182,9 @@ def run(ctx):
         tried = set()
         while tries < max_go:
             ctx.ensure_city()
-            b = build.builders(ctx)
-            if b and b[0] >= build.max_builders(ctx, b[1]) and not q.get("follow", True):   # P13f-1: farm 1/2 = day
+            idle, b = build.builder_state(ctx)
+            full = idle == 0                      # P13f: farm 1/2 = day
+            if full and not q.get("follow", True):
                 log.info("Tho xay dang ban %d/%d - dung xay theo nhiem vu", *b)
                 return started + claimed
             if not open_tab(ctx, tab):
@@ -214,7 +212,11 @@ def run(ctx):
                 for k, p in todo:
                     titles[k] = row_title(img, p)
                     go, kind, module = row_plan(titles[k])
-                    if go:
+                    if go and full and kind == "build":
+                        tried.add(k)
+                        log.info("Nhiem vu %s dong %d: dong xay, het tho ranh -> khong bam Den",
+                                 (tab or "chuong").split("/")[-1], k + 1)
+                    elif go:
                         keep.append((k, p))
                     elif quest_rules.forbidden(kind):
                         tried.add(k)
@@ -248,6 +250,8 @@ def run(ctx):
                 build.inv_capture(ctx, f"quests_{(tab or 'chuong').split('/')[-1]}_row{k + 1}")
                 if tab is not None:   # tab Chuong da theo huong dan game (follow) -> khong chan o day
                     remember_block(ctx, blocks, keys[k], now, first)
+            if res == "follow_build_started":
+                build.note_started(ctx)
             if res in ("started", "follow_build_started"):
                 started += 1
             ctx.back_out()

@@ -64,13 +64,39 @@ def test_repo_config_has_no_game_slot_path():
     assert bc["max_builders"] == 1 and "use_game_slots" not in bc and "max_builders_cap" not in bc
 
 
-def test_fill_steps():
-    en = {"construct": True, "upgrade": True, "mainquest": False, "quests": True}
-    assert B.fill_steps(2, 0, 2, True, en) == ["construct", "upgrade", "quests"]
-    assert B.fill_steps(0, 0, 2, True, en) == []            # het tho ranh
-    assert B.fill_steps(1, 1, 2, False, en) == []           # vong truoc khong bat dau duoc -> dung
-    assert B.fill_steps(1, 1, 2, True, en) != []
-    assert B.fill_steps(1, 2, 2, True, en) == []            # het vong
+def test_fill_state_runs_at_once_when_idle():
+    f = B.FillState()
+    assert f.decide(1, 0, 0, False) is False        # het tho
+    assert f.decide(0, 1, 0, False) is True         # tho vua ranh -> xay NGAY
+    assert f.decide(1, 0, 1, False) is False        # xay duoc -> day
+    assert f.decide(0, 1, 1, False) is True         # cong trinh ngan xong -> xay tiep
+
+
+def test_fill_state_does_not_loop_without_progress():
+    f = B.FillState()
+    assert f.decide(0, 1, 0, False) is True
+    assert f.decide(0, 1, 0, False) is False        # lan chen khong xay duoc gi -> khong lap
+    assert f.decide(0, 1, 0, True) is True          # vua co them tai nguyen -> thu lai
+    assert f.decide(0, 1, 0, True) is True
+    assert f.decide(0, 1, 0, True) is False         # het luot thu lai
+
+
+def test_fill_state_retries_when_another_builder_finishes():
+    f = B.FillState()
+    assert f.decide(1, 1, 0, False) is True         # #1: 1/2
+    assert f.decide(1, 1, 0, False) is False
+    assert f.decide(0, 2, 0, False) is True         # tho kia vua xong
+    g = B.FillState()
+    g.attempt(0)                                          # buoc xay theo thu tu thuong, khong xay duoc
+    assert g.decide(0, 1, 0, False) is False
+
+
+def test_fill_state_round_cap():
+    f, n = B.FillState(max_rounds=3), 0
+    for built in range(20):
+        n += f.decide(0, 1, built)
+    assert n == 3
+    assert B.FILL_STEPS[:2] == ("upgrade", "construct")   # nha chinh / tien quyet duoc chon truoc
 
 
 def _mem(tmp_path, busy, total=2):

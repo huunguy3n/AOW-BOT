@@ -296,12 +296,12 @@ def _remember(ctx, text, kind, progressed, now):
 
 
 def _hq_yield(ctx, kind):
-    """P4 muc 5: nhiem vu xay ma tho dang danh cho nha chinh (hqplan, len build.hq_targets) -> nhuong."""
+    """Nhiem vu xay ma het tho ranh -> khong cham (P13f; nhiem vu chua ro loai: chi bo khi tho dang lam nha chinh)."""
     if kind not in ("build", "unknown"):
         return False
     from bot import hqplan
     try:
-        return hqplan.yield_builder(ctx, "mainquest (nhiem vu xay)")
+        return hqplan.yield_builder(ctx, "mainquest (nhiem vu xay)", only_hq=kind == "unknown")
     except Exception as e:      # doc tho xay loi -> khong chan nhiem vu
         log.debug("hq_yield loi: %s", e)
         return False
@@ -360,6 +360,8 @@ def run(ctx):
             if getattr(ctx, "store", None):
                 ctx.store.update(ctx.dev.idx, mainquest_busy_until=until, mainquest_busy_why=r)
             break
+        if r == "follow_build_started":
+            build.note_started(ctx)
         progressed = r in SUCCESS or changed
         _remember(ctx, text, kind, progressed, time.time())
         if not progressed:

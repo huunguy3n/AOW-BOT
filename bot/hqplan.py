@@ -30,18 +30,18 @@ def should_attempt(ctx):
     return dom.should_attempt(load(ctx), time.time())
 
 
-def yield_builder(ctx, step):
-    """Buoc xay khac co phai nhuong tho cho nha chinh? Chi tinh khi tho dang RANH (con ban thi buoc do khong xay duoc
-    gi nen khong gay tranh). True -> buoc nen bo qua phan xay."""
+def yield_builder(ctx, step, only_hq=False):
+    """Buoc xay `step` co nen bo phan xay khong? P13f-2: CHI khi moi tho dung duoc dang BAN (farm 1/2 = day, khong thue
+    o 2). Tho ranh hoac khong doc duoc -> False (xay tiep). only_hq: chi bo khi tho dang lam nha chinh / tien quyet."""
     from bot import build
-    maxb = build.max_builders(ctx)
-    ok, why = dom.reserve(load(ctx), time.time(), maxb)
-    if not ok:
+    idle, b = build.builder_state(ctx)
+    if idle is None or idle > 0:
         return False
-    b = build.builders(ctx)
-    if b is not None and b[0] >= min(build.max_builders(ctx, b[1]), b[1]):
+    hq, why = dom.reserve(load(ctx), time.time(), idle)
+    if only_hq and not hq:
         return False
-    log.info("Bo buoc %s: %s", step, why)
+    log.info("Bo buoc %s: het tho xay (%d/%d, dung toi da %d)%s", step, b[0], b[1], build.max_builders(ctx, b[1]),
+             f" - {why}" if hq else "")
     return True
 
 

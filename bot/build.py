@@ -16,6 +16,13 @@ def builders(ctx, img=None):
     """(dang dung, tong) tho xay; None neu khong doc duoc."""
     import re
     img = img if img is not None else ctx.shot()
+    v = getattr(ctx, "v", None)
+    if v is not None:       # P13f-2: anh chu so quanh icon bua (doc duoc "1/1" ma OCR vung co dinh hay hut)
+        from bot import queues
+        p = v.find(img, queues.ICONS["build"], th=0.8, roi=queues.COLUMN)
+        got = queues.read_count(img, p[0], p[1]) if p else None
+        if got:
+            return got
     m = re.search(r"(\d)\s*/\s*(\d)", ocr.text(img, BUILDER_ROI, "0123456789/"))
     return (int(m.group(1)), int(m.group(2))) if m else None
 
@@ -31,6 +38,21 @@ def max_builders(ctx, total=None):
         except Exception:  # noqa: BLE001
             total = None
     return dom.effective_max(ctx.cfg.get("build", {}).get("max_builders", 1), total)
+
+
+def builder_state(ctx, img=None):
+    """-> (so tho dung duoc dang RANH, (dang xay, tong)) hoac (None, None) neu khong doc duoc."""
+    from aowbot.domain import builders as dom
+    b = builders(ctx, img) if img is not None else builders(ctx)
+    if b is None:
+        return None, None
+    return dom.idle_count(b[0], min(max_builders(ctx, b[1]), b[1])), b
+
+
+def note_started(ctx):
+    """Dem cong trinh da bat dau trong luot ghe (runner: lan thu xay co tien trien khong) -> 'started'."""
+    ctx.builds_started = getattr(ctx, "builds_started", 0) + 1
+    return "started"
 
 
 def screen_level(img):
@@ -165,15 +187,15 @@ QUICK_IGNORE = frozenset({"observe", "reddots", "upgrade", "construct", "quests"
 
 
 def should_quick_wait(pending, busy_total, maxb):
-    """P13d-3 (ham thuan): co nen DUNG CHO cong trinh ngan xay xong khong?
-    Khong cho khi con buoc khac trong luot (pending: ten cac buoc chua chay) - lam buoc do truoc, xa viec (drain) chay lai
-    upgrade/construct sau; khong cho khi con tho khac RANH (busy_total = (dang xay, tong)) - tho do xay tiep ngay.
-    Cho chi khi khong con viec gi khac (cho se khong chan ai)."""
+    """(ham thuan) Vua bat dau xay - co DUNG CHO cong trinh ngan xong khong? -> (cho?, ly do).
+    P13f-2: con tho dung duoc RANH (busy_total = (dang xay, tong)) -> khong cho, ben goi XAY TIEP NGAY. Moi tho da ban
+    va con buoc khac trong luot (pending) -> lam buoc do; runner doc lai tho sau moi buoc, ranh la xay tiep ngay.
+    Het tho va khong con viec gi khac -> cho (khong chan ai)."""
     if busy_total is not None and busy_total[0] < min(maxb, busy_total[1]):
-        return False, "con tho khac ranh - xay tiep, khong cho"
+        return False, "con tho ranh - xay tiep ngay"
     others = sorted(n for n in (pending or ()) if n not in QUICK_IGNORE)
     if others:
-        return False, f"con viec khac trong luot ({','.join(others[:4])}) - lam truoc, quay lai xay sau"
+        return False, f"tho dang ban het - lam viec khac ({','.join(others[:4])}), tho ranh la xay tiep"
     return True, ""
 
 
@@ -213,27 +235,41 @@ def free_speedup(ctx):
 
 
 def quick_wait(ctx):
-    """Vua bat dau xay: cong trinh nho xay NHANH (thanh tien do tren thanh pho con <= build.quick_s giay) thi cho xong
-    roi tra True de ben goi xay tiep ngay, thay vi bo di tho ranh (chu du an 2026-11-22: 'xay nhanh thi xay lien tuc').
-    Tran: build.quick_total_s giay cho / luot ghe. Khong doc duoc thoi gian xay -> False (xay lau hoac chua ro)."""
+    """Goi sau khi bat dau 1 cong trinh. -> True khi tho RANH (ben goi xay tiep ngay): con ranh san (nang cap tuc thi /
+    tho thu 2 cua #1), vua bam 'Mien phi' xong, hoac vua cho xong cong trinh ngan (chu du an 2026-11-22: 'xay nhanh thi
+    xay lien tuc'; thanh tien do <= build.quick_s giay, tran build.quick_total_s giay / luot). False = moi tho da ban."""
     from bot.modules.observe import progress_bars
     bc = ctx.cfg.get("build", {})
     quick, total_cap = bc.get("quick_s", 180), bc.get("quick_total_s", 600)
-    if quick <= 0:
-        return False
-    used = getattr(ctx, "_quick_waited", 0.0)
-    if used >= total_cap:
-        return False
+
+    def free_now():
+        idle, b = builder_state(ctx)
+        if idle:
+            ctx.last_build_s = None
+            log.info("Xay: con tho ranh (%d/%d, dung toi da %d) - xay tiep ngay", b[0], b[1], max_builders(ctx, b[1]))
+        return bool(idle), b
+
+    ctx.ensure_city()
+    free, b = free_now()
+    if free:
+        return True
+    pressed = 0
     try:
-        free_speedup(ctx)         # P13d-3: co moc 'Mien phi' thi bam (0 kim cuong), roi moi tinh co cho khong
-    except Exception as e:        # noqa: BLE001 - loi o day khong duoc lam hong buoc xay
+        pressed = free_speedup(ctx)   # P13d-3: co moc 'Mien phi' thi bam (0 kim cuong), roi moi tinh co cho khong
+    except Exception as e:            # noqa: BLE001 - loi o day khong duoc lam hong buoc xay
         log.warning("Tang toc mien phi: loi %s", e)
         ctx.ensure_city()
     ctx.ensure_city()
-    ok_wait, why_wait = should_quick_wait(getattr(ctx, "visit_pending", None), None,
-                                          max_builders(ctx, None))
+    if pressed:
+        free, b = free_now()
+        if free:
+            return True
+    ok_wait, why_wait = should_quick_wait(getattr(ctx, "visit_pending", None), b, max_builders(ctx, b[1] if b else None))
     if not ok_wait:
         log.info("Xay: %s", why_wait)
+        return False
+    used = getattr(ctx, "_quick_waited", 0.0)
+    if quick <= 0 or used >= total_cap:
         return False
     known = getattr(ctx, "last_build_s", None)      # thoi gian xay doc duoc tren man Tang cap / Xay dung truoc khi bam
     ctx.last_build_s = None
@@ -243,13 +279,11 @@ def quick_wait(ctx):
         return False
     t0 = time.time()
     deadline = t0 + ts[0] + 6
-    maxb = max_builders(ctx)
     log.info("Xay nhanh (con %d s <= %d s) - cho xong de xay tiep", ts[0], quick)
     while time.time() < deadline:
         time.sleep(4)
         ctx.wd_reset(getattr(ctx, "step_limit", None))   # dang cho co chu dich: dem lai watchdog, giu gioi han buoc
-        b = builders(ctx)
-        if b is not None and b[0] < min(maxb, b[1]):
+        if builder_state(ctx)[0]:
             break
     ctx._quick_waited = used + (time.time() - t0)
     ctx.ensure_city()
@@ -342,13 +376,13 @@ def upgrade_here(ctx, depth=0, max_depth=4, late=False):
         # da tang -> la thanh cong, khong phai 'blocked' (do #4 2026-11-22: Radar 1 -> 2 'Tang cap thanh cong!')
         log.info("Da nang cap xong ngay (cap %s -> %s)", lv, lv2)
         ctx.back_out()
-        return "started"
+        return note_started(ctx)
     if upgraded_ok(img):
         # P4: "Tang cap thanh cong!" (nang ngay mien phi / cong trinh nho) - man van mo trang cap ke tiep nen nut Tang cap
         # con -> truoc bi tinh 'blocked' (7/7 anh build_blocked 22/11) -> ke hoach nha chinh lui 1 gio vo ly
         log.info("Tang cap thanh cong (cap %s -> %s)", lv, lv2 if lv2 is not None else "?")
         ctx.back_out()
-        return "started"
+        return note_started(ctx)
     if ctx.v.find(img, "build/btn_upgrade") or not ctx.is_home():
         log.info("Khong nang cap duoc (thieu tai nguyen / het tho?) - dong")
         ctx.save_debug("build_blocked")
@@ -356,4 +390,4 @@ def upgrade_here(ctx, depth=0, max_depth=4, late=False):
         ctx.back_out()
         return "blocked"
     log.info("Da bat dau nang cap cong trinh (cap %s -> %s)", lv, (lv or 0) + 1)
-    return "started"
+    return note_started(ctx)

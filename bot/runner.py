@@ -40,6 +40,12 @@ def retry_after_recover(name, res, retried):
     return name != "observe" and res in ("err", "stuck") and name not in retried
 
 
+def with_fill(rest, fill, mods):
+    """Ham thuan P13f-2: chen cac buoc `fill` len dau hang doi con lai `rest` (buoc dang cho o sau duoc keo len, khong
+    chay 2 lan) -> hang doi moi. Het tho giua chung -> runner tra ve `rest` tru cac buoc da chay."""
+    return [(n, mods[n]) for n in fill] + [x for x in rest if x[0] not in fill]
+
+
 class Stop(Exception):
     pass
 
@@ -436,36 +442,36 @@ class Runner:
             self.store.runner(state="stopped")
             log.info("Runner da dung")
 
-    def _fill_builders(self, ctx, idx, cfg, enabled, st, t_visit):
-        """P13e-2: truoc observe - doc lai tho xay; con tho RANH thi chay lai cac buoc xay (construct, upgrade, mainquest,
-        quests) toi `build.fill_rounds` vong, dung khi vong truoc khong bat dau them viec nao. -> ten buoc can chen."""
-        bc = cfg.get("build") or {}
+    def _builder_idle_now(self, ctx):
+        """So tho dung duoc dang ranh (doc hang cho xay tren thanh pho) -> (ranh, (dang xay, tong)) | (None, None)."""
+        ctx.wd_reset(120)            # ngoai vong buoc: dung de gioi han gio cua buoc truoc danh Stuck
+        idle, b = build.builder_state(ctx)
+        if b is None:
+            ctx.ensure_city()
+            idle, b = build.builder_state(ctx)
+        if b is not None:
+            self.mem.set_fact(ctx.dev.idx, "builders_busy", b[0])
+        return idle, b
+
+    def _fill_builders(self, ctx, cfg, allowed, fs, t_visit, after, ret):
+        """P13f-2: sau buoc `after` (tra `ret`) - tho RANH -> ten cac buoc xay can chay NGAY truoc buoc ke (hoac [])."""
         if time.time() - t_visit > (cfg.get("drain") or {}).get("max_visit_min", 30) * 60 + 600:
             return []
         try:
-            if st["marks"] is not None:       # vong truoc: co buoc nao lam duoc viec khong?
-                st["progressed"] = any(drain.worked(ctx.visit_done.get(n)) for n in st["marks"])
-            ctx.ensure_city()
-            qs = queues.read(self.vision, ctx.shot(), observe.known_totals(ctx))
-            bq = qs.get("build")
-            if not bq:
+            idle, b = self._builder_idle_now(ctx)
+            if b is None:
                 return []
-            maxb = build.max_builders(ctx, bq[1])
-            idle = builders_dom.idle_count(bq[0], min(maxb, bq[1]))
-            steps = builders_dom.fill_steps(idle, st["rounds"], int(bc.get("fill_rounds", 2)), st["progressed"], enabled)
-        except Exception as e:   # khong de loi doc hang cho lam hong luot ghe
-            log.warning("Lap tho ranh: loi %s", e)
+            gained = (after not in builders_dom.FILL_STEPS and drain.worked(ret)
+                      and "upgrade" in drain.UNLOCKS.get(after, ()))
+            if not fs.decide(b[0], idle, getattr(ctx, "builds_started", 0), gained):
+                return []
+        except (Exception, Stuck) as e:   # khong de loi doc hang cho lam hong luot ghe
+            log.warning("Tho ranh: loi %s", e)
             return []
-        if not steps:
-            if st["rounds"]:
-                log.info("Lap tho ranh: dung sau %d vong (%d tho ranh)", st["rounds"], idle)
-            return []
-        st["rounds"] += 1
-        st["marks"] = steps
-        for n in steps:   # ret cu khong duoc tinh la 'lam duoc viec' o vong nay (buoc co the bi stepgate bo qua)
-            ctx.visit_done.pop(n, None)
-        log.info("Lap tho ranh vong %d: %d/%d tho dang xay, con %d ranh -> chay lai %s", st["rounds"], bq[0], maxb, idle,
-                 ",".join(steps))
+        steps = [n for n in builders_dom.FILL_STEPS if allowed.get(n)]
+        if steps:
+            log.info("Tho ranh sau buoc %s: %d/%d dang xay, con %d ranh -> xay NGAY (%s) [lan %d]", after, b[0], b[1],
+                     idle, ",".join(steps), fs.rounds)
         return steps
 
     def defend_now(self, idx):
@@ -757,8 +763,15 @@ class Runner:
             qi, done, rerun = 0, {}, collections.Counter()
             retried = set()           # P12-6: buoc da thu lai sau khi cuu may treo
             drained = False
-            fill_state = {"rounds": 0, "progressed": True, "marks": None}   # P13e-2: lap tho ranh cuoi luot
-            fill_off = not (cfg.get("build") or {}).get("fill_idle", True)
+            # P13f-2: sau MOI buoc, tho ranh -> chen cac buoc xay truoc buoc ke (ke ca buoc khong nam trong luot lich)
+            bc = cfg.get("build") or {}
+            fill_state = builders_dom.FillState(int(bc.get("fill_rounds", 8)), int(bc.get("fill_retries", 2)))
+            fill_on = bool(bc.get("fill_idle", True)) and not short and not forced
+            fill_allowed = {n: bool(enabled.get(n) if explicit else cfg["modules"].get(n))
+                            and self.mem.backoff_until(idx, n) <= time.time() for n in builders_dom.FILL_STEPS}
+            if ctx.quests_claim_only:
+                fill_allowed["quests"] = False
+            last_ran, block, final_done = None, None, False   # block: lan chen dang chay (xem with_fill)
             ctx.visit_done = done   # reddots: biet buoc nao vua chay xong ma khong lam duoc gi
             ctx.ally_mine = None   # P13b: None | 'deferred' (hoan cuoi luot) | 'sent' | 'done'
             ctx.visit_kinds = set()   # P13-2: viec reddots da xu ly trong lan ghe nay (rewards / mission khong lam lai)
@@ -766,6 +779,26 @@ class Runner:
             dcfg = cfg.get("drain") or {}
             t_visit = time.time()
             while qi < len(queue):
+                if last_ran is not None and fill_on:
+                    nxt = queue[qi][0]
+                    if block and nxt in block[0]:   # dang trong lan chen: het tho ranh -> tra hang doi ve thu tu cu
+                        try:
+                            full = self._builder_idle_now(ctx)[0] == 0
+                        except (Exception, Stuck) as e:
+                            log.warning("Tho ranh: loi %s", e)
+                            full = False
+                        if full:
+                            ran = block[2] - block[0]
+                            queue[qi:] = [x for x in block[1] if x[0] not in ran]
+                            block, last_ran = None, None
+                            continue
+                    elif nxt not in drain.HEAD and nxt not in builders_dom.FILL_STEPS:
+                        fill = self._fill_builders(ctx, cfg, fill_allowed, fill_state, t_visit, *last_ran)
+                        if fill:
+                            block = (set(fill), queue[qi:], frozenset(fill))
+                            queue[qi:] = with_fill(queue[qi:], fill, dict(ORDER))
+                            enabled = {**enabled, **dict.fromkeys(fill, True)}
+                last_ran = None
                 name, mod = queue[qi]
                 qi += 1
                 if not short and name != "observe" and not forced and self._timed_due(idx, cfg):
@@ -781,6 +814,7 @@ class Runner:
                         queue[qi - 1:] = [("observe", observe)]
                         name, mod = queue[qi - 1]
                         drained = True                 # khong xa viec them - nhuong luong ngay
+                        fill_on = False
                 if short and name != "observe" and time.time() - t_visit0 > tcfg["timed_login_visit_max_min"] * 60:
                     log.info("-- Bo buoc %s: luot ngan dang nhap hen gio da qua %d phut", name,
                              tcfg["timed_login_visit_max_min"])
@@ -797,12 +831,8 @@ class Runner:
                             by = dict(ORDER)
                             queue[qi - 1:qi - 1] = [(n, by[n]) for n in extra]
                             name, mod = queue[qi - 1]
-                if name == "observe" and not short and not forced and not fill_off:
-                    fill = self._fill_builders(ctx, idx, cfg, enabled, fill_state, t_visit)   # P13e-2
-                    if fill:
-                        by = dict(ORDER)
-                        queue[qi - 1:qi - 1] = [(n, by[n]) for n in fill]
-                        name, mod = queue[qi - 1]
+                if block:
+                    block[0].discard(name)
                 if name != "observe" and not enabled.get(name):
                     continue
                 hq_ = self.mem.fact(idx, "hq_level")
@@ -851,7 +881,8 @@ class Runner:
                         done["defense"] = 1   # P5-3: lan ghe co bi danh -> heal bat buoc (stepgate.FIGHT_STEPS)
                         st.update(idx, step=name)
                     ctx.visit_pending = {n for n, _ in queue[qi:]}   # P10-5: reddots de cham do cho buoc con cho
-                    if name == "observe" and not short and not forced and enabled.get("shield"):
+                    final, claimed_end = name == "observe" and not short and not forced and not final_done, None
+                    if final and enabled.get("shield"):
                         try:   # P10-7: khien CUOI luot - tat / con < 1h -> gia han (dau luot da chay buoc shield)
                             with span("shield_end"):
                                 log.info("Khien cuoi luot: kiem lai")
@@ -859,20 +890,34 @@ class Runner:
                         except Exception as e:
                             log.warning("Khien cuoi luot: loi %s", e)
                             ctx.ensure_city()
-                    if name == "observe" and not short and not forced and enabled.get("reddots", True):
+                    if final and enabled.get("reddots", True):
                         try:   # P10-5: nhan qua cuoi luot (thu bao cao moi, qua lien minh, chieu mo) truoc observe
                             with span("final_claims"):
-                                reddots.final_claims(ctx)
+                                claimed_end = reddots.final_claims(ctx)
                         except Exception as e:
                             log.warning("Nhan qua cuoi luot: loi %s", e)
                             ctx.ensure_city()
                         if reddots.rcfg(cfg)["final_sweep"]:
                             try:   # P13d-1: quet lai 1 vong cham do cuoi luot (bo qua tan suat + tri nho vo ich)
                                 with span("reddots_final"):
-                                    reddots.run(ctx, final=True)
+                                    claimed_end = reddots.run(ctx, final=True) or claimed_end
                             except Exception as e:
                                 log.warning("Quet cham do cuoi luot: loi %s", e)
                                 ctx.ensure_city()
+                    if final:
+                        final_done = True
+                        # P13f-2: nhan qua cuoi luot mat vai phut -> cong trinh ngan da xong: xay tiep roi moi observe
+                        fill = (self._fill_builders(ctx, cfg, fill_allowed, fill_state, t_visit, "reddots", claimed_end)
+                                if fill_on else [])
+                        if fill:
+                            rest = [(name, mod)] + queue[qi:]
+                            block = (set(fill), rest, frozenset(fill))
+                            queue[qi:] = with_fill(rest, fill, dict(ORDER))
+                            enabled = {**enabled, **dict.fromkeys(fill, True)}
+                            continue
+                        ctx.wd_reset(self._step_limit(cfg, name))
+                    if name in builders_dom.FILL_STEPS and not (name == "quests" and ctx.quests_claim_only):
+                        fill_state.attempt(getattr(ctx, "builds_started", 0))
                     ret = mod.run(ctx)
                     done[name] = ret
                     if len(ctx.debug_shots) > n0:  # module tu luu anh = co cho khong on (ket, khong thay...)
@@ -939,6 +984,7 @@ class Runner:
                     self.mem.log_perf(visit, idx, name, pf.drain())
                 self._backoff(cfg, idx, name, res, note)
                 self._idle_backoff(cfg, idx, name, res, ret)
+                last_ran = (name, ret)
                 if ctx.nav and name not in ("tutorial", "observe"):
                     lost = 0 if any(a == "done" for _, a, _ in ctx.nav) else lost + 1
                 if lost >= 3:

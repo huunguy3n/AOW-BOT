@@ -5,9 +5,10 @@ Tim nha chinh: tu ban do the gioi bam ve thanh pho -> camera dat NHA CHINH (Xuon
 kiem tren anh thao tac tay #1/#3 2026-11-21). Cham -> vong menu cong trinh -> kiem nhan "Xuong kien truc" -> nang cap
 bang build.upgrade_here: thieu dieu kien -> nut "Nhay" sang cong trinh dieu kien (chuoi toi build max_depth), het tai
 nguyen / het tho -> dong. KHONG BAO GIO bam "Tang cap ngay" (kim cuong, ADR-0008) - build.upgrade_here giu luat do.
-Nha chinh dang xay (tho thu 2 con ranh, #1) -> de buoc 'quests' dung tho con lai.
+Nha chinh / tien quyet dang xay ma con tho ranh, hoac thieu dieu kien -> nang nha khac (other_buildings, P13f-2).
 """
 import logging
+import time
 
 from bot import build, hqplan, ocr
 from aowbot.domain.blockers import normalize
@@ -186,38 +187,146 @@ def goto_hq(ctx):
     return None
 
 
+# ---- P13f-2: nha chinh khong lam duoc ngay -> nang cong trinh huu ich khac (nha tai nguyen) cho tho khong ngoi khong
+# templates/build/res_*.png cat tu anh ADB (Xuong Thuc Pham, thap tai nguyen den xanh); them kieu moi: tha them res_*.png.
+RES_TH = 0.66                          # 253 anh da luu 24-26/11: dung nha >= 0.69, cho khac <= 0.59
+# vung HUD / nut noi tren man thanh pho (x, y, w, h) - khong bao gio cham ("Cong nhan" thue tho, "Qua", goi tra phi...)
+RES_BLOCK = ((0, 0, 540, 190), (0, 780, 540, 180), (0, 190, 70, 590), (0, 560, 160, 220), (400, 100, 140, 460),
+             (470, 560, 70, 220))
+
+
+def res_candidates(img, tpls, th=RES_TH, block=RES_BLOCK):
+    """Ham thuan: -> [(x, y, diem)] tam cac nha tai nguyen tren anh thanh pho, diem giam dan, bo vung HUD."""
+    import cv2
+    import numpy as np
+    hits = []
+    for t in tpls:
+        if t is None:
+            continue
+        r = cv2.matchTemplate(img, t, cv2.TM_CCOEFF_NORMED)
+        for y, x in zip(*np.where(r >= th)):
+            hits.append((float(r[y, x]), int(x) + t.shape[1] // 2, int(y) + t.shape[0] // 2))
+    out = []
+    for s, x, y in sorted(hits, reverse=True):
+        if any(bx <= x < bx + w and by <= y < by + h for bx, by, w, h in block):
+            continue
+        if all(abs(x - ox) >= 70 or abs(y - oy) >= 70 for ox, oy, _ in out):
+            out.append((x, y, s))
+    return out
+
+
+def _res_templates(ctx):
+    import glob
+    import os
+    names = sorted("build/" + os.path.basename(f)[:-4] for f in glob.glob(os.path.join(ctx.v.dir, "build", "res_*.png")))
+    return [ctx.v.load(n, probe=True) for n in names]
+
+
+def upgrade_resource(ctx, tries=3, pans=4):
+    """Cham nha tai nguyen thay tren man (luot toi da `pans` huong) -> build.upgrade_here. Chi bam nut Tang cap / Nhay /
+    'Mien phi' nhu moi nang cap khac; khong kim cuong. -> 'started' | 'no_builder' | None."""
+    tpls = _res_templates(ctx)
+    if not any(t is not None for t in tpls):
+        log.warning("Thieu anh mau nha tai nguyen: templates/build/res_*.png")
+        return None
+    ctx.ensure_city()
+    img = ctx.settle()
+    pos, done = (0, 0), 0
+    for step in range(pans + 1):
+        found = res_candidates(img, tpls)
+        if found:
+            x, y, score = found[0]
+            done += 1
+            ctx.tap(x, y, wait=1.5)
+            res = build.upgrade_here(ctx, max_depth=2)
+            log.info("Nang nha khac: nha tai nguyen @%d,%d (%.2f) -> %s", x, y, score, res)
+            ctx.back_out()
+            ctx.ensure_city()
+            if res in ("started", "no_builder"):
+                return res
+            if done >= tries:
+                break
+        if step >= pans:
+            break
+        nx, ny = PAN_RING[step]
+        img = _drag(ctx, (nx - pos[0]) * PAN_DX, (ny - pos[1]) * PAN_DY)
+        pos = (nx, ny)
+    return None
+
+
+def other_buildings(ctx):
+    """Tho con ranh ma nha chinh khong lam duoc ngay -> nang nha khac toi khi het tho / het viec. -> so cong trinh."""
+    bc = ctx.cfg.get("build", {})
+    if not bc.get("other_when_blocked", True):
+        return 0
+    m = getattr(ctx, "mem", None)
+    until = m.fact(ctx.dev.idx, "other_build_hold") if m else None
+    if until and float(until) > time.time():
+        log.info("Nang nha khac: lan truoc khong nang duoc gi - thu lai sau %.0f phut", (float(until) - time.time()) / 60)
+        return 0
+    built = 0
+    for _ in range(bc.get("chain_max", 6)):
+        if not build.builder_state(ctx)[0]:       # het tho ranh (hoac khong doc duoc: khong cham mo)
+            break
+        res = upgrade_resource(ctx)
+        if res != "started":
+            if res is None and not built and m:
+                m.set_fact(ctx.dev.idx, "other_build_hold", time.time() + bc.get("other_retry_min", 30) * 60)
+            break
+        built += 1
+        if not build.quick_wait(ctx):
+            break
+    return built
+
+
+def hq_chain(ctx):
+    """Nang theo nha chinh lien tiep chung nao tho con ranh. -> (so cong trinh bat dau, ket qua cuoi)."""
+    cap = ctx.cfg.get("build", {}).get("hq_max_level", 30)
+    m = getattr(ctx, "mem", None)
+    built, res = 0, "none"
+    for _ in range(ctx.cfg.get("build", {}).get("chain_max", 6)):
+        if not goto_hq(ctx):
+            ctx.back_out()
+            ctx.ensure_city()
+            hqplan.save(ctx, "none")
+            return built, "none"
+        ctx.last_busy = None
+        res = build.upgrade_here(ctx)
+        log.info("Xay theo nha chinh -> %s", res)
+        hqplan.save(ctx, res, busy_s=getattr(ctx, "last_busy", None))
+        if res == "none" and ctx.cfg.get("build", {}).get("probe_plot_lock", True):
+            build.probe_plot_lock(ctx)   # nut Nhay dan toi lo dat khoa? mo hop thoai o khoa de ghi chi phi (chua xac nhan)
+        if res == "hq_cap" and m:
+            m.set_fact(ctx.dev.idx, "hq_level", cap)
+        ctx.back_out()
+        ctx.ensure_city()
+        if res != "started":
+            break
+        built += 1
+        if not build.quick_wait(ctx):    # moi tho da ban -> roi buoc; con ranh / xay nhanh xong -> xay tiep ngay
+            break
+    return built, res
+
+
 def run(ctx):
     cap = ctx.cfg.get("build", {}).get("hq_max_level", 30)
     m = getattr(ctx, "mem", None)
     hq = m.fact(ctx.dev.idx, "hq_level") if m else None
-    if hq is not None and hq >= cap:
-        log.info("Nha chinh cap %d >= %d - bo muc tieu xay", hq, cap)
-        return 0
-    go, why = hqplan.should_attempt(ctx)
-    if not go:
-        log.info("Xay theo nha chinh: bo (%s)", why)
-        return 0
     ctx.ensure_city()
     ok, why = builder_idle(ctx)
     if not ok:
         log.info("Xay theo nha chinh: khong co tho ranh (%s)", why)
         hqplan.save(ctx, "no_builder")
         return 0
-    if not goto_hq(ctx):
-        ctx.back_out()
-        ctx.ensure_city()
-        hqplan.save(ctx, "none")
-        return 0
-    ctx.last_busy = None
-    res = build.upgrade_here(ctx)
-    log.info("Xay theo nha chinh -> %s", res)
-    hqplan.save(ctx, res, busy_s=getattr(ctx, "last_busy", None))
-    if res == "none" and ctx.cfg.get("build", {}).get("probe_plot_lock", True):
-        build.probe_plot_lock(ctx)   # nut Nhay dan toi lo dat khoa? mo hop thoai o khoa de ghi chi phi (chua xac nhan)
-    if res == "hq_cap" and m:
-        m.set_fact(ctx.dev.idx, "hq_level", cap)
-    ctx.back_out()
-    ctx.ensure_city()
-    if res == "started":
-        build.quick_wait(ctx)      # xay nhanh -> cho xong; buoc xa viec (drain) chay lai 'upgrade' de xay tiep
-    return 1 if res == "started" else 0
+    built, res = 0, "none"
+    if hq is not None and hq >= cap:
+        log.info("Nha chinh cap %d >= %d - bo muc tieu xay nha chinh", hq, cap)
+    else:
+        go, why = hqplan.should_attempt(ctx)
+        if go:
+            built, res = hq_chain(ctx)
+        else:
+            log.info("Xay theo nha chinh: bo (%s)", why)
+    if res not in ("started", "no_builder"):   # het viec / thieu dieu kien -> tho ranh lam nha khac
+        built += other_buildings(ctx)
+    return built
