@@ -80,6 +80,7 @@ Tài liệu: [Phase 0](docs/account-manager/Phase0-Technical-Feasibility-Report.
 ```
 main.py              CLI: --once --only --modules --capture --check --web
 bot/runner.py        Runner (luồng nền), ORDER các bước, vòng lặp instance, Stop an toàn giữa 2 bước
+bot/ldconfig.py      P13h: đọc/kiểm file cấu hình máy LDPlayer, ghi đúng khóa adbDebug
 bot/ctx.py           Ctx mỗi tài khoản: shot/find/tap_tpl/wait_for, ensure_city, close_popups, save_debug
 bot/device.py        LDConsole (ldconsole.exe: launch/quit/runapp/list2) + Device (adb: tap/swipe/screencap)
 bot/vision.py        Template matching OpenCV; thiếu ảnh mẫu → cảnh báo 1 lần, coi như không thấy
@@ -111,7 +112,7 @@ logs/                bot-YYYYMMDD.log, shots/ (ảnh lỗi), rec/ (bản ghi), l
 ```
 
 ### Quy ước khi viết code
-- **Màn hình cố định 540×960 dọc, DPI 240.** Mọi tọa độ/ROI trong code & config theo hệ này. Máy lỡ chạy độ phân giải khác cùng tỉ lệ (vd 720×1280) thì `bot/device.py` tự thu nhỏ khung và nhân tọa độ chạm, kèm cảnh báo (P13g) — vẫn nên đặt lại 540×960. → [ADR-0003](docs/adr/0003-he-toa-do-540x960.md)
+- **Màn hình cố định 540×960 dọc, DPI 240.** Mọi tọa độ/ROI trong code & config theo hệ này. Máy lỡ chạy độ phân giải khác cùng tỉ lệ (vd 720×1280) thì `bot/device.py` tự thu nhỏ khung và nhân tọa độ chạm, kèm cảnh báo (P13g) — vẫn nên đặt lại 540×960. **P13h:** trước khi bật máy, `LDConsole.launch` đọc `vms/config/leidian{idx}.config`; sai độ phân giải / DPI (`ldplayer.resolution`/`dpi`, riêng máy: `instances.N.ldplayer.*`) hoặc `adbDebug` ≠ 1 thì sửa **chỉ khi máy đã tắt hẳn** (`ldconsole modify --resolution` + đúng khóa `basicSettings.adbDebug`); không bao giờ đụng khóa định danh (`propertySettings.*`); `ldplayer.fix_display` false để tắt. → [ADR-0003](docs/adr/0003-he-toa-do-540x960.md)
 - Module mới: thêm file `bot/modules/<ten>.py` có `run(ctx)`, đăng ký vào `ORDER` ([runner.py](bot/runner.py)), `modules` trong [config.yaml](config.yaml) và `MODULES` trong [web/options.py](web/options.py).
 - Lỗi trong một bước không được làm chết cả lượt: runner bắt exception, lưu ảnh `logs/shots/`, gọi `ctx.ensure_city()` rồi sang bước tiếp. Module nên tự thoát về thành phố khi xong. 2 bước liên tiếp không về được thành phố → runner cứu kẹt (đóng popup, rồi khởi động lại game; `nav.rescue_max`), chỉ bỏ lượt khi cứu không được.
 - Kết quả mỗi bước (ổn / có ảnh lỗi / lỗi / kẹt) ghi vào `state.json` → `stats`, hiện bảng trên web. Watchdog (`config.yaml` → `watchdog`) ném `ctx.Stuck` (BaseException) khi màn hình đứng yên/bước quá giờ → runner `force-stop` + mở lại game. Không bắt `BaseException` trong module.

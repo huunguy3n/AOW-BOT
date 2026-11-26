@@ -17,6 +17,12 @@ ldplayer:
   recover: true            # P9-1: may treo (screencap hong sau do lai dia chi) -> ldconsole list2, khoi dong lai MAY + game
                            # (chi quit/launch/runapp - KHONG pm clear / uninstall / xoa du lieu) roi chay tiep buoc KE TIEP
   recover_max: 1           # so lan cuu toi da / luot; het -> bo luot may nay nhu truoc
+  fix_display: true        # P13h: truoc khi bat may doc vms/config/leidian{idx}.config; sai do phan giai / DPI / adbDebug
+                           # thi sua khi may DA TAT (ldconsole modify --resolution + khoa adbDebug); khong doi gi khac
+  resolution: [540, 960]   # ky vong [rong, cao]; rieng tung may: data/settings.json instances.N.ldplayer.resolution
+  dpi: 240                 # ky vong; rieng tung may: instances.N.ldplayer.dpi
+  config_settle_s: 5       # file cau hinh phai yen N giay (LDPlayer ghi xong sau khi tat) moi doc / sua
+  # config_dir: 'D:\LDPlayer\LDPlayer9\vms\config'   # mac dinh: <thu muc cua ldconsole.exe>\vms\config
 
 # adb_serials: {0: '127.0.0.1:5555'}   # (tuy chon) dia chi adb rieng cho may; mac dinh emulator-(5554 + 2 x idx)
 guide_follow: true         # sau moi buoc: game dang hien huong dan (ban tay / V) -> lam theo ngay

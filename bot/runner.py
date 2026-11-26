@@ -96,7 +96,8 @@ class Runner:
         self.base_cfg, self.store, self.vision = base_cfg, store, vision
         # SCH-X: aowbot.app.agent.AgentHooks (main.py tao) - may co schedule.mode = 'agent' do agent quyet dinh
         self.agent = agent
-        self.ld = LDConsole(base_cfg["ldplayer"])
+        # P13h: do phan giai / DPI ky vong theo may (settings.json instances.N.ldplayer)
+        self.ld = LDConsole(base_cfg["ldplayer"], lambda i: store.cfg_for(base_cfg, i).get("ldplayer"))
         self._stop = threading.Event()
         self._wake = threading.Event()
         self.queue = collections.deque()  # instance bam "Chay ngay"

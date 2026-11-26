@@ -69,7 +69,8 @@ def main(a):
     if cmd == "boot":  # bat instance + mo game + dong popup
         from bot.device import LDConsole
         from bot.ctx import Ctx
-        ld = LDConsole(cfg["ldplayer"])
+        from bot.state import Store
+        ld = LDConsole(cfg["ldplayer"], lambda i: Store().cfg_for(cfg, i).get("ldplayer"))
         ld.launch(IDX)
         d = dev()
         d.wait_ready()

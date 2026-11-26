@@ -1,9 +1,9 @@
 """Dieu khien LDPlayer (ldconsole) va ADB."""
-import subprocess, time, logging, threading
+import os, subprocess, time, logging, threading
 import cv2, numpy as np
 
 from aowbot.domain import rollout
-from bot import hang
+from bot import hang, ldconfig
 
 log = logging.getLogger("aow")
 
@@ -15,7 +15,9 @@ class ScreencapError(RuntimeError):
 class LDConsole:
     _slot = threading.Lock()   # 2 luong cung bat may: kiem tra so may + launch phai nguyen tu (khong vuot max_running)
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, cfg_for=None):
+        """cfg_for(idx) -> khoi `ldplayer` rieng cua may (settings.json instances.N.ldplayer); None = dung cfg."""
+        self.cfg, self.cfg_for = cfg, cfg_for
         self.exe = cfg["ldconsole"]
         self.boot_timeout = cfg.get("boot_timeout", 120)
         self.max_running = rollout.max_running(cfg.get("max_running", 2))   # P6: tran cung 2 may
@@ -38,8 +40,83 @@ class LDConsole:
                 out.append(int(p[0]))
         return out
 
+    def state(self, idx):
+        """Theo list2: 'on' (cot 5 = 1), 'busy' (chua vao / da roi Android nhung tien trinh may con: dang bat hoac
+        dang tat - cot 6, 7 la PID > 0), 'off' (tat han), 'unknown' (list2 khong co dong cua may)."""
+        for line in self.run("list2").splitlines():
+            p = line.split(",")
+            if len(p) > 4 and p[0] == str(idx):
+                if p[4].strip() == "1":
+                    return "on"
+                return "busy" if any(x.strip().isdigit() and int(x) > 0 for x in p[5:7]) else "off"
+        return "unknown"
+
+    def is_off(self, idx):
+        """Tat HAN (moi duoc sua cau hinh). Khong chac chan -> False."""
+        return self.state(idx) == "off" and not self.is_running(idx)
+
+    # ---------- P13h: kiem / sua cau hinh may truoc khi bat ----------
+    def check_display(self, idx):
+        """Do phan giai / DPI / adbDebug trong leidian{idx}.config khac ky vong -> canh bao; may DA TAT thi sua
+        (`ldconsole modify --resolution` + ghi dung khoa adbDebug), may dang chay thi KHONG dung vao, sua o lan bat
+        sau. -> 'ok' | 'fixed' | 'running' | 'failed' | 'unreadable' | 'skip'."""
+        lc = (self.cfg_for(idx) if self.cfg_for else None) or self.cfg
+        if not lc.get("fix_display", True):
+            return "skip"
+        path = ldconfig.config_path(lc, idx)
+        if not os.path.isfile(path):
+            log.warning("[#%s] Khong thay file cau hinh LDPlayer %s - bo qua kiem tra man hinh / ADB", idx, path)
+            return "skip"
+        expected = ldconfig.expected_display(lc)
+        settle = float(lc.get("config_settle_s", 5))
+        off = self.is_off(idx)
+        try:
+            if off and not ldconfig.wait_quiet(path, settle):
+                log.warning("[#%s] File cau hinh LDPlayer van dang bi ghi - khong sua luc nay", idx)
+                return "unreadable"
+            _, data = ldconfig.read(path)
+        except (OSError, ValueError) as e:
+            log.warning("[#%s] Khong doc duoc cau hinh LDPlayer (%s) - khong sua", idx, e)
+            return "unreadable"
+        bad = ldconfig.problems(data, expected)
+        if not bad:
+            return "ok"
+        log.warning("[#%s] Cau hinh LDPlayer sai (can %dx%d, DPI %d, adbDebug 1). Gia tri cu: %s", idx, *expected,
+                    ldconfig.describe(bad))
+        if not off:
+            log.warning("[#%s] May chua tat han -> KHONG modify / ghi file; sua o lan bat sau khi may da tat", idx)
+            return "running"
+        return self._fix_display(idx, path, expected, settle, bad)
+
+    def _fix_display(self, idx, path, expected, settle, bad):
+        """May DA TAT: chi doi do phan giai, DPI (ldconsole modify) va adbDebug (ghi file)."""
+        if ldconfig.RES_KEY in bad or ldconfig.DPI_KEY in bad:
+            self.run("modify", "--index", idx, "--resolution", "%d,%d,%d" % expected)
+            if not ldconfig.wait_quiet(path, settle):
+                log.warning("[#%s] File cau hinh LDPlayer van dang bi ghi sau modify - khong ghi them", idx)
+                return "failed"
+        if ldconfig.ADB_KEY in ldconfig.problems(ldconfig.read(path)[1], expected):
+            if not self.is_off(idx):
+                log.warning("[#%s] May vua duoc bat -> khong ghi file cau hinh", idx)
+                return "running"
+            ldconfig.enable_adb_debug(path)
+        left = ldconfig.problems(ldconfig.read(path)[1], expected)
+        if left:
+            log.error("[#%s] Sua cau hinh LDPlayer chua duoc, con sai: %s", idx, ldconfig.describe(left))
+            return "failed"
+        log.info("[#%s] Da sua cau hinh LDPlayer: %dx%d, DPI %d, adbDebug 1", idx, *expected)
+        return "fixed"
+
+    def _preflight(self, idx):
+        """check_display khong duoc lam hong viec bat may."""
+        try:
+            self.check_display(idx)
+        except Exception as e:
+            log.warning("[#%s] Kiem cau hinh LDPlayer loi: %s: %s", idx, type(e).__name__, e)
+
     def launch(self, idx):
         if self.is_running(idx):
+            self._preflight(idx)     # may dang chay: chi canh bao neu sai
             return True
         # gioi han so may chay cung luc (chu du an: toi da 2) - tinh ca may do tien trinh/nguoi khac bat
         t0 = time.time()
@@ -47,6 +124,7 @@ class LDConsole:
             with LDConsole._slot:
                 run = self.running()
                 if len(run) < self.max_running:
+                    self._preflight(idx)     # ngay truoc khi bat: may dang tat thi sua duoc cau hinh
                     self.run("launch", "--index", idx)
                     t1 = time.time()   # giu khoa toi khi may moi hien 'dang chay' -> luong kia dem dung
                     while time.time() - t1 < 30 and idx not in self.running():
@@ -65,16 +143,22 @@ class LDConsole:
         return False
 
     def quit(self, idx, wait=25):
-        """Tat may va KIEM TRA da tat (2026-11-21: may con bat sau luot -> chiem cho, may khac phai cho).
-        Lan 1 khong tat -> goi quit lan 2. -> True neu da tat."""
+        """Tat may NHE (ldconsole quit, khong kill tien trinh) va KIEM TRA da tat (2026-11-21: may con bat sau luot
+        -> chiem cho, may khac phai cho). P13h: cho tat HAN (tien trinh may thoat, de LDPlayer ghi xong cau hinh).
+        Lan 1 khong tat -> goi quit lan 2. -> True neu da tat (hoac Android da tat ma tien trinh chua thoat)."""
+        state = "unknown"
         for _ in range(2):
             self.run("quit", "--index", idx)
             t0 = time.time()
             while time.time() - t0 < wait:
-                if idx not in self.running():
+                state = self.state(idx)
+                if state == "off":
                     return True
                 time.sleep(2)
             log.warning("[#%s] ldconsole quit chua tat may sau %d s -> thu lai", idx, wait)
+        if state == "busy":
+            log.warning("[#%s] Android da tat nhung tien trinh may chua thoat", idx)
+            return True
         log.error("[#%s] Khong tat duoc may", idx)
         return False
 

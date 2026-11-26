@@ -138,8 +138,8 @@ def main():
                             print("  co: " + os.path.relpath(os.path.join(root, fn), os.path.join(BASE, "templates")).replace("\\", "/"))
         return
 
-    ld = LDConsole(cfg["ldplayer"])
     if a.capture is not None:
+        ld = LDConsole(cfg["ldplayer"], lambda i: Store().cfg_for(cfg, i).get("ldplayer"))
         ld.launch(a.capture)
         dev = Device(cfg["ldplayer"]["adb"], a.capture)
         dev.wait_ready()
