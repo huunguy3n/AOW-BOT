@@ -137,13 +137,25 @@ def recenter_hq(ctx):
     return False
 
 
-def goto_hq(ctx):
-    """-> toa do icon Tang cap tren vong menu nha chinh, hoac None."""
-    recentered = recenter_hq(ctx)   # the gioi -> thanh pho: camera ve gan nha chinh
-    img = ctx.settle()
+def hq_centered(hit, tol=(90, 120)):
+    """Ham thuan: nha chinh (x, y, diem) dang nam giua man (quanh CENTER)?"""
+    return bool(hit) and abs(hit[0] - CENTER[0]) <= tol[0] and abs(hit[1] - CENTER[1]) <= tol[1]
+
+
+def goto_hq(ctx, again=False):
+    """-> toa do icon Tang cap tren vong menu nha chinh, hoac None. again: lan cham nha chinh KE TIEP trong cung chuoi -
+    camera con thay nha chinh giua man (anh mau) thi khong ra the gioi lai (P13f-3)."""
     names = _names(ctx)
     tpls = _templates(ctx)
     dys = [TAP_DY.get(n, 0) for n in names]
+    img, recentered, move = None, False, True
+    if again and any(t is not None for t in tpls):
+        ctx.ensure_city()
+        img = ctx.settle()
+        move = not hq_centered(find_hq(img, tpls, dys=dys))
+    if move:
+        recentered = recenter_hq(ctx)   # the gioi -> thanh pho: camera ve gan nha chinh
+        img = ctx.settle()
     if not any(t is not None for t in tpls):
         log.warning("Thieu anh mau nha chinh: templates/build/hq_emblem_*.png")
         return None
@@ -285,7 +297,8 @@ def hq_chain(ctx):
     m = getattr(ctx, "mem", None)
     built, res = 0, "none"
     for _ in range(ctx.cfg.get("build", {}).get("chain_max", 6)):
-        if not goto_hq(ctx):
+        ic = goto_hq(ctx, again=True) if built else goto_hq(ctx)
+        if not ic:
             ctx.back_out()
             ctx.ensure_city()
             hqplan.save(ctx, "none")

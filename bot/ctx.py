@@ -13,6 +13,8 @@ class Stuck(BaseException):
 
 
 OUTSIDE = (12, 480)     # P12-6: diem ngoai popup (mep trai giua man, popup thuong cach mep >= 25 px)
+BACK_CONFIRM_S = 0.5    # 2 khung "khong o thanh pho" cach nhau it nhat ngan nay truoc khi bam Back (ban do dang truot)
+POPUP_QUIET_S = 1.5     # P13f-3: dang cho popup ke tiep ma thanh pho / ban do hien lien tuc ngan nay -> khong cho nua
 
 
 def popup_escape(scr, pstale):
@@ -67,11 +69,42 @@ class Ctx:
         steer.wait_battle()   # may kia dang lai quan -> nhuong CPU
         self._img = self.dev.screencap()
         self._img_t = time.time()
+        self._img_seq = getattr(self.dev, "act_seq", None)
         if self._pend:
             self._exp_end(self._img)
         if self.wd_enabled:
             self._watch(self._img)
         return self._img
+
+    def recent_frame(self, max_age=1.0):
+        """P13f-3: khung vua chup (<= max_age giay, bot khong cham / vuot / Back gi tu luc do) -> dung lai, khong chup
+        them (~0,3 s/lan chup); nguoc lai None."""
+        seq = getattr(self.dev, "act_seq", None)
+        if self._img is None or seq is None or getattr(self, "_img_seq", None) != seq:
+            return None
+        return self._img if time.time() - self._img_t <= max_age else None
+
+    def wait_change(self, before, cap, step=0.15):
+        """P13f-3: thay cho ngu co dinh sau thao tac chuyen man - chup toi khi man DA DOI (khac `before`) va DUNG YEN
+        (2 khung lien tiep giong nhau), toi da `cap` giay -> khung cuoi (cung la self._img) | None neu chup loi."""
+        from bot import screens
+        seq = getattr(self.dev, "act_seq", None)
+        t0, prev = time.time(), None
+        time.sleep(min(step, cap))
+        while True:
+            try:
+                img = self.dev.screencap(tries=1)
+            except Exception as e:                      # noqa: BLE001 - chup loi: cho het tran, lan shot() sau xu ly
+                log.debug("wait_change: %s", e)
+                time.sleep(max(0.0, cap - (time.time() - t0)))
+                return None
+            if prev is not None and screens.same(prev, img) and (before is None or not screens.same(before, img)):
+                break
+            if time.time() - t0 >= cap:
+                break
+            prev = img
+        self._img, self._img_t, self._img_seq = img, time.time(), seq
+        return img
 
     def find(self, name, fresh=True, **kw):
         img = self.shot() if fresh or self._img is None else self._img
@@ -87,8 +120,8 @@ class Ctx:
         self._after_tap(wait * self.wait_scale)
         return True
 
-    def tap_first(self, names, wait=1.2, **kw):
-        img = self.shot()
+    def tap_first(self, names, wait=1.2, img=None, **kw):
+        img = img if img is not None else self.shot()
         for n in names:
             p = self.v.find(img, n, **kw)
             if p:
@@ -275,31 +308,51 @@ class Ctx:
         self.tap(p[0], p[1], wait=0.8, tpl="common/btn_cancel_exit")
         return True
 
-    def close_popups(self, rounds=5, settle=0):
-        """settle>0: khi het popup thi doi them settle giay, xem co popup moi hien tiep khong
-        (luc vao game cac popup hien noi tiep nhau)."""
+    def close_popups(self, rounds=5, settle=0, img=None):
+        """settle>0: khi het popup thi cho toi da settle giay xem co popup moi hien tiep khong (luc vao game cac popup
+        hien noi tiep nhau). img: khung vua chup (recent_frame) cho vong dau - moi vong chi chup 1 lan."""
         retried = False
         for _ in range(rounds):
-            if self.cancel_exit(why="close_popups"):
+            img = img if img is not None else self.shot()
+            if self.cancel_exit(img, why="close_popups"):
+                img = None
                 continue
-            if self.tap_first(self.POPUP_CLOSERS, wait=0.8):
-                retried = False
+            if self.tap_first(self.POPUP_CLOSERS, wait=0.8, img=img):
+                retried, img = False, None
                 continue
             if settle and not retried:
                 retried = True
-                time.sleep(settle)
+                img = self._await_popup(settle)
                 continue
             return
+
+    def _await_popup(self, settle):
+        """P13f-3: thay cho ngu co dinh `settle` giay: thay nut dong popup -> tra khung do ngay; thanh pho / ban do hien
+        lien tuc POPUP_QUIET_S giay ma khong co popup -> thoi cho; toi da `settle` giay. -> khung cuoi."""
+        t0, home_since = time.time(), None
+        while True:
+            img = self.shot()
+            if any(self.v.find(img, n) for n in ["common/btn_cancel_exit", *self.POPUP_CLOSERS]):
+                return img
+            now = time.time()
+            if self.is_home(img):
+                home_since = home_since or now
+            else:
+                home_since = None
+            if now - t0 >= settle or (home_since and now - home_since >= POPUP_QUIET_S):
+                return img
+            time.sleep(0.2)
 
     def back_out(self, rounds=4):
         """Thoat cac bang dang mo bang nut quay lai (hoac phim Back).
         Nut "Dong" cua man ket qua tran bam TRUOC nut "<" (chu du an 2026-11-20: "bam Dong truoc, dang bam < truoc")."""
         for _ in range(rounds):
-            if self.is_home():
+            img = self.shot()                     # P13f-3: 1 khung cho ca 'o thanh pho?' va tim nut
+            if self.is_home(img):
                 return
             if not self.tap_first(["campaign/btn_done", "campaign/btn_done_lose", "common/btn_back", "common/btn_back2"]
-                                  + self.POPUP_CLOSERS, wait=0.8):
-                if not self.press_back("back_out"):
+                                  + self.POPUP_CLOSERS, wait=0.8, img=img):
+                if not self.press_back("back_out", checked=True):
                     return                       # da ve thanh pho / ban do
 
     def safe_back(self):
@@ -307,26 +360,32 @@ class Ctx:
         (chu du an 2026-11-20: "vi sao instance nay lien tuc muon roi tro choi"). -> True neu da bam."""
         return self.press_back("key_back")
 
-    def press_back(self, why):
+    def press_back(self, why, checked=False):
         """MOI lan bam phim Back cua bot di qua day (chu du an 2026-11-21: bam thoat game ~130 lan/ngay).
         - Dang o thanh pho / ban do -> KHONG bam (Back o do = hop thoai "Roi tro choi?").
-        - Kiem 2 lan cach 0,5 s: ngay sau khi xuat chinh / chuyen ban do, ban do con truot -> is_home doc truot 1 lan.
-        - Van hien hop thoai thoat -> Huy + ghi canh bao kem ly do (de biet ai con bam sai).
+        - Kiem 2 khung cach nhau 0,5 s: ngay sau khi xuat chinh / chuyen ban do, ban do con truot -> is_home doc truot.
+          checked=True: ben goi vua chup khung dau (self._img) va thay khong o thanh pho.
+        - Sau khi bam: cho man doi xong (toi da 0,8 s). Van hien hop thoai thoat -> Huy + ghi canh bao kem ly do.
         -> True neu da bam Back."""
+        if checked:
+            first = getattr(self, "_img_t", 0.0)
+        else:
+            first = time.time()
+            if self.is_home():
+                return False
+        time.sleep(min(BACK_CONFIRM_S, max(0.0, first + BACK_CONFIRM_S - time.time())))
         if self.is_home():
             return False
-        time.sleep(0.5)
-        if self.is_home():
-            return False
+        before = getattr(self, "_img", None)
         self._exp_begin("back", None, None, why)
         self.dev.back()
-        time.sleep(0.8)
-        if self.tap_tpl("common/btn_cancel_exit", wait=0.6):
+        after = self.wait_change(before, 0.8)
+        if self.tap_tpl("common/btn_cancel_exit", wait=0.6, fresh=after is None):
             log.warning("Phim Back (%s, buoc %s) mo hop thoai thoat game -> da Huy", why, getattr(self, "step", "?"))
         return True
 
-    def is_home(self):
-        img = self.shot()
+    def is_home(self, img=None):
+        img = img if img is not None else self.shot()
         return bool(self.v.find(img, "common/btn_to_world") or self.v.find(img, "common/btn_to_city"))
 
     def _world_open(self, ok):
@@ -472,7 +531,7 @@ class Ctx:
             ok = self.goto("city")
             if ok or getattr(self, "_nav_last", None) in ("city", "world"):
                 seq = getattr(self.dev, "act_seq", None)
-                self.close_popups()
+                self.close_popups(img=self.recent_frame())   # P13f-3: khung goto vua kiem -> khong chup them 2 lan
                 return bool(ok) and getattr(self.dev, "act_seq", None) == seq
         self.back_out()  # cach cu (du phong)
         if self.find("common/btn_to_city"):  # dang o ban do the gioi

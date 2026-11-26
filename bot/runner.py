@@ -445,7 +445,8 @@ class Runner:
     def _builder_idle_now(self, ctx):
         """So tho dung duoc dang ranh (doc hang cho xay tren thanh pho) -> (ranh, (dang xay, tong)) | (None, None)."""
         ctx.wd_reset(120)            # ngoai vong buoc: dung de gioi han gio cua buoc truoc danh Stuck
-        idle, b = build.builder_state(ctx)
+        recent = getattr(ctx, "recent_frame", None)
+        idle, b = build.builder_state(ctx, recent(1.0) if recent else None)
         if b is None:
             ctx.ensure_city()
             idle, b = build.builder_state(ctx)
@@ -618,7 +619,9 @@ class Runner:
         """Sau 1 buoc: game dang hien huong dan (ban tay / V / o do) -> lam theo ngay (tutorial.follow), khong de
         chu du an phai cham tay. Tran thua da ghi nho -> khong danh (quests._battle_blocked)."""
         try:
-            why = tutorial.guide_visible(ctx.v, ctx.shot())
+            recent = getattr(ctx, "recent_frame", None)
+            img = recent(0.6) if recent else None
+            why = tutorial.guide_visible(ctx.v, img if img is not None else ctx.shot())
             if not why:
                 return
             from bot.modules import quests as _q
@@ -871,7 +874,7 @@ class Runner:
                 log.info("-- Buoc: %s", name)
                 ctx.wd_reset(self._step_limit(cfg, name))
                 n0, t0, m0 = len(ctx.debug_shots), time.time(), self.vision.miss_hits
-                res, shot, note, ret = "ok", None, None, None
+                res, shot, note, ret, seq0 = "ok", None, None, None, None
                 try:
                     with span("defense_check"):
                         attacked = defense.under_attack(ctx)
@@ -916,6 +919,7 @@ class Runner:
                             enabled = {**enabled, **dict.fromkeys(fill, True)}
                             continue
                         ctx.wd_reset(self._step_limit(cfg, name))
+                    seq0 = getattr(ctx.dev, "act_seq", None)
                     if name in builders_dom.FILL_STEPS and not (name == "quests" and ctx.quests_claim_only):
                         fill_state.attempt(getattr(ctx, "builds_started", 0))
                     ret = mod.run(ctx)
@@ -973,7 +977,9 @@ class Runner:
                     raise RuntimeError(f"May khong phan hoi o buoc {name} (khong chup duoc man hinh) - bo luot may nay")
                 if ctx.nav:
                     self.mem.log_nav(visit, idx, name, ctx.nav)
-                if name not in ("tutorial", "mainquest", "quests", "observe") and cfg.get("guide_follow", True):
+                # P13f-3: buoc khong cham / vuot gi -> man khong the hien huong dan moi: bo kiem (~1,5 s/lan)
+                touched = seq0 is None or getattr(ctx.dev, "act_seq", None) != seq0
+                if touched and name not in ("tutorial", "mainquest", "quests", "observe") and cfg.get("guide_follow", True):
                     with span("follow_guide"):
                         self._follow_guide(ctx)
                 try:

@@ -86,7 +86,7 @@ def _upgrade_env(monkeypatch, results, busy):
     monkeypatch.setattr(upgrade.build, "builders", lambda ctx, img=None: (state["busy"], 2))
     monkeypatch.setattr(upgrade.build, "upgrade_here", here)
     monkeypatch.setattr(upgrade.build, "free_speedup", lambda ctx: 0)
-    monkeypatch.setattr(upgrade, "goto_hq", lambda ctx: (317, 557, 0.95))
+    monkeypatch.setattr(upgrade, "goto_hq", lambda ctx, again=False: (317, 557, 0.95))
     c = _ctx(1)
     c.back_out = lambda *a: None
     c.cfg["build"].update(hq_max_level=30, probe_plot_lock=False, quick_s=0)

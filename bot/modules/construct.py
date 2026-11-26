@@ -302,7 +302,7 @@ def roads(ctx, max_n=3):
             log.warning("Xay duong: chi phi KHONG phai thoi vang (kim cuong / khong nhan ra) - HUY, khong bam Xac nhan")
             ctx.save_debug("road_gem_cost")
             if not ctx.tap_first([ROAD_CANCEL, "common/btn_x", "common/btn_close"], wait=1.0):
-                ctx.press_back()
+                ctx.press_back("xay_duong")
             break
         ctx.tap(b[0], b[1], wait=2.0)
         n += 1

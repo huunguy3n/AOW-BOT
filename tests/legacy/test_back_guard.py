@@ -16,6 +16,7 @@ def fake(home_seq, cancel=False):
     c.dev = types.SimpleNamespace(back=lambda: calls.append("back"))
     c._exp_begin = lambda *a: calls.append(("exp", *a))
     c.tap_tpl = lambda name, **k: calls.append(("tap", name)) or cancel
+    c.wait_change = lambda before, cap: None
     return c
 
 
