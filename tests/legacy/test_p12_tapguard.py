@@ -92,7 +92,7 @@ def test_glow_tile_still_glowing_blacklisted(monkeypatch):
     ctx.tap_tpl = lambda *a, **k: False
     for _ in range(4):                                       # live4: notify.run lai moi vong reddots
         notify.claim_glow_tiles(ctx)
-    assert ctx.taps == [(139, 530), (139, 530)]
+    assert ctx.taps == [(139, 530)]                          # P13e-4: 1 lan roi bo (o van sang = khoa / khong hieu luc)
 
 
 def test_glow_tile_effect_not_blacklisted(monkeypatch):

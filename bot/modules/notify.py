@@ -114,10 +114,14 @@ def claim_glow_tiles(ctx, max_taps=6):
     from bot import tapguard
     g = tapguard.of(ctx)
     n, seen = 0, set()
+    dead = getattr(ctx, "glow_dead", None)
+    if dead is None:
+        dead = ctx.glow_dead = set()     # P13e-4: o bam roi van sang (o khoa / khong hieu luc) -> khong bam lai trong luot ghe
     for _ in range(max_taps):
         img = ctx.shot()
         # glow_tiles: vien xanh ngoc (Qua dang nhap); nhan_tiles: chu "Nhan" xanh la + vien vang (Diem danh 30 ngay)
-        tiles = [t for t in glow_tiles(img) + nhan_tiles(img) if (t[0] // 30, t[1] // 30) not in seen]
+        tiles = [t for t in glow_tiles(img) + nhan_tiles(img)
+                 if (t[0] // 30, t[1] // 30) not in seen and (t[0] // 30, t[1] // 30) not in dead]
         tiles = g.keep("glow", free_column_tiles(tiles, epic_header(img)))   # P12-2: o bam 2 lan van sang -> bo
         tiles = [t for t in tiles if not tile_locked(img, t[0], t[1])]       # P13-7: o co O KHOA (moc > cap) -> khong bam
         if not tiles:
@@ -135,6 +139,8 @@ def claim_glow_tiles(ctx, max_taps=6):
         after = ctx.shot()   # o van phat sang cung cho -> cham khong co hieu ung (live4 @139,530 bam 4-5 lan)
         still = any(abs(t[0] - x) <= 15 and abs(t[1] - y) <= 15 for t in glow_tiles(after) + nhan_tiles(after))
         g.record("glow", x, y, not still, "o van phat sang")
+        if still:
+            dead.add((x // 30, y // 30))
     return n
 
 
@@ -938,7 +944,7 @@ def hero_story(ctx):
         if dots:
             x, y = dots[0]
             done.add(x // 60)
-            ctx.tap(x - 50, y + 21, wait=1.2)       # cham do o goc tren-phai tab
+            ctx.tap(max(STORY_TABS[0] + 6, x - 50), y + 21, wait=1.2)   # cham do o goc tren-phai tab (P13e-4: khong x am)
         elif n or done:
             break
         c = ctx.v.find(ctx.shot(), "hero/story_chest", th=0.85)
