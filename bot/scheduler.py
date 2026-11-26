@@ -131,15 +131,14 @@ BUILD_STEPS = ("upgrade", "construct", "mainquest", "quests")   # P13e-3: constr
 
 
 def build_slots(mem, idx, cfg):
-    """P13e-1: so tho xay hieu luc cua may = so o game bao (fact builders_total) kep boi cau hinh (xem domain.builders)."""
+    """P13f-1: so tho dung duoc = build.max_builders cua may, kep xuong theo so o game bao (xem domain.builders)."""
     bc = (cfg or {}).get("build") or {}
     total = mem.fact(idx, "builders_total")
     try:
         total = int(total) if total is not None else None
     except (TypeError, ValueError):
         total = None
-    return builders_dom.effective_max(bc.get("max_builders", 1), total, bc.get("use_game_slots", True),
-                                      bc.get("max_builders_cap", 2))
+    return builders_dom.effective_max(bc.get("max_builders", 1), total)
 
 
 def builder_idle_now(mem, idx, cfg):

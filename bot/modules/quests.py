@@ -186,7 +186,7 @@ def run(ctx):
         while tries < max_go:
             ctx.ensure_city()
             b = build.builders(ctx)
-            if b and b[0] >= b[1] and not q.get("follow", True):
+            if b and b[0] >= build.max_builders(ctx, b[1]) and not q.get("follow", True):   # P13f-1: farm 1/2 = day
                 log.info("Tho xay dang ban %d/%d - dung xay theo nhiem vu", *b)
                 return started + claimed
             if not open_tab(ctx, tab):

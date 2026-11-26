@@ -21,18 +21,16 @@ def builders(ctx, img=None):
 
 
 def max_builders(ctx, total=None):
-    """P13e-1: so tho xay hieu luc = so o game bao (y trong 'x/y', fact builders_total) kep boi tran cau hinh; chua biet
-    -> build.max_builders. Khong bao gio thue tho bang kim cuong."""
+    """P13f-1: so tho xay dung duoc = build.max_builders cua may (farm 1, #1 = 2), kep xuong theo y game bao neu it hon.
+    KHONG lay y lam so tho (farm game bao 1/2 nhung o thu 2 chua mua). Khong bao gio thue / mua tho."""
     from aowbot.domain import builders as dom
-    bc = ctx.cfg.get("build", {})
     if total is None:
         m = getattr(ctx, "mem", None)
         try:
             total = m.fact(ctx.dev.idx, "builders_total") if m else None
         except Exception:  # noqa: BLE001
             total = None
-    return dom.effective_max(bc.get("max_builders", 1), total, bc.get("use_game_slots", True),
-                             bc.get("max_builders_cap", 2))
+    return dom.effective_max(ctx.cfg.get("build", {}).get("max_builders", 1), total)
 
 
 def screen_level(img):

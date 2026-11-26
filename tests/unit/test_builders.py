@@ -1,5 +1,7 @@
-"""P13e: so tho hieu luc + lap tho ranh + lich xay (ham thuan / scheduler)."""
+"""P13e/P13f: so tho dung duoc theo may + lap tho ranh + lich xay (ham thuan / scheduler)."""
 import types
+
+import yaml
 
 from aowbot.domain import builders as B
 from aowbot.domain import drain
@@ -8,14 +10,14 @@ from bot.memory import Memory
 from bot.modules import upgrade
 
 
-def test_effective_uses_game_slots():
-    assert B.effective_max(1, 2) == 2          # farm cau hinh 1, game 0/2 -> 2
-    assert B.effective_max(1, 1) == 1          # o thu 2 chua co -> giu 1 (khong thue)
-    assert B.effective_max(2, 1) == 1
+def test_effective_is_per_machine_not_game_total():
+    assert B.effective_max(1, 2) == 1          # P13f-1: farm game bao x/2 nhung o thu 2 chua mua -> 1
+    assert B.effective_max(1, 1) == 1
+    assert B.effective_max(2, 1) == 1          # game bao it hon cau hinh -> kep xuong
     assert B.effective_max(1, None) == 1       # chua doc duoc -> cau hinh
-    assert B.effective_max(1, 5) == 2          # tran cung
-    assert B.effective_max(1, 2, use_game=False) == 1
+    assert B.effective_max(1, 5) == 1
     assert B.effective_max(2, 2) == 2          # #1 van 2
+    assert B.effective_max(None, 2) == 1
 
 
 def _ctx(cfg_max=1, total=None):
@@ -24,31 +26,42 @@ def _ctx(cfg_max=1, total=None):
 
 
 def test_build_max_builders_from_fact_and_arg():
-    assert build.max_builders(_ctx(1, 2)) == 2
-    assert build.max_builders(_ctx(1, None)) == 1
-    assert build.max_builders(_ctx(1, None), 2) == 2
+    assert build.max_builders(_ctx(1, 2)) == 1
+    assert build.max_builders(_ctx(1, None), 2) == 1
+    assert build.max_builders(_ctx(2, 2)) == 2
+    assert build.max_builders(_ctx(2, None)) == 2
 
 
-def test_builder_idle_two_slots_no_hire(monkeypatch):
-    c = _ctx(1, None)
+def test_farm_one_of_two_is_full(monkeypatch):
+    c = _ctx(1, 2)
     monkeypatch.setattr(upgrade.build, "builders", lambda ctx: (0, 2))
     ok, why = upgrade.builder_idle(c)
-    assert ok and "dung toi da 2" in why
+    assert ok and "dung toi da 1" in why
     monkeypatch.setattr(upgrade.build, "builders", lambda ctx: (1, 2))
-    assert upgrade.builder_idle(c)[0] is True        # tho thu 2 con ranh
+    assert upgrade.builder_idle(c)[0] is False       # 1/2 maxb=1 = DAY, khong lap o 2
     monkeypatch.setattr(upgrade.build, "builders", lambda ctx: (2, 2))
     assert upgrade.builder_idle(c)[0] is False
-    monkeypatch.setattr(upgrade.build, "builders", lambda ctx: (0, 1))
-    assert upgrade.builder_idle(c)[0] is True and "toi da 1" in upgrade.builder_idle(c)[1]
-    monkeypatch.setattr(upgrade.build, "builders", lambda ctx: (1, 1))
-    assert upgrade.builder_idle(c)[0] is False       # o thu 2 chua co: KHONG dung / thue
 
 
-def test_idle_slots_two():
-    assert drain.idle_slots({"build": (0, 2)}, 2) == ["build"]
-    assert drain.idle_slots({"build": (1, 2)}, 2) == ["build"]
+def test_main_account_two_builders(monkeypatch):
+    c = _ctx(2, 2)
+    for busy, idle in ((0, True), (1, True), (2, False)):
+        monkeypatch.setattr(upgrade.build, "builders", lambda ctx, b=busy: (b, 2))
+        assert upgrade.builder_idle(c)[0] is idle
+
+
+def test_idle_slots_per_machine():
+    assert drain.idle_slots({"build": (0, 2)}, 1) == ["build"]
+    assert drain.idle_slots({"build": (1, 2)}, 1) == []          # farm 1/2 = khong ranh
+    assert drain.idle_slots({"build": (1, 2)}, 2) == ["build"]   # #1
     assert drain.idle_slots({"build": (2, 2)}, 2) == []
     assert drain.idle_slots({"build": (1, 1)}, 2) == []
+
+
+def test_repo_config_has_no_game_slot_path():
+    with open("config.yaml", encoding="utf-8") as f:
+        bc = yaml.safe_load(f)["build"]
+    assert bc["max_builders"] == 1 and "use_game_slots" not in bc and "max_builders_cap" not in bc
 
 
 def test_fill_steps():
@@ -67,16 +80,19 @@ def _mem(tmp_path, busy, total=2):
     return m
 
 
-def test_schedule_idle_shows_two_slots(tmp_path):
+def test_schedule_farm_uses_one_builder(tmp_path):
     m = _mem(tmp_path, 0)
     cfg = {"build": {"max_builders": 1, "hq_max_level": 30}}
     p = scheduler.plan_step(m, 5, "upgrade", scheduler.sched_cfg(cfg), 1e9, {}, cfg)
-    assert p.ready and "(0/2)" in p.why
+    assert p.ready and "(0/1)" in p.why
     p = scheduler.plan_step(m, 5, "construct", scheduler.sched_cfg(cfg), 1e9, {}, cfg)
     assert p is not None and p.ready               # construct co plan xay (BUILD_STEPS)
-    m.set_fact(5, "builders_busy", 2)
+    m.set_fact(5, "builders_busy", 1)              # 1/2 tren farm
     p = scheduler.plan_step(m, 5, "upgrade", scheduler.sched_cfg(cfg), 1e9, {}, cfg)
-    assert "tho xay ranh" not in p.why and not p.confident   # 2/2 ban: khong con trigger 'tho ranh'
+    assert "tho xay ranh" not in p.why and not p.confident
+    main = {"build": {"max_builders": 2, "hq_max_level": 30}}
+    p = scheduler.plan_step(m, 5, "upgrade", scheduler.sched_cfg(main), 1e9, {}, main)
+    assert p.ready and "(1/2)" in p.why            # #1 con 1 tho ranh
 
 
 def test_build_steps_forced_when_builder_idle(tmp_path):
@@ -86,7 +102,7 @@ def test_build_steps_forced_when_builder_idle(tmp_path):
     names = list(order)
     out = scheduler.with_build_steps(m, 5, ["warday", "notify"], names, order, cfg, 1e9)
     assert out == ["warday", "notify", "upgrade", "mainquest", "construct"]
-    m.set_fact(5, "builders_busy", 2)
+    m.set_fact(5, "builders_busy", 1)
     assert scheduler.with_build_steps(m, 5, ["warday"], names, order, cfg, 1e9) == ["warday"]
     # may tat buoc do trong cai dat (khong nam trong names) -> khong ep
     m.set_fact(5, "builders_busy", 0)
@@ -94,7 +110,7 @@ def test_build_steps_forced_when_builder_idle(tmp_path):
 
 
 def test_reschedule_when_all_builders_busy_uses_build_timer(tmp_path):
-    m = _mem(tmp_path, 2)
+    m = _mem(tmp_path, 1)
     m.set_timer(5, "build:0", 1e9 + 600, "ocr_bar", 0.7)
     cfg = {"build": {"max_builders": 1, "hq_max_level": 30}}
     p = scheduler.plan_step(m, 5, "upgrade", scheduler.sched_cfg(cfg), 1e9, {}, cfg)

@@ -29,7 +29,7 @@ def hq_label(img, px, py):
 
 
 def builder_idle(ctx):
-    """Con tho dung duoc dang ranh? So tho hieu luc = so o game bao (P13e-1: 0/2 -> dung 2, khong thue tho)."""
+    """Con tho dung duoc dang ranh? So tho = build.max_builders cua may (P13f-1: farm 1/2 = day, khong thue tho)."""
     b = build.builders(ctx)
     if b is None:
         return True, "khong doc duoc so tho - van thu"

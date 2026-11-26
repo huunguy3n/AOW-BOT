@@ -1,21 +1,20 @@
-"""P13e-1: so tho xay HIEU LUC. Ham thuan, khong goi thiet bi.
+"""So tho xay HIEU LUC (P13f-1). Ham thuan, khong goi thiet bi.
 
-Loi cu: build.max_builders cung 1 cho farm -> dung 1 tho du game bao 0/2 (o tho thu 2 da co san). So tho hieu luc lay tu
-so o game bao (x/y cua hang cho xay): o da CO thi dung het. Bot KHONG BAO GIO thue tho / mua o bang kim cuong; o chua
-co thi game chi bao y = 1 va bot giu 1.
+Chu du an (t90u 26/11/2026): "So tho toi da la 2/2 nhung acc farm chi co 1/2. Chi 2/2 khi mua bang tien.
+Vi du #1 la 2/2. Con lai la 1/2." Game luon bao tong 2 (y trong 'x/y') ke ca khi o thu 2 chua mua
+-> y KHONG noi so tho dung duoc.
+So tho dung duoc = build.max_builders THEO MAY (mac dinh 1; #1 = 2 trong data/settings.json). Farm 1/2 = DAY.
+Bot KHONG BAO GIO thue tho / mua o thu 2.
 """
 from __future__ import annotations
 
 
-def effective_max(cfg_max: int | None, observed_total: int | None, use_game: bool = True, cap: int = 2) -> int:
-    """cfg_max: build.max_builders (tran cau hinh); observed_total: y trong 'x/y' game bao (None = chua doc duoc);
-    use_game: build.use_game_slots - lay so o tu game; cap: build.max_builders_cap (tran cung, >= cfg_max).
-    - chua doc duoc y -> cfg_max;  - use_game -> min(cap, y);  - tat use_game -> min(cfg_max, y) (cach cu)."""
+def effective_max(cfg_max: int | None, observed_total: int | None = None) -> int:
+    """cfg_max: build.max_builders cua may; observed_total: y game bao - chi de KEP XUONG (game bao it hon cau hinh),
+    khong bao gio nang len."""
     base = max(1, int(cfg_max or 1))
     if not observed_total or observed_total < 1:
         return base
-    if use_game:
-        return max(1, min(max(cap, base), int(observed_total)))
     return min(base, int(observed_total))
 
 

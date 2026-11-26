@@ -191,9 +191,8 @@ watchdog:
 build:
   hq_targets: [9, 15]  # P4: muc tieu nha chinh farm (9 = du 3 nha linh/thu thap, 15 = phan quan); duoi muc tieu -> dong NV "Xuong kien truc" lam truoc
   hq_max_level: 30     # khong nang nha chinh qua cap nay (chu du an 2026-11-21: xay o moi cap; HQ30 = toi da -> bo muc tieu xay)
-  max_builders: 1      # so tho xay dung duoc (farm 1; TK chinh #1 = 2, dat rieng tren web/settings) - chu du an 2026-11-21
-  use_game_slots: true # P13e-1: so tho hieu luc = so o game bao (x/y cua hang cho xay, toi da max_builders_cap); 0/2 -> dung 2. false = chi max_builders. Bot KHONG thue tho/mua o bang kim cuong
-  max_builders_cap: 2  # tran cung so tho hieu luc khi use_game_slots
+  max_builders: 1      # P13f-1: so tho xay DUNG DUOC cua may. Farm 1 (game bao x/2 nhung o thu 2 phai mua bang tien that); #1 = 2
+                       # (data/settings.json instances.1.build.max_builders). Farm 1/2 = DAY. Bot khong thue / mua tho.
   fill_idle: true      # P13e-2: cuoi luot con tho ranh -> chay lai construct/upgrade/mainquest/quests
   fill_rounds: 2       # so vong lap toi da moi luot (dung som khi vong truoc khong bat dau them viec)
   recenter_world: true # P13-1: truoc khi cham nha chinh -> ra the gioi roi vao lai thanh pho (camera dat nha chinh giua man)

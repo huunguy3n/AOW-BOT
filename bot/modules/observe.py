@@ -208,7 +208,7 @@ def run(ctx):
     if b and getattr(ctx, "mem", None):
         ctx.mem.set_fact(ctx.dev.idx, "builders_busy", b[0])
         if b[1] >= 1:
-            ctx.mem.set_fact(ctx.dev.idx, "builders_total", b[1])   # P13e-1: so o game bao -> so tho hieu luc
+            ctx.mem.set_fact(ctx.dev.idx, "builders_total", b[1])   # so o game bao: chi de kep xuong (P13f-1)
         log.info("Tho xay: %d/%d dang xay (dung toi da %d)", b[0], b[1], build.max_builders(ctx, b[1]))
     note_heal(ctx, cimg)
     base_state(ctx, cimg, b)
