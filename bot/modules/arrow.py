@@ -1,7 +1,8 @@
 """P13l (chu du an t100u-t102u): mui ten xanh tren ban do the gioi -> cham MUC TIEU THAT roi lam TAI CHO.
 
   bang "Phan quan Co giap" -> luong rebels (tu mo tap ket; nha chinh < rebels.min_hq_level -> bo tap ket Co giap)
-  bang "Phien quan" / "Tim kiem" -> danh le (mainquest.npc_engage: "Tan cong" -> xuat chinh; thuoc chi "Dung")
+  bang "Phien quan" / "Tim kiem" -> leo cap (mainquest.npc_search) roi danh le (mainquest.npc_engage: "Tan cong" ->
+                 du doan thang -> xuat chinh; thuoc chi "Dung")
   nut "Thu thap" (mo) -> luong gather (cap 8 -> 7 -> 6, trung mo thi doi, khong 2 quan doan 1 mo), 1 quan doan
   menu can cu nguoi choi / o dat trong -> map_menu dong ngay, danh sach den diem do, thu vat the ke (toi da TRIES).
 """
@@ -82,10 +83,7 @@ def _npc(ctx, img):
         log.info("Mui ten xanh: het quan doan ranh -> khong danh phien quan")
         _close(ctx)
         return "skip"
-    if mainquest.npc_popup_action(img, ctx.v) == "search":
-        p = mainquest.npc_search(ctx)
-    else:
-        p = ctx.find(mainquest.NPC_ATTACK, th=0.85, fresh=False)
+    p = mainquest.npc_search(ctx)       # co "Tan cong" -> tra ngay; bang "Tim kiem" -> leo cap toi khi co (P13m)
     if not p:
         _close(ctx)
         return "skip"

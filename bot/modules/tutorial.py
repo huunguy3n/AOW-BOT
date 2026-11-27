@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 
 from bot import guide_tile, map_menu, quest_rules, tapguard, unlock_popup, world_target
+from bot.modules import expand
 
 log = logging.getLogger("aow")
 
@@ -613,14 +614,16 @@ def decide(v, img, idle=0, state=None):
     if g:
         return ("tap", g.x, g.y, guide_tile.WHY + " (cot sang) -> vat trong o")
     # 5d. linh tren o do (kiem cheo hong phia tren) -> cot sang cam chieu xuong -> cham chan cot
-    p = find_beam(img)
+    #     P13m: TRONG THANH, co linh minh o o xanh lam ben canh -> bam THAN dich tren o do; run() danh qua cong du doan
+    foe = expand.find_rebel(v, img, state.get("rebel_blocked"))
+    p = (foe.x, foe.y) if foe else find_beam(img)
     if p:
         # cung 1 o do cham hoai khong an (muc tieu dau lau, #0 2026-11-20: 30 lan (276,386) -> het 40 buoc) -> bo qua o nay
         bt = state.setdefault("beam_taps", {})
         key = (p[0] // 30, p[1] // 30)
         bt[key] = bt.get(key, 0) + 1
         if bt[key] <= 6:
-            return ("tap", p[0], p[1], "o do duoi chan muc tieu")
+            return ("tap", p[0], p[1], expand.REBEL_WHY if foe else "o do duoi chan muc tieu")
     # 6. nut quen thuoc
     p = _f(v, img, "tutorial/btn_attack_red")
     if p:
@@ -757,7 +760,7 @@ def _pred_win(v, img):
     return predicted_win(v, img)
 
 
-GUIDE_WHY = ("ban tay", "mui ten V", "o do duoi", "V chi", guide_tile.WHY, ARROW_WHY)
+GUIDE_WHY = ("ban tay", "mui ten V", "o do duoi", "V chi", guide_tile.WHY, ARROW_WHY, expand.REBEL_WHY)
 
 
 # P9-4 (live-run-2 11:03:07): man Su menh (o "+" xanh / ban xuc xac) bi doc nham la "ban tay xanh (cot sang)" -> follow
@@ -852,7 +855,8 @@ def run(ctx, max_steps=600, idle_limit=10, max_retry=5, follow=False, no_battle=
     tag = "follow" if follow else "tutorial"
     idle = quest_taps = retries = 0
     state = {"follow": follow, "no_battle": no_battle,
-             "world_blocked": lambda x, y: map_menu.blocked(ctx, x, y)}
+             "world_blocked": lambda x, y: map_menu.blocked(ctx, x, y),
+             "rebel_blocked": lambda x, y: tapguard.of(ctx).blocked("guide", x, y)}
     if follow:      # P13j: toa do huong dan cham khong an (ca o buoc Tinh bao) -> khong cham lai trong luot ghe
         state["guide_blocked"] = guide_tile.blocked_by(ctx)
     trace = ctx.cfg.get("tutorial", {}).get("trace_dir")   # luu anh + quyet dinh tung buoc de xem lai
@@ -878,7 +882,7 @@ def run(ctx, max_steps=600, idle_limit=10, max_retry=5, follow=False, no_battle=
             cv2.imwrite(f"{trace}/{step:03d}.jpg", dbg, [cv2.IMWRITE_JPEG_QUALITY, 75])
         # follow sau khi da thua (quests 2026-11-20: #5 thua dong 3 roi lai danh dong 4) -> khong vao tran nua
         if follow and state.get("no_battle") and (act == "steer" or why in ("bat dau tro choi", "chien dau",
-                                                                             "tu xep doi hinh")):
+                                                                             "tu xep doi hinh", expand.REBEL_WHY)):
             log.info("Follow: dang cho tang luc chien - khong vao tran")
             act = "weak"
         if act == "exit":   # P4 follow: man biet chac, het viec cua follow -> ra thanh pho, ket qua 'idle'
@@ -955,6 +959,17 @@ def run(ctx, max_steps=600, idle_limit=10, max_retry=5, follow=False, no_battle=
             if idle > idle_limit:
                 return "stuck"
             time.sleep(1.5)
+            continue
+        if act == "tap" and why == expand.REBEL_WHY:       # P13m: mo rong lanh tho - danh qua cong du doan thang
+            r = expand.fight_rebel(ctx, guide_tile.Guide(x, y, "rebel"))
+            if r in ("skip", "lose"):
+                if follow:
+                    return "weak" if r == "skip" else "lose"
+                _block_weak(ctx)
+                return False
+            idle = 0 if r in ("win", "sent", "opened") else idle + 1
+            if idle > idle_limit:
+                return "stuck" if follow else False
             continue
         if act == "tap" and why.startswith(guide_tile.WHY):
             state["backs"] = 0

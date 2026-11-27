@@ -365,8 +365,20 @@ def try_target(ctx, rc, rec, tap, want=None):
     return popup_target(ctx, rc, rec, img, title, want)
 
 
-def popup_target(ctx, rc, rec, img, title, want=None):
-    """Popup "Phan quan Co giap Lv.N" dang mo -> 1 xuat chinh | 0 dung han | -1 bo muc tieu nay."""
+def popup_target(ctx, rc, rec, img, title, want=None, climb=True):
+    """Popup "Phan quan Co giap Lv.N" dang mo -> 1 xuat chinh | 0 dung han | -1 bo muc tieu nay.
+    P13m: bang chi co "Tim kiem" ("Toi da co the tan cong ... cap N") -> leo cap (mainquest.npc_search) toi bang co
+    "Tap ket tan cong" roi xet lai (1 lan)."""
+    from bot.modules import mainquest
+    hit = mainquest.npc_popup(img, ctx.v)
+    if hit and hit[0] == "search":
+        if climb and mainquest.npc_search(ctx, goal="rally"):
+            img = ctx.shot()
+            title = ctx.v.find(img, "rebels/popup_title", th=0.8)
+            if title:
+                return popup_target(ctx, rc, rec, img, title, climb=False)
+        ctx.tap_first(["common/btn_close", "common/btn_x"], wait=0.8)
+        return -1
     lv = popup_level(img, title)
     rec_pw = re.sub(r"\D", "", ocr.text(img, (title[0] + 81, title[1] + 387, 95, 22), "0123456789,", scale=4) or "")
     if lv is None or not target_ok(rec, lv, rc.get("fail_h", 12)):
