@@ -1,7 +1,9 @@
 """Nang cap cong trinh tu menu cong trinh / man "Tang cap" (dung cho nhiem vu va xay theo nhiem vu).
 
 Man Tang cap (540x960): tieu de + "Cap hien tai N"; dieu kien chua dat co nut "Nhay" -> sang cong trinh do;
-nut PHAI "Tang cap" (co dong ho). KHONG BAO GIO bam "Tang cap ngay" (nut trai, ton kim cuong) TRU khi dong duoi ghi
+nut PHAI "Tang cap" (co dong ho). Nhieu dong chua dat -> "Nhay" cua DONG DAU (P13m, first_jump); chi con thieu tai
+nguyen (dong "Nhan cang nhieu" - khong bam) -> "Tang cap" -> popup "Thieu tai nguyen" -> bot/resources.py ("Dung dao
+cu", khong kim cuong / khong mua). KHONG BAO GIO bam "Tang cap ngay" (nut trai, ton kim cuong) TRU khi dong duoi ghi
 "Mien phi" va khong co so (chu du an 2026-11-22; free_instant_button).
 """
 import os, re, time, logging
@@ -62,6 +64,22 @@ def screen_level(img):
 
 
 MAX_LEVEL = 30   # cap toi da moi cong trinh (chu du an 2026-11-21)
+JUMP = "build/btn_jump"
+JUMP_ROW_TH = 0.72      # dong dau bi tia sang che bot van tinh (anh chu: nut "Nhan cang nhieu" khop < 0,6)
+JUMP_COLUMN = 40        # cac nut "Nhay" nam cung 1 cot
+
+
+def first_jump(v, img):
+    """P13m (chu du an t106u, anh hq_prereq_nhay): nut "Nhay" cua dong dieu kien CHUA DAT DAU TIEN (tren -> duoi)
+    -> (x, y) | None. Ham thuan. v.find chi tra nut KHOP CAO NHAT: 3 dong khop 0,997-0,999 nen hay roi vao dong 2/3.
+    Chi nhin cac nut khop mau "Nhay" cung cot - "Nhan cang nhieu" (dong tai nguyen) va "Tang cap ngay" khong khop."""
+    best = v.find(img, JUMP)
+    if not best:
+        return None
+    find_all = getattr(v, "find_all", None)
+    rows = find_all(img, JUMP, th=JUMP_ROW_TH) if find_all else []
+    p = min([r for r in rows if abs(r[0] - best[0]) <= JUMP_COLUMN] + [best], key=lambda r: r[1])
+    return int(p[0]), int(p[1])
 
 
 def menu_level(img, px, py):
@@ -342,12 +360,12 @@ def upgrade_here(ctx, depth=0, max_depth=4, late=False):
     if is_hq and lv is not None and lv >= cap:
         log.info("Nha chinh da cap %d >= gioi han %d - khong nang", lv, cap)
         return "hq_cap"
-    jump = ctx.v.find(img, "build/btn_jump")
+    jump = first_jump(ctx.v, img)
     if jump:
         if depth >= max_depth:
             log.info("Chuoi dieu kien qua dai - dung")
             return "blocked"
-        log.info("Thieu dieu kien (cap %s) -> Nhay sang cong trinh can nang truoc", lv)
+        log.info("Thieu dieu kien (cap %s) -> Nhay (dong dau chua dat @%d,%d) sang cong trinh can nang truoc", lv, *jump)
         ctx.tap(jump[0], jump[1], wait=2.0)
         ctx.skip_dialogs()
         return upgrade_here(ctx, depth + 1, max_depth)

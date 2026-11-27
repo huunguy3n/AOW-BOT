@@ -127,6 +127,23 @@ def blind_tap_ok(img, v, x, y):
     return not city_near(img, x, y, wide=True)
 
 
+def rebel_near(img, v, x, y, radius, blocked=None):
+    """P13m: ban do the gioi KHONG co mui ten (sau khi cham thanh nhiem vu) -> than phien quan CO NHAN "Phien quan"
+    gan (x, y) nhat trong ban kinh `radius` -> Target | None. Vat that, khong phai diem co dinh; loai can cu."""
+    if not isinstance(img, np.ndarray) or v.find(img, "common/btn_to_world"):
+        return None
+    name, up = LABELS[0]
+    if not getattr(v, "has", lambda n: False)(name):
+        return None
+    seen = flags(img)
+    found = [Target(int(lx), int(ly) - up, "rebel") for lx, ly, _ in v.find_all(img, name, th=LABEL_TH)]
+    for t in sorted(found, key=lambda t: abs(t.x - x) + abs(t.y - y)):
+        if (abs(t.x - x) <= radius and abs(t.y - y) <= radius and not (blocked and blocked(t.x, t.y))
+                and not city_near(img, t.x, t.y, seen=seen)):
+            return t
+    return None
+
+
 # ---------- vat the duoi mui ten ----------
 def _labels(img, v, arrow):
     ax, ay = arrow
@@ -193,10 +210,11 @@ def objects(img, arrow):
     return [t for _, t in sorted(found)]
 
 
-def pick(img, v, arrow=None, blocked=None):
+def pick(img, v, arrow=None, blocked=None, reach_x=REACH_X):
     """Muc tieu duoi mui ten xanh -> Target | None (khong thay vat the an toan -> KHONG cham). Trong thanh pho (nut
     ban do) -> None. Vat the khong nhan / khong thanh mau chi duoc chon khi chac chan o ban do the gioi.
-    blocked(x, y) -> True: toa do da danh sach den."""
+    blocked(x, y) -> True: toa do da danh sach den. reach_x: lech ngang mui ten toi da (P13m: sau "Tim kiem" phien
+    quan dung gia tri hep de khong cham con cap khac ben canh)."""
     if not isinstance(img, np.ndarray) or v.find(img, "common/btn_to_world"):
         return None
     arrow = arrow or find_green_chevron(img)
@@ -212,7 +230,7 @@ def pick(img, v, arrow=None, blocked=None):
 
     for group, wide in ((lambda: _labels(img, v, arrow), False), (lambda: _bars(img, arrow), True), (blobs, True)):
         for t in sorted(group(), key=near_arrow):
-            if blocked and blocked(t.x, t.y):
+            if abs(t.x - arrow[0]) > reach_x or (blocked and blocked(t.x, t.y)):
                 continue
             if city_near(img, t.x, t.y, wide=wide, seen=seen):
                 continue

@@ -61,14 +61,13 @@ class _Ctx:
         return self.shot()
 
 
-def test_npc_search_taps_tim_kiem_then_target():
+def test_npc_search_taps_tim_kiem_never_blind_centre():
     live = _img(LIVE)
     blank = live.copy()
     blank[:] = 20
     ctx = _Ctx([live, blank, blank, blank])
     assert mainquest.npc_search(ctx) is None                 # khong co bang Tan cong sau khi tim -> None
-    assert ctx.taps[0] == (268, 738)                          # nut 'Tim kiem' (duoi giua)
-    assert ctx.taps[1] == mainquest.TARGET                    # roi cham muc tieu giua man
+    assert ctx.taps == [(268, 738)]                           # chi nut 'Tim kiem'; P13m: khong cham giua man
 
 
 def test_npc_attack_not_gated_by_world_hq(monkeypatch, caplog):

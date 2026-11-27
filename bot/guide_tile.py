@@ -44,6 +44,7 @@ RED_H = (172, 6)                # vong qua 180
 ORANGE_H = (7, 25)
 BLUE_H = (94, 116)
 PAIR_PX = 220                   # o xanh lam (linh minh) cach o do toi da
+BODY_UP = 0.15                  # P13m: than dich cach tam o ve phia tren (anh chu + 3 khung xe tang / jeep: deu trung than)
 
 # man / nut hien ra sau khi cham dung vat
 OPENED = ("intel/btn_attack", "intel/btn_pickup", "rebels/btn_rally", "campaign/btn_fight", "gather/btn_march",
@@ -57,7 +58,7 @@ NEAR = 40                       # huong dan dich qua nguong nay = da doi
 class Guide(NamedTuple):
     x: int
     y: int
-    kind: str                   # 'hand' | 'beam' | 'enemy'
+    kind: str                   # 'hand' | 'beam' | 'enemy' | 'rebel'
 
 
 def green_mask(img):
@@ -80,19 +81,35 @@ def colour_mask(img, h, s=150, v=170):
     return m
 
 
-def find_enemy(img, blocked=None):
-    """P13l (log 26/11 #6, intel_unknown_target): o DO co cot sang CAM phia tren va o XANH LAM (linh minh) ben canh
-    -> Guide(diem cham tren dich, 'enemy') | None."""
+def enemy_tiles(img):
+    """O DO co cot sang CAM phia tren va o XANH LAM (linh minh) ben canh -> [(tam x, tam y, be ngang o)]."""
     red = colour_mask(img, RED_H)
     tiles = find_tiles(red)
     if not tiles:
-        return None
+        return []
     beam = red | colour_mask(img, ORANGE_H)
     blue = find_tiles(colour_mask(img, BLUE_H))
-    for _, cx, cy, w in tiles:
-        near = any(abs(bx - cx) <= PAIR_PX and abs(by - cy) <= PAIR_PX // 2 for _, bx, by, _ in blue)
-        if near and _ok(cx, cy + TAP_DY, blocked) and beam_rows(beam, cx, cy, w) >= BEAM_MIN:
+    return [(cx, cy, w) for _, cx, cy, w in tiles
+            if any(abs(bx - cx) <= PAIR_PX and abs(by - cy) <= PAIR_PX // 2 for _, bx, by, _ in blue)
+            and beam_rows(beam, cx, cy, w) >= BEAM_MIN]
+
+
+def find_enemy(img, blocked=None):
+    """P13l (log 26/11 #6, intel_unknown_target): o dich (enemy_tiles) -> Guide(diem cham tren dich, 'enemy') | None."""
+    for cx, cy, _ in enemy_tiles(img):
+        if _ok(cx, cy + TAP_DY, blocked):
             return Guide(cx, cy + TAP_DY, "enemy")
+    return None
+
+
+def find_rebel(img, blocked=None):
+    """P13m (chu du an t106u, anh expand_city_rebel_tile): con phien quan dung tren o dich trong thanh -> Guide(THAN
+    con quan, 'rebel') | None. Than = tren tam o BODY_UP lan be ngang o (tam o la ban chan / dat; o xanh lam la linh
+    minh - khong bao gio thanh muc tieu)."""
+    for cx, cy, w in enemy_tiles(img):
+        y = cy - int(w * BODY_UP)
+        if _ok(cx, y, blocked):
+            return Guide(cx, y, "rebel")
     return None
 
 

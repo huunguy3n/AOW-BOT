@@ -105,6 +105,12 @@ bot/map_menu.py      P13l (chủ dự án 2026-11-26): menu vòng tròn bản đ
 bot/world_target.py  P13l: mũi tên xanh → vật thật bên dưới (nhãn "Phiến quân" → thanh máu → vật khác nền), không offset
                      cố định; loại căn cứ người chơi (cờ, mái khiên, thẻ "(XXX)"); kiểm cả cú bấm mù giữa bản đồ.
                      Thao tác tại chỗ: bot/modules/arrow.py (phiến quân / tập kết Cơ giáp / thu thập 1 quân đoàn)
+bot/modules/expand.py P13-11 icon o khoa mo tren vien thanh; P13m (chu du an 2026-11-27): PHIEN QUAN tren o do trong
+                     thanh (linh minh o o xanh lam) -> bam than con quan, chi danh khi du doan "Thang toan dien"; dung
+                     chung cho expand / mainquest / tutorial. Nha chinh thieu dieu kien -> chi "Nhay" DONG DAU
+                     (build.first_jump), khong bam "Nhan cang nhieu" / "Tang cap ngay". Phien quan mo khoa tuan tu:
+                     bang "Toi da ... cap N" -> "Tim kiem" -> sprite duoi mui ten -> lap <= 4 vong toi khi co "Tan cong"
+                     (mainquest.npc_search; nho npc_max_level theo may); khong bam diem giua man
 bot/intel_pins.py    P13l: phân loại ghim Tình báo = biểu tượng + màu; thua → bỏ đúng lớp đó tới khi lực chiến tăng
                      `notify.intel_lose_power_pct`% (fact `intel_lost_classes`). Nhà chính < `schedule.intel_priority_hq`
                      (15) → Tình báo mọi lượt ghé, chạy sớm

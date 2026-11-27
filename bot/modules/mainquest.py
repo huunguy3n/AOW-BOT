@@ -14,10 +14,13 @@ ban do toi ket. Nay:
 Khong bao gio bam nut ton kim cuong (build.upgrade_here, campaign giu luat do).
 """
 import logging
+import re
 import time
 
-from bot import build, ocr, quest_rules, tplneed, world_target
-from bot.modules import campaign
+import cv2
+
+from bot import build, map_menu, ocr, quest_rules, tapguard, tplneed, world_target
+from bot.modules import campaign, expand
 
 log = logging.getLogger("aow")
 BANNER = (150, 818)
@@ -26,7 +29,15 @@ TARGET = (272, 445)   # muc tieu (vd o do Mo ruong lanh tho / phien quan) sau kh
 NPC_ATTACK = "rebels/npc_attack"
 POTION = "intel/potion_title"       # bang Thuoc The Luc
 NPC_SEARCH = "rebels/npc_btn_search"   # P12-4 (t55u): "Tim kiem" khi "Toi da co the tan cong phan quan cap X!" (s193422)
-NPC_SEARCH_ROI = (100, 600, 340, 250)   # nut "Tan cong" bang phien quan (cat tu logs/human/20261121/002012-i3-mainquest-091)
+NPC_BTN_ROI = (100, 560, 340, 290)   # vung nut duoi cua bang phien quan ("Tim kiem" / "Tan cong")
+NPC_SCALES = (1.06, 0.95)   # P13m: nut "Tan cong" phong / thu 6 % (anh rebel_lv2_tancong: dung ti le chi khop 0,61)
+RALLY = "rebels/btn_rally"
+NPC_ROUNDS = 4              # P13m: so vong bang "Tim kiem" -> bam sprite toi da / lan leo cap
+NPC_SAME_N = 2              # bang "Tim kiem" quay lai voi CUNG cap N qua chung nay lan -> khong tien trien, dung
+NPC_REACH_X = 70            # sprite lech ngang mui ten toi da (con cap khac dung ben canh ~90 px)
+NPC_CENTER_R = 150          # khong co mui ten: chi nhan sprite co nhan "Phien quan" quanh giua man
+NPC_LOOKS = 5
+NPC_SPRITE_TRIES = 2        # so sprite thu moi vong (cham khong ra bang -> danh sach den)
 SUCCESS = ("win", "build_started", "follow_build_started", "npc_sent")
 
 
@@ -116,30 +127,160 @@ def _fight(ctx, mq):
     return r
 
 
-def npc_popup_action(img, v):
-    """Ham thuan P12-4: bang phien quan dang mo -> 'attack' (nut Tan cong) | 'search' (popup 'Toi da co the tan cong
-    phan quan cap X!' chi co nut 'Tim kiem' - game dan toi con dung cap) | None."""
-    if v.find(img, NPC_ATTACK, th=0.85):
-        return "attack"
-    if v.has(NPC_SEARCH) and v.find(img, NPC_SEARCH, th=0.85, roi=NPC_SEARCH_ROI):
-        return "search"
+def find_attack(img, v):
+    """Nut "Tan cong" cua bang phien quan -> (x, y) | None. Ham thuan; P13m: thu them 2 ti le trong vung nut."""
+    p = v.find(img, NPC_ATTACK, th=0.85)
+    if p:
+        return int(p[0]), int(p[1])
+    load = getattr(v, "load", None)
+    tpl = load(NPC_ATTACK, probe=True) if load else None
+    if tpl is None or not hasattr(img, "shape"):
+        return None
+    x, y, w, h = NPC_BTN_ROI
+    area = img[y:y + h, x:x + w]
+    best = None
+    for s in NPC_SCALES:
+        t = cv2.resize(tpl, None, fx=s, fy=s)
+        if area.shape[0] < t.shape[0] or area.shape[1] < t.shape[1]:
+            continue
+        _, score, _, loc = cv2.minMaxLoc(cv2.matchTemplate(area, t, cv2.TM_CCOEFF_NORMED))
+        if score >= 0.85 and (best is None or score > best[0]):
+            best = (score, x + loc[0] + t.shape[1] // 2, y + loc[1] + t.shape[0] // 2)
+    return best[1:] if best else None
+
+
+def npc_popup(img, v):
+    """Ham thuan P12-4 / P13m: bang muc tieu dang mo -> ('attack', xy) nut "Tan cong" | ('search', xy) bang "Toi da co
+    the tan cong phan quan cap N!" chi co "Tim kiem" | ('rally', xy) "Tap ket tan cong" | None."""
+    p = find_attack(img, v)
+    if p:
+        return "attack", p
+    for kind, name, roi in (("search", NPC_SEARCH, NPC_BTN_ROI), ("rally", RALLY, None)):
+        if getattr(v, "has", None) and v.has(name):
+            p = v.find(img, name, th=0.85, roi=roi)
+            if p:
+                return kind, (int(p[0]), int(p[1]))
     return None
 
 
-def npc_search(ctx):
-    """P12-4: bam 'Tim kiem' -> camera toi phien quan dung cap -> cham muc tieu giua man -> cho nut 'Tan cong'.
-    -> toa do nut Tan cong | None."""
-    p = ctx.find(NPC_SEARCH, th=0.85, roi=NPC_SEARCH_ROI)
-    if not p:
+def npc_popup_action(img, v):
+    """-> 'attack' | 'search' | None (bang phien quan le)."""
+    hit = npc_popup(img, v)
+    return hit[0] if hit and hit[0] != "rally" else None
+
+
+def is_npc_popup(img):
+    """Tieu de bang dang mo la "Phien quan Lv.N" (OCR)? Nut "Tan cong" cua man khac (chien dich) -> False."""
+    title = ocr.text(img, quest_rules.NPC_TITLE_ROI, bright=None, psm=7) or ""
+    return quest_rules.npc_level(title) is not None
+
+
+def parse_max_level(text):
+    """"Toi da co the tan cong phan quan cap 2!" (OCR mat dau) -> 2 | None. Ham thuan."""
+    from aowbot.domain.blockers import normalize
+    m = re.search(r"\bc\w{1,2}p\W{0,3}(\d{1,2})\b", normalize(text or ""))
+    return int(m.group(1)) if m and int(m.group(1)) >= 1 else None
+
+
+def read_max_level(img, btn):
+    """Cap toi da ghi ngay tren nut "Tim kiem" (btn = tam nut) -> N | None."""
+    if not hasattr(img, "shape"):
         return None
-    log.info("Phien quan: 'Toi da co the tan cong phan quan cap X' -> bam 'Tim kiem' de game dan toi con dung cap")
-    ctx.tap(p[0], p[1], wait=3.0)
-    ctx.settle()
-    a = ctx.find(NPC_ATTACK, th=0.85)
-    if not a:
-        tap_target(ctx, 1.8)
-        a = ctx.wait_for(NPC_ATTACK, timeout=3, th=0.85)
-    return a
+    roi = (max(0, btn[0] - 210), max(0, btn[1] - 84), 430, 40)
+    for bright, scale in ((None, 2), (150, 2), (None, 3)):
+        n = parse_max_level(ocr.text(img, roi, bright=bright, scale=scale, psm=7))
+        if n:
+            return n
+    return None
+
+
+def remember_max(ctx, level, key="npc_max_level"):
+    """Nho cap toi da duoc danh theo may (memory.db + state.json). Khong doc duoc -> giu so cu."""
+    if not level:
+        return
+    m, st = getattr(ctx, "mem", None), getattr(ctx, "store", None)
+    if m:
+        m.set_fact(ctx.dev.idx, key, int(level))
+    if st:
+        st.update(ctx.dev.idx, **{key: int(level)})
+
+
+def _wait_popup(ctx, looks):
+    for k in range(looks):
+        hit = npc_popup(ctx.shot(), ctx.v)
+        if hit:
+            return hit
+        if k + 1 < looks:
+            time.sleep(0.7)
+    return None
+
+
+def tap_rebel(ctx, near_center=False):
+    """Ban do the gioi: bam SPRITE phien quan duoi mui ten xanh (P13l world_target: vat that, khong offset co dinh,
+    khong can cu nguoi choi). near_center: khong co mui ten (sau khi cham thanh nhiem vu) -> con co nhan "Phien quan"
+    gan giua man. Cham khong ra bang nao -> danh sach den toa do. -> True neu bang muc tieu dang hien."""
+    def blocked(x, y):
+        return map_menu.blocked(ctx, x, y)
+
+    tried = 0
+    for look in range(NPC_LOOKS):
+        img = ctx.shot()
+        if npc_popup(img, ctx.v):
+            return True
+        arrow = world_target.find_green_chevron(img)
+        t = None
+        if arrow:
+            t = world_target.pick(img, ctx.v, arrow, blocked, reach_x=NPC_REACH_X)
+        elif near_center and look >= 1:        # nhip dau: cho mui ten / bang hien
+            t = world_target.rebel_near(img, ctx.v, *TARGET, NPC_CENTER_R, blocked)
+        if t is None:
+            if look + 1 < NPC_LOOKS:
+                time.sleep(0.7)
+            continue
+        log.info("Phien quan: bam sprite %s @%d,%d%s", t.kind, t.x, t.y, " duoi mui ten" if arrow else "")
+        ctx.tap(t.x, t.y, wait=1.8)
+        if _wait_popup(ctx, 3):
+            return True
+        tapguard.of(ctx).ban(map_menu.SCOPE, t.x, t.y, "sprite phien quan: cham khong ra bang muc tieu")
+        tried += 1
+        if tried >= NPC_SPRITE_TRIES:
+            break
+    return False
+
+
+def npc_search(ctx, goal="attack"):
+    """P12-4 / P13m (chu du an t107u): phien quan mo khoa TUAN TU. Bang "Toi da co the tan cong phan quan cap N!" ->
+    nho N -> "Tim kiem" -> camera toi phien quan cap N (mui ten xanh) -> bam sprite duoi mui ten -> lap (toi da
+    NPC_ROUNDS vong) cho toi khi bang co nut dich (goal 'attack' = "Tan cong", 'rally' = "Tap ket tan cong").
+    Bang hien san nut dich -> tra ngay. Khong tien trien (khong thay sprite, bang khac, hoac cung cap N lap lai) ->
+    dung. -> toa do nut dich | None."""
+    seen = {}
+    key = "npc_max_level" if goal == "attack" else "mech_max_level"
+    for round_ in range(NPC_ROUNDS + 1):
+        img = ctx.shot()
+        hit = npc_popup(img, ctx.v)
+        if hit and hit[0] == goal:
+            return hit[1]
+        if not hit or hit[0] != "search" or round_ >= NPC_ROUNDS:
+            break
+        btn = hit[1]
+        n = read_max_level(img, btn)
+        remember_max(ctx, n, key)
+        seen[n] = seen.get(n, 0) + 1
+        if seen[n] > NPC_SAME_N:
+            log.info("Phien quan: bang 'Tim kiem' cap %s lap lai, khong tien trien -> dung", n or "?")
+            break
+        log.info("phien quan: toi da cap %s -> tim kiem", n or "?")
+        ctx.tap(btn[0], btn[1], wait=3.0)
+        ctx.settle()
+        again = npc_popup(ctx.shot(), ctx.v)
+        if again and again[0] == "search":        # bang con nguyen: nut "Tim kiem" khong an -> khong bam lap
+            log.info("Phien quan: bam 'Tim kiem' ma bang khong dong -> dung")
+            break
+        if not tap_rebel(ctx):
+            log.info("Phien quan: sau 'Tim kiem' khong bam duoc sprite nao -> dung")
+            break
+    return None
 
 
 def tap_target(ctx, wait):
@@ -157,6 +298,9 @@ def npc_attack(ctx, mq):
     khi lan do thanh cong; that bai / khong vao duoc bang muc tieu / bo / tranh chap -> lui 2h (gap doi, tran 24h), khong
     thu lai moi lan ghe (live5 #2/#3/#4/#6: 'npc_none' moi lan, ~15 s / lan). Khong lien quan tham gia tap ket Co giap
     (HQ < 15 khong bao gio tham gia)."""
+    r = expand.try_city_rebel(ctx)              # P13m: phien quan tren o do trong thanh - khong ton quan doan
+    if r is not None:
+        return _city_result(r)
     m = getattr(ctx, "mem", None)
     idx, now = ctx.dev.idx, time.time()
     if m:
@@ -177,9 +321,16 @@ def npc_attack(ctx, mq):
     return r
 
 
+def _city_result(r):
+    """Ket qua expand.fight_rebel -> ket qua buoc nhiem vu. 'opened' (man la) -> 'opened'."""
+    return {"win": "win", "sent": "npc_sent", "miss": "npc_none", "opened": "opened"}.get(r, "skip")
+
+
 def _npc_attack_once(ctx, mq):
-    """Nhiem vu 'Kich sat N lan phien quan': thanh nhiem vu -> ban do, muc tieu giua man -> 'Tan cong' -> Xuat chinh.
-    -> 'npc_sent' | 'npc_skip' | 'npc_full' | 'npc_contested' | 'npc_none'. Thieu anh mau -> 'npc_none' (khong bam)."""
+    """Nhiem vu 'Kich sat N lan phien quan': thanh nhiem vu -> ban do / o do trong thanh. Ban do: bam sprite phien quan
+    (mui ten xanh) -> leo cap bang "Tim kiem" toi khi co "Tan cong" -> Xuat chinh.
+    -> 'npc_sent' | 'npc_skip' | 'npc_full' | 'npc_contested' | 'npc_none' (+ 'win' / 'skip' / 'opened' o thanh).
+    Thieu anh mau -> 'npc_none' (khong bam)."""
     if not tplneed.has(ctx.v, NPC_ATTACK, "nut Tan cong bang phien quan"):
         return "npc_none"
     if not ctx.world_ready():
@@ -191,14 +342,10 @@ def _npc_attack_once(ctx, mq):
         return "npc_full"
     ctx.tap(*BANNER, wait=3.0)
     ctx.settle()
-    p = ctx.find(NPC_ATTACK, th=0.85)
-    if not p and npc_popup_action(ctx.shot(), ctx.v) == "search":
-        p = npc_search(ctx)
-    if not p:
-        tap_target(ctx, 1.8)
-        p = ctx.wait_for(NPC_ATTACK, timeout=3, th=0.85)
-    if not p and npc_popup_action(ctx.shot(), ctx.v) == "search":
-        p = npc_search(ctx)
+    r = expand.try_city_rebel(ctx)              # camera toi o do trong thanh
+    if r is not None:
+        return _city_result(r)
+    p = npc_search(ctx) if tap_rebel(ctx, near_center=True) else None
     if not p:
         log.info("Phien quan: khong mo duoc bang muc tieu")
         ctx.save_debug("mainquest_npc_none")
@@ -216,7 +363,11 @@ def npc_engage(ctx, mq, p):
     digits = "".join(ch for ch in (ocr.text(img, quest_rules.NPC_POWER_ROI, "0123456789,.", psm=7) or "") if ch.isdigit())
     rec = int(digits) if 3 <= len(digits) <= 10 else None    # "5,000" / "5.000" (dau phan cach doc lan) -> 5000
     st = ctx.store.inst(ctx.dev.idx) if getattr(ctx, "store", None) else {}
-    ok, why = quest_rules.npc_ok(quest_rules.npc_level(title), int(rec) if rec else None, st.get("power"),
+    level = quest_rules.npc_level(title)
+    m = getattr(ctx, "mem", None)
+    if m and level and level > int(m.fact(ctx.dev.idx, "npc_max_level") or 0):
+        remember_max(ctx, level)                                # bang co "Tan cong" -> cap nay da mo
+    ok, why = quest_rules.npc_ok(level, int(rec) if rec else None, st.get("power"),
                                  mq.get("npc_max_level", 10), mq.get("npc_max_ratio", 0.3))
     if not ok:
         log.info("Phien quan: khong danh (%s, tieu de %r)", why, title[:30])
@@ -225,9 +376,11 @@ def npc_engage(ctx, mq, p):
     ctx.tap(p[0], p[1], wait=2.0)
     if ctx.v.has(POTION) and ctx.find(POTION):         # P13l: het the luc -> "Dung" thuoc roi bam "Tan cong" lai
         from bot.modules import notify
-        if not notify.potion_popup(ctx) or not ctx.tap_tpl(NPC_ATTACK, wait=2.0, th=0.85):
+        again = find_attack(ctx.shot(), ctx.v) if notify.potion_popup(ctx) else None
+        if not again:
             ctx.back_out(2)
             return "npc_none"
+        ctx.tap(again[0], again[1], wait=2.0)
     if not ctx.wait_for("gather/btn_march", timeout=5):
         if ctx.v.has("rebels/btn_march_out") and ctx.find("rebels/btn_march_out"):
             return _npc_march_new(ctx, why)            # man "Cai dat Quan doan" kieu moi
@@ -235,6 +388,11 @@ def npc_engage(ctx, mq, p):
         ctx.back_out(3)
         return "npc_none"
     ctx.tap_tpl("gather/btn_recommended", wait=1.0)
+    from bot.modules import rebels
+    if not rebels.pred_win(ctx.shot()):             # P13m: cong du doan thang ca o man quan doan nay
+        log.info("Phien quan: man quan doan khong du doan thang -> bo")
+        ctx.back_out(3)
+        return "npc_skip"
     ctx.tap_tpl("gather/btn_march", wait=2.0)
     img = ctx.shot()
     if ctx.v.has("gather/dlg_contested") and ctx.v.find(img, "gather/dlg_contested"):
@@ -288,12 +446,21 @@ def step(ctx, mq, kind="unknown"):
     if not ctx.find("quest/banner_icon"):
         return "none"
     if kind == "rebels":
-        return npc_attack(ctx, mq)
+        r = npc_attack(ctx, mq)
+        if r != "opened" or not ctx.cfg.get("quests", {}).get("follow", True):
+            return r
+        from bot.modules import tutorial     # P13m: cham phien quan o thanh ra man khac -> lam theo huong dan game
+        r = tutorial.follow(ctx, ctx.cfg.get("quests", {}).get("follow_steps", 40))
+        ctx.ensure_city()
+        return "follow_" + str(r)
     ctx.tap(*BANNER, wait=2.5)
     ctx.dismiss_reward()                      # "Nhan thuong" -> bang thuong
     ctx.skip_dialogs()
     if ctx.find("campaign/btn_fight"):
         return _fight(ctx, mq)
+    r = expand.try_city_rebel(ctx)            # P13m: camera toi phien quan tren o do (mo rong lanh tho)
+    if r is not None and r != "opened":       # 'opened' -> man moi: cac luat ben duoi / follow lam tiep
+        return _city_result(r)
     img = ctx.shot()
     if ctx.v.find(img, "common/btn_close", th=0.85, roi=(440, 150, 100, 80)) and ctx.v.find(img, "quest/btn_go"):
         ctx.back_out()                        # thanh nhiem vu mo bang Chuong (sau tan thu) -> buoc 'quests' lam
