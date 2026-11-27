@@ -5,9 +5,12 @@ nut PHAI "Tang cap" (co dong ho). Nhieu dong chua dat -> "Nhay" cua DONG DAU (P1
 nguyen (dong "Nhan cang nhieu" - khong bam) -> "Tang cap" -> popup "Thieu tai nguyen" -> bot/resources.py ("Dung dao
 cu", khong kim cuong / khong mua). KHONG BAO GIO bam "Tang cap ngay" (nut trai, ton kim cuong) TRU khi dong duoi ghi
 "Mien phi" va khong co so (chu du an 2026-11-22; free_instant_button).
+
+P13m t108u: nang nha chinh 7 -> 8 hien bang "het giai doan tan thu" -> bot/novice_popup.py bam "Xac nhan", roi bam
+"Tang cap" (nut co dong ho) tiep - khong bao gio "Tang cap ngay".
 """
 import os, re, time, logging
-from bot import hqlevel, ocr, resources
+from bot import hqlevel, novice_popup, ocr, resources
 
 log = logging.getLogger("aow")
 LEVEL_ROI = (180, 148, 180, 26)   # "Cap hien tai N"
@@ -321,6 +324,29 @@ def upgraded_ok(img):
     return False
 
 
+NOVICE_ROUNDS = 2       # bang het tan thu hien lai sau khi bam "Tang cap": xu ly toi da chung nay lan
+
+
+def press_upgrade_again(ctx, lv):
+    """Sau khi xac nhan bang het tan thu: man Tang cap con o cap `lv` -> bam "Tang cap" (nut PHAI, co dong ho). Nut
+    trai / co icon kim cuong ("Tang cap ngay") khong bao gio. Man da dong / da len cap = game tu bat dau -> khong bam.
+    -> True neu da bam."""
+    img = ctx.settle(max_s=2.0)
+    up = ctx.v.find(img, "build/btn_upgrade")
+    if not up or upgraded_ok(img):
+        return False
+    now = screen_level(img)
+    if lv is not None and now is not None and now != lv:
+        return False
+    if up[0] < resources.LEFT_X or resources.has_gem(img, ctx.v, up[0], up[1]):
+        log.warning("Sau bang tan thu: nut @%d,%d khong phai 'Tang cap' (trai / kim cuong) - khong bam", up[0], up[1])
+        return False
+    ctx.tap(up[0], up[1], wait=2.0, tpl="build/btn_upgrade")
+    resources.retry(ctx, lambda: ctx.tap_tpl("build/btn_upgrade", wait=2.0))
+    ctx.skip_dialogs()
+    return True
+
+
 def upgrade_here(ctx, depth=0, max_depth=4, late=False):
     """Dang o menu cong trinh (icon Tang cap) hoac man Tang cap. Tra ve: 'started' | 'hq_cap' |
     'blocked' (thieu dieu kien/tai nguyen/het tho) | 'none' (khong phai man nang cap)."""
@@ -343,8 +369,13 @@ def upgrade_here(ctx, depth=0, max_depth=4, late=False):
         ctx.tap_tpl("build/btn_upgrade_icon", wait=1.5, fresh=False)
     ctx.skip_dialogs()   # vd "Can thoa man dieu kien tien de moi" che man Tang cap (do #5, 2026-11-18)
     img = ctx.shot()
+    novice = novice_popup.confirm(ctx, img)    # P13m t108u: bang het tan thu che man Tang cap
+    if novice is False:
+        return "blocked"
+    if novice:
+        img = ctx.settle()
     if not (ctx.v.find(img, "build/btn_upgrade") or ctx.v.find(img, "build/btn_jump")):
-        if not ic and not late:   # chua thay gi: cho them 1 nhip on dinh roi doc lai (man nang cap / menu hien tre)
+        if (not ic or novice) and not late:   # chua thay gi: cho them 1 nhip on dinh roi doc lai (man nang cap / menu hien tre)
             img = ctx.settle(max_s=4.0)
             if any(ctx.v.find(img, n) for n in ("build/btn_upgrade_icon", "build/btn_upgrade", "build/btn_jump")):
                 log.info("Man nang cap hien tre - doc lai")
@@ -373,7 +404,7 @@ def upgrade_here(ctx, depth=0, max_depth=4, late=False):
         return "blocked"
     up = ctx.v.find(img, "build/btn_upgrade")
     ctx.last_build_s = read_build_time(img, up) if up else None
-    free = free_instant_button(img, up) if up else None
+    free = free_instant_button(img, up) if up and not novice else None   # sau bang tan thu: chi "Tang cap"
     if free:
         log.info("Tang cap ngay MIEN PHI (0 kim cuong) - bam")
         ctx.tap(free[0], free[1], wait=2.0, tpl="btn:tang_cap_ngay_mien_phi")
@@ -384,6 +415,15 @@ def upgrade_here(ctx, depth=0, max_depth=4, late=False):
     ctx.skip_dialogs()   # "Xuong kien truc bat dau tang cap, hay tang toc..." hien SAU khi da bat dau (do #5)
     # Thanh cong: man Tang cap dong lai, ve thanh pho. Con man / hien hop thoai -> thieu tai nguyen hoac
     # het tho -> DONG lai (khong bao gio xac nhan hop thoai co the ton kim cuong).
+    # P13m t108u: NGOAI LE duy nhat la bang het tan thu (nha chinh 7 -> 8, nhan bang chu) - xu ly TRUOC khi ket luan
+    for k in range(NOVICE_ROUNDS + 1):
+        passed = novice_popup.confirm(ctx)
+        if passed is None:
+            break
+        if not passed or k >= NOVICE_ROUNDS:
+            log.warning("Bang het tan thu van hien - dung, khong dong X")
+            return "blocked"
+        press_upgrade_again(ctx, lv)
     img = ctx.shot()
     if ctx.v.find(img, "build/msg_no_builder"):
         # bang "Tao doi ngu": het tho ranh (tho thu 2 la tho thue chua mo). Co nut "Tang toc"/"Dung thu" -> KHONG bam

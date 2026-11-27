@@ -88,3 +88,35 @@ Không đổi so với P13l:
 - Test mới `tests/legacy/test_p13m_nhay_expand_rebel.py`, ảnh ở `tests/fixtures/p13m/`.
 - Sửa test cũ `test_p12_rebels_search`: bỏ khẳng định "bấm giữa màn sau Tìm kiếm".
 - Chép `data/owner-feedback/p13/quan_quan_tuan_bam_sai.png` từ worktree p13l (thư mục `data/` không vào git).
+
+## 7. t108u — bảng hết giai đoạn tân thủ khi nâng nhà chính 7 → 8
+
+Yêu cầu chủ dự án t108u. **Không có ảnh thật của bảng này**: mọi kết luận kiểm bằng khung giả (dán ảnh mẫu nút lên nền trống) và chữ OCR giả. Chưa chạy bot sống.
+
+**Nhận bảng** (`bot/novice_popup.py`), phải đủ cả hai:
+- nút "Xác nhận": 3 ảnh mẫu sẵn có (`common/btn_confirm`, `btn_confirm_unlock`, `btn_confirm_hero`), không khớp thì tìm nút xanh có chữ "Xac nhan";
+- chữ "tân thủ" (OCR, cho phép mất dấu / `tanthu` / `tan thii` / `tan tnu`) ở phần **phía trên nút**. "Lần thứ", "tặng thưởng", "tận thế" không khớp.
+
+Không bấm khi hộp thoại "Rời trò chơi?" đang mở (`cancel_exit` chạy trước, bấm Hủy) hoặc nút có icon kim cương. `common/btn_confirm` vẫn **không** nằm trong `POPUP_CLOSERS`.
+
+**Luồng** (`build.upgrade_here`):
+1. Kiểm sau khi mở màn Tăng cấp, và sau khi bấm "Tăng cấp" **trước** khi kết luận kết quả.
+2. Bấm "Xác nhận", log `het tan thu -> xac nhan, nang nha chinh`.
+3. Màn Tăng cấp còn ở cấp cũ → bấm "Tăng cấp" (nút phải, có đồng hồ) lần nữa. Màn đã đóng hoặc đã lên cấp → game tự bắt đầu, không bấm thêm.
+4. Lượt đã gặp bảng này không xét nút "Tăng cấp ngay", kể cả khi ghi "Miễn phí". Nút nửa trái hoặc có kim cương không bấm.
+5. Bấm 2 lần bảng không đóng → danh sách đen hết lượt ghé, ảnh `novice_popup_stuck`, trả `blocked`, **không đóng X**. Bảng hiện lại sau khi bấm "Tăng cấp": xử lý tối đa 2 lần (`NOVICE_ROUNDS`).
+
+**Chưa kiểm / rủi ro**
+- Kiểu nút, vị trí chữ của bảng thật chưa biết. Khung đầu tiên bot gặp được lưu ở `logs/inv/novice_popup/` để đối chiếu.
+- Nếu bảng thật không được nhận ra, hành vi như cũ: tính `blocked`, ảnh `build_blocked`, đóng bằng X nếu có.
+- Chỉ gắn trong `upgrade_here` (mọi đường nâng cấp đi qua đây). `close_popups`, `goto`, tân thủ / follow không nhận bảng này; bảng hiện muộn hơn lúc bot kiểm (vài giây sau khi bấm) có thể bị đóng ở các đường đó, lượt nâng sau sẽ gặp lại.
+- Mỗi lần nâng cấp thêm khoảng 2 khung chụp để chờ màn đứng yên.
+- Ảnh mẫu `common/res_gem` không khớp icon trên nút "Tăng cấp ngay" của ảnh `hq_prereq_nhay`; chốt chính để tránh nút đó là vị trí (chỉ bấm nửa phải) và mẫu `build/btn_upgrade`.
+
+**Kiểm tra** (sau t108u):
+- Test mới `tests/legacy/test_p13m_t108_novice.py` (35 ca).
+- `pytest` trong worktree: 1659 qua, 197 bỏ qua (thiếu ảnh chỉ có ở máy chính).
+- `pytest` trên bản sao tạm có thêm ảnh test của thư mục chính (chỉ đọc): 1853 qua, 15 bỏ qua.
+- `ruff check .` và bộ luật mã cũ: sạch. `mypy`: sạch (73 file). `lint-imports`: 8/8. `main.py --check`: thiếu 15/273 (không đổi).
+- t106u, t107u đã xong ở commit `7f83dc3` (mục 1–3); lượt này không đổi phần đó.
+

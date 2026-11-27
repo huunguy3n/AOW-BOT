@@ -96,6 +96,9 @@ bot/gather_rules.py  P3: luật thuần thu thập (dung tích mỏ đầy, mỏ
 bot/intel_rules.py   P5: luật thuần tình báo (bảng nhiệm vụ / bảng quà, vùng ghim mục tiêu, lý do unknown_*, đếm log)
 bot/quest_rules.py   P4: luật thuần nhiệm vụ (phân loại chữ OCR → bước phụ trách, phiến quân NPC, thử lại cùng nhiệm vụ) + màn follow
 bot/tplneed.py       P2: ảnh mẫu chưa có → bỏ qua nhanh + log "thieu anh mau <tên>" (1 lần/giờ)
+bot/novice_popup.py  P13m t108u: bảng "hết giai đoạn tân thủ" khi nâng nhà chính 7→8 → nhận bằng chữ OCR "tân thủ"
+                     + nút "Xác nhận" → bấm "Xác nhận" rồi bấm "Tăng cấp" tiếp (không "Tăng cấp ngay"); gắn trong
+                     build.upgrade_here
 bot/unlock_popup.py  P13k: popup "Mở khóa Binh chủng này" → chỉ bấm "Xác nhận" (tiêu đề + nút), không bao giờ "Đến";
                      gắn ở close_popups / goto / back_out / skip_dialogs / dismiss_reward / tutorial.decide; Ctx chặn
                      mọi lần chạm vào vùng "Đến" khi popup đang hiện; 2 lần không đóng → danh sách đen hết lượt ghé
