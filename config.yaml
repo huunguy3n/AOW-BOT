@@ -332,6 +332,24 @@ learn:                     # giai doan E+F (docs/bot/05-ke-hoach-hoc-may-mini.md
   promote_ok: 2            # cham thu dung N lan (khong lan nao sai) -> nhan bien the anh mau
   dead_min: 8              # cho cham >= N lan ...
   dead_rate: 0.1           # ... ma ti le an < 10% -> 'cho chet', goto dung Back thay vi cham
+  skip_dead: true          # J1 (chu du an 2026-11-27): MOI lan cham cua module (tap/tap_tpl/tap_first) vao cho chet
+                           # (ti le < dead_rate VA truot lien tiep >= dead_min) -> KHONG cham; nut dong/quay lai common/* khong chan
+  probe_min: 60            # J1: van cham thu lai cho chet sau N phut, gap doi moi lan thu truot ...
+  probe_cap_h: 24          # ... toi da N gio. Thu lai an -> het chet
+  skip_exempt: []          # J1: anh mau / 'module.ham' / tien to (vd 'tutorial') khong bao gio chan
+  skip_noop: true          # M1-1/2 (lo trinh ML, chu du an duyet 2026-11-27): doan cham vo ich theo anh vung cham
+                           # (dHash 96x96) / diem khop, giong cac lan truot truoc -> khong gui cham, coi nhu da cham
+  noop_hash_d: 4           # M1-1: hang xom = dHash lech <= N bit, cung o luoi +-1
+  noop_min_n: 5            # ... can >= N hang xom
+  noop_rate: 0.9           # ... va >= 90 % hang xom la lan truot
+  noop_precision: 0.95     # tu kiem bo-ra (30 % mau moi nhat) phai dung >= 95 % thi moi chan cho anh mau / ham do
+  noop_min_pred: 5         # ... tren >= N lan doan
+  noop_min_hist: 30        # can >= N lan cham da biet ket qua moi tu kiem
+  noop_keep: 400           # giu N lan cham gan nhat moi anh mau / ham
+  noop_explore: 0.05       # 5 % lan doan vo ich van cham that de tiep tuc hoc
+  imitate_unknown: false   # M1-3 TAT (do offline 27/11/2026, bo-1-may tren 206 man la: doan 16 lan, SAI 13): man la ->
+                           # lam theo thao tac tay giong nhat cua MOI may (logs/human); chi bat lai khi do lai dung >= 90 %; van chan nut
+                           # ton tien (bot/imitate.is_danger) + blocked_tap; moi mau 1 lan / lan ghe
   stats_days: 14           # thong ke ti le an theo N ngay gan nhat
   adaptive_wait: true      # H1: cho sau cham theo thoi gian game phan ung da hoc (p80 + 0,35 s, khong vuot thoi gian cu)
   knn_max: 6000            # so mau kNN man hinh toi da nap tu memory.db

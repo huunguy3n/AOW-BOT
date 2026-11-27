@@ -119,6 +119,8 @@ class Ctx:
         p = self.find(name, fresh=fresh, **kw)
         if not p or self.blocked_tap(p[0], p[1] + dy):
             return False
+        if self.ml_skip(p[0], p[1] + dy, name, p[2]):
+            return True                  # ML doan cham vo ich: coi nhu da cham (ket qua y het), khong gui
         log.debug("tap %s @%d,%d (%.2f)", name, p[0], p[1], p[2])
         self._exp_begin("tpl", p[0], p[1] + dy, name, p[2])
         self.dev.tap(p[0], p[1] + dy)
@@ -133,6 +135,8 @@ class Ctx:
             if p:
                 if self.blocked_tap(p[0], p[1], img):
                     return None
+                if self.ml_skip(p[0], p[1], n, p[2], img):
+                    return n
                 self._exp_begin("first", p[0], p[1], n, p[2])
                 self.dev.tap(p[0], p[1])
                 self._tapped(p[0], p[1])
@@ -210,6 +214,46 @@ class Ctx:
             return True
         return False
 
+    _ml_logged = {}         # J1: (ai cham, o luoi) -> lan log gan nhat (log 1 lan/gio)
+
+    def ml_skip(self, x, y, tpl=None, score=None, img=None):
+        """J1 + M1-1/2: bo hoc doan lan cham nay KHONG co tac dung (cho chet / anh vung cham + diem khop giong cac lan
+        truot truoc) -> KHONG gui cham, tra True; ben goi coi nhu da cham (ket qua du doan y het: man khong doi).
+        Ghi exp kind='ml_skip', outcome = ly do (dead / crop / score) de dem tren web. Loi -> cham binh thuong."""
+        try:
+            L = self.learner
+            if L is None:
+                return False
+            why = self._caller()
+            if img is None:
+                img = self._img if self._img is not None and time.time() - getattr(self, "_img_t", 0) < 5 else None
+            from bot import learn
+            h = None
+            if img is not None:
+                c = learn.box(img, x, y, 48)
+                h = learn.dhash(c) if c.size else None
+            r = L.noop_gate(tpl, why, x, y, h, score)
+            if not r:
+                return False
+            act, reason = r
+            if act == "probe":
+                log.debug("ML: cham thu (%s) %s @%d,%d (buoc %s)", reason, tpl or why, x, y, self.step)
+                return False
+            k = (tpl or why, reason, int(x) // learn.GRID, int(y) // learn.GRID)
+            if time.time() - self._ml_logged.get(k, 0) > 3600:
+                self._ml_logged[k] = time.time()
+                ok, n = L.spot(tpl or why, x, y)
+                log.info("ML bo qua cham vo ich (%s) %s @%d,%d (an %d/%d, buoc %s)", reason, tpl or why, x, y, ok, n,
+                         self.step)
+            self._exp.append({"visit": getattr(self, "visit", None), "inst": self.dev.idx, "step": self.step,
+                              "at": time.time(), "kind": "ml_skip", "tpl": tpl, "why": why,
+                              "x": int(x), "y": int(y), "crop": h, "score": None if score is None else round(float(score), 3),
+                              "outcome": reason})
+            return True
+        except Exception as e:
+            log.debug("ml_skip: %s", e)
+            return False
+
     def _tapped(self, x, y):
         self._last_tap = (int(x), int(y), time.time())
         self._menu_watch = MENU_WATCH
@@ -219,7 +263,7 @@ class Ctx:
         self.human_gate()
         from bot.device import clamp_xy
         x, y = clamp_xy(x, y, "ctx.tap")   # P13c: 1 cho chac, truoc ca nhat ky hoc
-        if self.blocked_tap(x, y, seen):
+        if self.blocked_tap(x, y, seen) or self.ml_skip(x, y, tpl):
             return
         self._exp_begin("tap", x, y, tpl)
         self.dev.tap(x, y)
@@ -572,9 +616,31 @@ class Ctx:
                     self._probe = (tpl, crop if crop.shape[:2] == (h, w) else None)
                     log.info("Man la: %s gan khop %.2f @%d,%d -> cham thu (hoc bien the neu dung)", tpl, sc, x, y)
                     return "tap", (x, y), tpl
+            r = self._imitate_unknown(img)
+            if r:
+                return "tap", (r["x"], r["y"]), "imitate"
         except Exception as e:
             log.debug("learned_action: %s", e)
         return act, arg, None
+
+    def _imitate_unknown(self, img):
+        """M1-3 (lo trinh ML): man la ma kNN / nut dong gan khop khong giup -> lam theo thao tac tay giong nhat cua MOI
+        may (logs/human). Nut ton tien / kim cuong (chu quanh cho cham) -> khong cham; mau da cham ma man khong doi
+        trong lan ghe nay -> khong dung lai. Cham van qua blocked_tap (popup mo khoa, menu can cu, kim cuong)."""
+        if not (self.cfg.get("learn") or {}).get("imitate_unknown", False):   # M1-3 tat: do offline sai 13/16
+            return None
+        from bot import imitate
+        blocked = self.__dict__.setdefault("_imit_blocked", set())
+        r = imitate.unknown_action(img, imitate.shared_index(), blocked)
+        if not r:
+            return None
+        blocked.add(r["key"])            # moi mau toi da 1 lan / lan ghe (chong lap vong)
+        if imitate.is_danger(imitate.text_near(img, r["x"], r["y"])):
+            log.warning("Man la: BO lam theo %d,%d (%s) - nut ton tien / kim cuong", r["x"], r["y"], r["key"])
+            return None
+        log.info("Man la: lam theo thao tac tay %s @%d,%d (giong %.3f, khop %.3f)", r["key"], r["x"], r["y"],
+                 r["sim"], r["match"])
+        return r
 
     def ensure_city(self):
         # G3: kiem lai thanh pho ngay sau 1 lan kiem truoc (khong co thao tac nao o giua, < nav.skip_recheck_s giay) la thua:

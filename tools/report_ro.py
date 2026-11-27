@@ -440,6 +440,27 @@ def show(title, m):
             print(f"   {step:<13}{s['adb']:>6}{s['adb_s']:>8}{s['screencap']:>6}{s['ocr']:>6}{s['identify']:>10}")
 
 
+def show_ml(mem, days, as_json=False):
+    """M0 (docs/strategy/ml-roadmap.md): so do ML theo ngay - cham an %, ML chan, luot ghe, may-gio, loi, cap nha chinh."""
+    from bot import learn
+    rows = learn.scoreboard(mem, days)
+    noop = learn.noop_status(learn.Learner(mem, {}))
+    if as_json:
+        print(json.dumps({"days": rows, "noop": noop}, ensure_ascii=False, indent=1))
+        return
+    print(f"== So do ML {days} ngay (tran may-gio 48/ngay)")
+    print("   ngay   cham    an%   chan(chet/anh/diem)  ghe  phut/ghe  may-gio  loi buoc/ghe  nha chinh")
+    for r in rows:
+        hq = " ".join(f"#{k}:{v}" for k, v in sorted(r["hq"].items()))
+        print(f"   {r['day']}  {r['taps']:6d}  {r['ok_pct'] if r['ok_pct'] is not None else '-':>5}  "
+              f"{r['skips']:5d} ({r['skip_dead']}/{r['skip_crop']}/{r['skip_score']}){'':4s} {r['visits']:4d}  "
+              f"{r['visit_min'] if r['visit_min'] is not None else '-':>7}  {r['machine_h']:7}  "
+              f"{r['step_err']:4d}/{r['visit_err']:<4d}  {hq}")
+    print("\n== Doan cham vo ich (M1-1/2): khoa duoc phep chan sau tu kiem bo-ra")
+    for n in noop:
+        print(f"   {'BAT' if n['on'] else 'tat'}  {n['key']:45s} mau {n['n']:4d}  doan {n['pred']:3d}  dung {n['precision']}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=DB)
@@ -449,6 +470,8 @@ def main():
     ap.add_argument("--inst", help="vd 0,5")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--24h", dest="day", action="store_true", help="P6: 24 gio gan nhat (= --since 24)")
+    ap.add_argument("--ml", type=int, nargs="?", const=7, metavar="NGAY",
+                    help="M0: bang so do ML theo ngay (mac dinh 7 ngay) + khoa ML dang duoc chan")
     a = ap.parse_args()
     if a.day and not a.since:
         a.since = "24"
@@ -461,6 +484,9 @@ def main():
             return mem._conn().execute(sql, args).fetchall()
         except sqlite3.Error as e:
             sys.exit(f"Loi doc {a.db}: {e}")
+    if a.ml:
+        show_ml(mem, a.ml, a.json)
+        return
     insts = [int(x) for x in a.inst.split(",")] if a.inst else None
     t0, t1 = parse_time(a.since), parse_time(a.until)
     if a.split:

@@ -88,6 +88,17 @@ bot/ocr.py           Tesseract (chỉ gói 'eng' → tiếng Việt mất dấu,
 bot/badges.py        Tìm chấm đỏ theo màu HSV
 bot/build.py         Nâng cấp công trình (đi theo nút "Nhảy" tới điều kiện), KHÔNG bấm "Tăng cấp ngay"
 bot/learn.py         Học máy mini (giai đoạn E+F): nhật ký kinh nghiệm mỗi lần chạm (bảng `exp`), kNN màn hình, biến thể ảnh mẫu tự học (`templates/<tên>@auto<N>.png`), "chỗ chết"
+                     J1 (chủ dự án 2026-11-27): chỗ chết (tỉ lệ ăn < `learn.dead_rate` VÀ trượt liên tiếp ≥ `dead_min`)
+                     chặn ở MỌI lần chạm qua Ctx (tap/tap_tpl/tap_first, `Ctx.ml_skip`), không chỉ goto; nút common/*
+                     không chặn; chạm thử lại sau `probe_min` phút gấp đôi (≤ `probe_cap_h`), thử ăn → hết chết.
+                     Lần chặn ghi `exp` kind='ml_skip' → web "ML đã chặn", `tools/learn.py report`
+                     M1 (lộ trình ML, chủ dự án duyệt M0+M1 2026-11-27, docs/strategy/ml-roadmap.md): `Learner.noop_gate`
+                     = chỗ chết (J1) + đoán chạm vô ích theo dHash vùng chạm 96×96 (M1-1) / điểm khớp (M1-2), mỗi ảnh
+                     mẫu / hàm tự kiểm bỏ-ra (đúng ≥ `learn.noop_precision` 95 %) mới được chặn; chặn = KHÔNG gửi chạm,
+                     coi như đã chạm (tap_tpl True, tap_first tên mẫu); 5 % vẫn chạm thật (`noop_explore`). M1-3: màn
+                     lạ trong goto → làm theo thao tác tay giống nhất của MỌI máy (`imitate.unknown_action`, nạp nền) —
+                     **TẮT** (`learn.imitate_unknown` false): đo offline bỏ-1-máy trên 206 màn lạ đoán 16 lần, sai 13. M0: `learn.scoreboard` → web "Số đo ML theo ngày",
+                     `python tools/report_ro.py --ml [ngày]`
 bot/steer.py         Lái quân theo màu; touch.py = Finger (sendevent); stream.py = FrameStream (screencap liên tục)
 bot/stepgate.py      P1: điều kiện trước khi chạy + giãn chu kỳ khi trả 0 (heal/campaign/warday/mainquest), hàm thuần trên trí nhớ
 bot/queues.py        Q0/P2: đọc hàng chờ "x/y" cột icon trái: ảnh chữ số templates/qdigits → OCR bỏ phiếu → chấm đỏ = rảnh
@@ -160,6 +171,7 @@ python tools/learn.py train / eval     # nạp mẫu kNN từ ảnh cũ / đo đ
 python tools/imitate_eval.py --idx 3   # đo offline bộ "làm theo mẫu" (bot/imitate.py) trên thao tác tay đã ghi của máy #3
 python main.py --web                   # web quản lý (launch config: .claude/launch.json "aow-web")
 python tools/report_ro.py [--split "YYYY-mm-dd HH:MM"]   # số đo chỉ-đọc trước/sau (lần ghé vô ích, perf ADB/ảnh/OCR, follow kẹt, cấp nhà chính/ngày)
+python tools/report_ro.py --ml 7      # M0: số đo ML theo ngày (chạm ăn %, ML chặn, lượt ghé, máy-giờ, lỗi, cấp nhà chính) + khóa đang chặn
 python tools/report_ro.py --24h       # P6: tổng hợp 24 giờ — bước không lỗi ≥ 95 %, kim cương theo nguồn (bảng gem_ev, chỉ khiên), số máy cùng lúc ≤ 2, chỉ số P1-P5; hướng dẫn chạy thật: docs/strategy/p6-huong-dan-chay-that.md
 python tools/follow_stats.py [--replay] [--human] [--since YYYY-mm-dd]   # P4: follow kẹt theo loại màn, phát lại decide() trên ảnh kẹt, thao tác tay
 python -m aowbot world|plan|shadow <idx>                 # agent dry-run: trạng thái + độ tươi / quyết định + lý do / phát lại

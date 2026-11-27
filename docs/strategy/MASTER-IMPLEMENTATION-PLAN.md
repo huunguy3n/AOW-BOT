@@ -26,6 +26,7 @@ Hai workstream dùng chung một kiến trúc đích, một chuẩn code, một 
 | 15 | Tiêu chí nghiệm thu | §12 bên dưới + [implementation-roadmap.md](implementation-roadmap.md) §4 |
 | 16 | Roadmap có ưu tiên | [implementation-roadmap.md](implementation-roadmap.md) §3 + §10 bên dưới |
 | 17 | Rollback và migration | [migration-map.md](migration-map.md) §4 |
+| 18 | Lộ trình học máy M0–M4 (đề xuất 27/11/2026, chờ duyệt) | [ml-roadmap.md](ml-roadmap.md) |
 
 ADR liên quan: 0008 (kim cương), 0010 (tài khoản khách), 0012 (làm theo phase), 0013–0015 (kiến trúc, luật phụ thuộc, công cụ; Đề xuất).
 

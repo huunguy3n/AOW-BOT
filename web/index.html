@@ -487,11 +487,15 @@ dialog.dlg::backdrop{background:rgba(15,23,42,.45)}
         </div>
       </div>
 
+      <!-- M0: so do ML theo ngay -->
+      <div class="panel"><div class="panel-h"><h2>Số đo ML theo ngày</h2><span class="spacer"></span><span class="hint-r">chạm ăn % · ML chặn · lượt ghé · máy-giờ (trần 48/ngày) · lỗi · cấp nhà chính</span></div><div class="tbl-wrap"><table class="dt" id="mlboard"></table></div></div>
       <!-- 3. bot hoc duoc gi -->
       <div class="two">
         <div class="panel"><div class="panel-h"><h2>Chạm trượt nhiều nhất</h2><span class="spacer"></span><span class="hint-r">24 giờ · ai chạm và tỉ lệ ăn</span></div><div class="tbl-wrap"><table class="dt" id="worst"></table></div></div>
         <div class="panel"><div class="panel-h"><h2>Thời gian chờ đã học</h2><span class="spacer"></span><span class="hint-r">game phản ứng sau bao lâu (p80)</span></div><div class="tbl-wrap"><table class="dt" id="waits"></table></div></div>
-        <div class="panel"><div class="panel-h"><h2>Chỗ chết</h2><span class="spacer"></span><span class="hint-r">chạm ≥ 8 lần gần như không ăn → bấm Back</span></div><div class="tbl-wrap"><table class="dt" id="dead"></table></div></div>
+        <div class="panel"><div class="panel-h"><h2>Chỗ chết</h2><span class="spacer"></span><span class="hint-r">chạm ≥ 8 lần gần như không ăn → không chạm nữa (thử lại thưa dần)</span></div><div class="tbl-wrap"><table class="dt" id="dead"></table></div></div>
+        <div class="panel"><div class="panel-h"><h2>Đoán chạm vô ích</h2><span class="spacer"></span><span class="hint-r">tự kiểm trên 30 % lần chạm mới nhất · chỉ chặn khi đúng ≥ 95 %</span></div><div class="tbl-wrap"><table class="dt" id="mlnoop"></table></div></div>
+        <div class="panel"><div class="panel-h"><h2>ML đã chặn</h2><span class="spacer"></span><span class="hint-r">24 giờ · lần chạm vào chỗ chết bị bỏ qua</span></div><div class="tbl-wrap"><table class="dt" id="mlskips"></table></div></div>
         <div class="panel"><div class="panel-h"><h2>Màn đã ghi nhớ (kNN)</h2><span class="spacer"></span><span class="hint-r">số mẫu theo loại màn</span></div><div class="tbl-wrap"><table class="dt" id="knn"></table></div></div>
       </div>
       <div class="panel">
@@ -1117,6 +1121,8 @@ function renderHoc(){
   const k = (icon, key, v, s, cls='') => `<div class="kpi ${cls}"><div class="k">${ico(icon,'sm')}${key}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
   put($('#hkpis'),
       k('target','Chạm ăn (24h)', d.taps? pctOf(d.ok, d.known)+'%' : '–', `${d.taps||0} lần chạm có ghi · ${d.human||0} lần bạn chạm tay`)
+    + (() => { const n = (H?.ml_skips||[]).reduce((x,y) => x+y.n, 0);
+        return k('shield','ML chặn chạm (24h)', n, n? 'lần chạm vô ích đã bỏ qua' : 'chưa chặn lần nào'); })()
     + k('hand','Cần bạn duyệt', nTodo, nTodo? `${H.unknown.length} màn lạ · ${H.candidates.length} biến thể · ${(H.human_queue||[]).length} thao tác tay` : 'không có việc nào', nTodo? 'hot':'')
     + (() => { const ex = H?.exit_dialogs||[], n = ex.reduce((x,y) => x+y.n, 0);
         return k('alert','Bật hộp thoát game (24h)', n, n? ex.slice(0,3).map(e => `${esc(lab(e.step))} ${e.n}`).join(' · ') : 'không lần nào', n>20? 'hot':''); })()
@@ -1170,6 +1176,10 @@ function renderHoc(){
   // bot hoc duoc gi
   put($('#worst'), dtable([['Ai chạm'],['Lần',1],['Tỉ lệ ăn']], (H?.worst||[]).map(r => `<tr><td class="mono">${esc(r.who)}</td><td class="n">${r.n}</td><td>${meter(pctOf(r.ok, r.n))}</td></tr>`), 'Chưa có số liệu.'));
   put($('#waits'), dtable([['Thao tác'],['Mẫu',1],['Chờ p80',1]], (H?.waits||[]).map(w => `<tr><td class="mono">${esc(w.key)}</td><td class="n">${w.n}</td><td class="n">${w.p80}s</td></tr>`), 'Chưa đủ mẫu.'));
+  put($('#mlboard'), dtable([['Ngày'],['Chạm',1],['Ăn %',1],['ML chặn',1],['Lượt ghé',1],['Phút/lượt',1],['Máy-giờ',1],['Lỗi bước / lượt',1],['Nhà chính']],
+    (H?.scoreboard||[]).slice().reverse().map(r => `<tr><td>${r.day}</td><td class="n">${r.taps}</td><td class="n">${r.ok_pct ?? '–'}</td><td class="n" title="chỗ chết / ảnh vùng chạm / điểm khớp">${r.skips} <span class="faint">(${r.skip_dead}/${r.skip_crop}/${r.skip_score})</span></td><td class="n">${r.visits}</td><td class="n">${r.visit_min ?? '–'}</td><td class="n">${r.machine_h}</td><td class="n">${r.step_err} / ${r.visit_err}</td><td class="mono">${Object.entries(r.hq||{}).map(([i,l]) => '#'+i+':'+l).join(' ')}</td></tr>`), 'Chưa có số liệu.'));
+  put($('#mlnoop'), dtable([['Ai chạm'],['Mẫu',1],['Lần đoán',1],['Đúng',1],['Chặn']], (H?.noop||[]).map(r => `<tr><td class="mono">${esc(r.key)}</td><td class="n">${r.n}</td><td class="n">${r.pred}</td><td class="n">${r.precision!=null? Math.round(r.precision*1000)/10+'%' : '–'}</td><td>${r.on? 'bật' : 'tắt'}</td></tr>`), 'Chưa đủ dữ liệu.'));
+  put($('#mlskips'), dtable([['Ai chạm'],['Bước'],['Vì sao'],['Số lần',1]], (H?.ml_skips||[]).map(r => `<tr><td class="mono">${esc(r.who)}</td><td>${esc(lab(r.step))}</td><td>${({dead:'chỗ chết',crop:'ảnh vùng chạm',score:'điểm khớp'})[r.why]||esc(r.why)}</td><td class="n">${r.n}</td></tr>`), 'Chưa chặn lần nào.'));
   put($('#dead'), dtable([['Ai chạm'],['Vị trí',1],['Ăn / lần',1]], (H?.dead||[]).map(r => `<tr><td class="mono">${esc(r.who)}</td><td class="n">${r.x}, ${r.y}</td><td class="n">${r.ok} / ${r.n}</td></tr>`), 'Không có chỗ chết nào.'));
   put($('#knn'), dtable([['Loại màn'],['Mẫu',1]], Object.entries(H?.knn||{}).sort((a,b) => b[1]-a[1]).map(([k,v]) => `<tr><td>${esc(VN[k]||k)}</td><td class="n">${v}</td></tr>`), 'Chưa ghi nhớ màn nào.'));
   const hq = H?.human_queue||[];

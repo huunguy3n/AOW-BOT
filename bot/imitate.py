@@ -47,7 +47,7 @@ def make_demo(img, ev, key):
 
 
 def load_demos(idx, root=HUMAN, since=0.0):
-    """Doc moi lan CHAM co tac dung cua may idx tu logs/human -> danh sach demo."""
+    """Doc moi lan CHAM co tac dung cua may idx (None = moi may) tu logs/human -> danh sach demo."""
     out = []
     for day in sorted(os.listdir(root)) if os.path.isdir(root) else []:
         p = os.path.join(root, day, "events.jsonl")
@@ -60,7 +60,7 @@ def load_demos(idx, root=HUMAN, since=0.0):
                 ev = json.loads(line)
             except ValueError:
                 continue
-            if (ev.get("idx") != idx or ev.get("type") != "tap" or ev.get("outcome") not in GOOD
+            if ((idx is not None and ev.get("idx") != idx) or ev.get("type") != "tap" or ev.get("outcome") not in GOOD
                     or not ev.get("before") or ev.get("at", 0) < since
                     or not (0 <= ev.get("x", -1) < W and 0 <= ev.get("y", -1) < H)):
                 continue
@@ -102,6 +102,42 @@ class Index:
 
     def __len__(self):
         return len(self.demos)
+
+
+_shared = {"index": None, "at": 0.0, "loading": False}
+
+
+def shared_index(max_age_h=6):
+    """M1-3: Index demo cua MOI may (dung chung cho man la o moi may). Nap o luong nen (~3000 anh, vai chuc giay):
+    lan dau / het han -> bat dau nap va tra Index cu (hoac None); khong bao gio chan buoc dang chay."""
+    import threading
+    import time
+    now = time.time()
+    if not _shared["loading"] and (_shared["index"] is None or now - _shared["at"] > max_age_h * 3600):
+        _shared["loading"] = True
+
+        def load():
+            try:
+                _shared["index"] = Index(load_demos(None), stop_feats())
+                _shared["at"] = time.time()
+                log.info("Lam theo (man la): nap %d thao tac mau cua moi may", len(_shared["index"]))
+            except Exception as e:
+                log.warning("Lam theo (man la): khong nap duoc mau: %s", e)
+                _shared["at"] = time.time()
+            finally:
+                _shared["loading"] = False
+        threading.Thread(target=load, name="imitate-load", daemon=True).start()
+    return _shared["index"]
+
+
+def unknown_action(img, index, blocked=(), th_scr=0.95, th_crop=0.9):
+    """M1-3 (ham thuan): man 'unknown' -> {'x','y','key',...} theo thao tac tay giong nhat cua moi may, hoac None.
+    Nguong chat hon follow() (man la it ngu canh). Man 'khong lam theo' (chat...) -> None."""
+    if index is None or not len(index):
+        return None
+    if index.stop is not None and float((index.stop @ learn.feat(img)).max()) >= STOP_SIM:
+        return None
+    return decide(img, index, blocked=blocked, th_scr=th_scr, th_crop=th_crop)
 
 
 def stop_feats():

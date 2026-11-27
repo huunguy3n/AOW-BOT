@@ -13,7 +13,7 @@ F2 Anh mau tu mo rong: man la ma nut dong/quay lai khop 0,65-0,82 -> cham thu; m
 AN TOAN: chi hoc tren nut DONG / QUAY LAI / HUY (LEARNABLE). Khong bao gio hoc hay tu bam nut nhan thuong, mua,
 nang cap... (ADR-0008). Moi loi trong module nay bi nuot (khong lam hong luot chay).
 """
-import glob, json, logging, os, re, shutil, threading, time
+import glob, json, logging, os, random, re, shutil, threading, time
 import cv2, numpy as np
 
 log = logging.getLogger("aow")
@@ -99,6 +99,11 @@ class Learner:
         self.cfg = (cfg or {}).get("learn", {}) or {}
         self.lock = threading.Lock()
         self.stats = {}          # (tpl, gx, gy) -> [ok, n]
+        self.streak = {}         # (tpl, gx, gy) -> so lan truot LIEN TIEP tu lan an gan nhat (J1: chan cho chet)
+        self.probe = {}          # J1: (tpl, gx, gy) -> [lan thu lai ke tiep (epoch), so lan thu lai lien tiep]
+        self.skips = 0           # J1: so lan cham bi chan tu luc khoi dong tien trinh
+        self.hist = {}           # M1-1/2: 'anh mau|module.ham' -> deque[(gx, gy, dhash vung cham, diem khop, an)]
+        self._valid = {}         # M1-1/2: khoa -> (luc kiem, so mau, cho phep?, precision, so du doan) - tu kiem bo-ra
         self.backs = {}          # H2: man -> [ok, n] cua phim Back
         self.react = {}          # H1: 'module.ham|anh mau' -> [thoi gian phan ung (s)], timeout tinh = wait
         self.X = None            # kNN: ma tran mau (n x d)
@@ -110,9 +115,13 @@ class Learner:
         try:
             since = time.time() - self.cfg.get("stats_days", 14) * 86400
             for tpl, x, y, ch in self.mem.query(
-                    "SELECT COALESCE(tpl, why), x, y, changed FROM exp WHERE at>? AND x IS NOT NULL AND changed IS NOT NULL",
-                    (since,)):
+                    "SELECT COALESCE(tpl, why), x, y, changed FROM exp WHERE at>? AND x IS NOT NULL AND changed IS NOT NULL "
+                    "ORDER BY at", (since,)):
                 self._count(tpl, x, y, ch)
+            for key, x, y, crop, sc, ch in self.mem.query(
+                    "SELECT COALESCE(tpl, why), x, y, crop, score, changed FROM exp WHERE at>? AND x IS NOT NULL "
+                    "AND changed IS NOT NULL AND kind NOT IN ('human', 'ml_skip') ORDER BY at", (since,)):
+                self._hist_add(key, x, y, crop, sc, ch)
             for scr, ch in self.mem.query("SELECT scr, changed FROM exp WHERE at>? AND kind='back' AND scr IS NOT NULL "
                                           "AND changed IS NOT NULL", (since,)):
                 b = self.backs.setdefault(scr, [0, 0])
@@ -138,6 +147,12 @@ class Learner:
         s = self.stats.setdefault(self._key(tpl, x, y), [0, 0])
         s[0] += int(bool(ok))
         s[1] += 1
+        k = self._key(tpl, x, y)
+        if ok:
+            self.streak.pop(k, None)
+            self.probe.pop(k, None)          # cham lai an -> het 'chet', lich thu lai ve 0
+        else:
+            self.streak[k] = self.streak.get(k, 0) + 1
 
     # ----- E: ghi kinh nghiem -----
     def record(self, rows):
@@ -145,6 +160,9 @@ class Learner:
             for r in rows:
                 if r.get("x") is not None and r.get("changed") is not None:
                     self._count(r.get("tpl") or r.get("why"), r["x"], r["y"], r["changed"])
+                    if r.get("kind") not in ("human", "ml_skip"):
+                        self._hist_add(r.get("tpl") or r.get("why"), r["x"], r["y"], r.get("crop"), r.get("score"),
+                                       r["changed"])
                 if r.get("kind") == "back" and r.get("scr") and r.get("changed") is not None:
                     b = self.backs.setdefault(r["scr"], [0, 0])
                     b[0] += int(bool(r["changed"]))
@@ -159,6 +177,133 @@ class Learner:
         """Cham o day hoai ma khong an (>= dead_min lan, ti le < dead_rate) -> nen thu cach khac."""
         ok, n = self.spot(tpl, x, y)
         return n >= self.cfg.get("dead_min", 8) and ok / n < self.cfg.get("dead_rate", 0.1)
+
+    # ----- J1: chan cham vao cho chet o MOI lan cham cua module -----
+    def skip_tap(self, tpl, why, x, y, now=None):
+        """Lan cham (anh mau tpl / ham goi why) toi (x, y) co nen BO QUA khong? -> 'skip' | 'probe' | None.
+        Chet = dead_spot (ti le an < dead_rate tren >= dead_min lan) VA truot lien tiep >= dead_min lan tu lan an gan
+        nhat (1 lan an la song lai). Nut dong/quay lai (LEARNABLE, common/*) va skip_exempt khong bao gio chan.
+        Van cho cham THU LAI (probe) moi probe_min phut, gap doi sau moi lan thu truot, toi da probe_cap_h gio
+        -> man/nut doi thi bot tu nhan ra (lan thu an -> xoa chet)."""
+        c = self.cfg
+        if not c.get("skip_dead", True) or x is None or y is None:
+            return None
+        key = tpl or why
+        if not key or tpl in LEARNABLE or (tpl or "").startswith("common/"):
+            return None
+        if any(key == e or key.startswith(e + "/") or key.startswith(e + ".") for e in c.get("skip_exempt", []) or []):
+            return None
+        k = self._key(key, x, y)
+        with self.lock:
+            if self.streak.get(k, 0) < c.get("dead_min", 8) or not self.dead_spot(key, x, y):
+                return None
+            now = time.time() if now is None else now
+            nxt, tries = self.probe.get(k, (0.0, 0))
+            if now >= nxt:
+                wait = min(c.get("probe_min", 60) * 60 * 2 ** (tries + 1), c.get("probe_cap_h", 24) * 3600)
+                self.probe[k] = [now + wait, tries + 1]
+                return "probe" if nxt else self._skip_first(k, now)
+            self.skips += 1
+            return "skip"
+
+    def _skip_first(self, k, now):
+        """Lan dau gap cho chet trong tien trinh: chan luon (da biet chet), lan thu lai dau tien sau probe_min."""
+        self.probe[k] = [now + self.cfg.get("probe_min", 60) * 60, 0]
+        self.skips += 1
+        return "skip"
+
+    # ----- M1-1 / M1-2: doan lan cham VO ICH theo anh vung cham + diem khop -----
+    # Do offline 27/11/2026 (14 ngay, 77k lan cham, bo-ra 30 % moi nhat): dHash vung 96x96 (Hamming <= 4, cung o luoi
+    # +-1, >= 5 hang xom, >= 90 % truot) bo duoc 608/1631 lan truot, dung 98,2 %. Vd ally/tab_main: khop 0,994 ma
+    # truot 421 lan = tab DA MO san. Diem khop (+-0,005) la luat du phong khi chua du hang xom theo anh.
+    def _hist_add(self, key, x, y, crop, sc, ch):
+        if not key or x is None or y is None:
+            return
+        from collections import deque
+        try:
+            h = int(crop, 16) if crop else None
+        except (TypeError, ValueError):
+            h = None
+        d = self.hist.get(key)
+        if d is None:
+            d = self.hist[key] = deque(maxlen=self.cfg.get("noop_keep", 400))
+        d.append((int(x) // GRID, int(y) // GRID, h, None if sc is None else float(sc), int(bool(ch))))
+
+    def _noop_vote(self, lst, gx, gy, h, sc):
+        """-> 'crop' | 'score' (doan vo ich, kem luat nao), False (doan co tac dung), None (chua du hang xom)."""
+        c = self.cfg
+        mn, rate = c.get("noop_min_n", 5), c.get("noop_rate", 0.9)
+        near = [t for t in lst if abs(t[0] - gx) <= 1 and abs(t[1] - gy) <= 1]
+        if h is not None:
+            md = c.get("noop_hash_d", 4)
+            nb = [t[4] for t in near if t[2] is not None and bin(t[2] ^ h).count("1") <= md]
+            if len(nb) >= mn:
+                return "crop" if nb.count(0) / len(nb) >= rate else False
+        if sc is not None:
+            nb = [t[4] for t in near if t[3] is not None and abs(t[3] - sc) <= 0.005]
+            if len(nb) >= mn:
+                return "score" if nb.count(0) / len(nb) >= rate else False
+        return None
+
+    def noop_valid(self, key, now=None):
+        """Tu kiem bo-ra cho tung khoa (anh mau / module.ham): hoc 70 % cu, doan 30 % moi -> chi cho chan khi
+        precision >= noop_precision va >= noop_min_pred lan doan. Tinh lai moi gio hoac khi them >= 50 mau."""
+        now = time.time() if now is None else now
+        lst = list(self.hist.get(key) or ())
+        v = self._valid.get(key)
+        if v and now - v[0] < 3600 and len(lst) - v[1] < 50:
+            return v[2]
+        ok = False
+        tp = fp = 0
+        if len(lst) >= self.cfg.get("noop_min_hist", 30):
+            cut = int(len(lst) * 0.7)
+            train = lst[:cut]
+            for gx, gy, h, sc, ch in lst[cut:]:
+                if self._noop_vote(train, gx, gy, h, sc):
+                    tp += ch == 0
+                    fp += ch == 1
+            ok = (tp + fp >= self.cfg.get("noop_min_pred", 5)
+                  and tp / (tp + fp) >= self.cfg.get("noop_precision", 0.95))
+        self._valid[key] = (now, len(lst), ok, round(tp / (tp + fp), 3) if tp + fp else None, tp + fp)
+        return ok
+
+    def predict_noop(self, key, x, y, crop_hash=None, score=None, now=None):
+        """-> 'crop' | 'score' neu lan cham nay gan nhu chac khong co tac dung, nguoc lai None."""
+        if not key or x is None or y is None or not self.noop_valid(key, now):
+            return None
+        try:
+            h = int(crop_hash, 16) if isinstance(crop_hash, str) else crop_hash
+        except ValueError:
+            h = None
+        return self._noop_vote(list(self.hist.get(key) or ()), int(x) // GRID, int(y) // GRID, h,
+                               None if score is None else float(score)) or None
+
+    def exempt(self, tpl, why):
+        """Khong bao gio chan: nut dong / quay lai (LEARNABLE, common/*), cham 'lam theo mau', skip_exempt."""
+        key = tpl or why
+        if not key or tpl in LEARNABLE or (tpl or "").startswith("common/") or tpl == "imitate":
+            return True
+        return any(key == e or key.startswith(e + "/") or key.startswith(e + ".")
+                   for e in self.cfg.get("skip_exempt", []) or [])
+
+    def noop_gate(self, tpl, why, x, y, crop_hash=None, score=None, now=None, rng=random.random):
+        """MOI lan cham cua module hoi day. -> ('skip', ly do) | ('probe', ly do) | None.
+        ly do: 'dead' (J1 cho chet), 'crop' (M1-1 anh vung cham), 'score' (M1-2 diem khop).
+        Chan = KHONG gui cham nhung coi nhu da cham (ket qua du doan giong het: khong co gi doi)."""
+        if x is None or y is None or self.exempt(tpl, why):
+            return None
+        r = self.skip_tap(tpl, why, x, y, now)
+        if r:
+            return (r, "dead")
+        if not self.cfg.get("skip_noop", True):
+            return None
+        why_ = self.predict_noop(tpl or why, x, y, crop_hash, score, now)
+        if not why_:
+            return None
+        if rng() < self.cfg.get("noop_explore", 0.05):     # thinh thoang van cham that de tiep tuc hoc
+            return ("probe", why_)
+        self.skips += 1
+        return ("skip", why_)
 
     # ----- H1: thoi gian cho tu thich nghi -----
     def add_react(self, key, t):
@@ -398,18 +543,24 @@ def summary(mem, days=3):
     out = {"days": []}
     for d in range(days - 1, -1, -1):
         t1 = now - d * 86400
-        r = mem.query("SELECT COUNT(*), SUM(changed IS NOT NULL), SUM(changed=1), SUM(kind='human') FROM exp "
-                      "WHERE at>? AND at<=?", (t1 - 86400, t1))
-        n, known, ok, human = (r[0] if r else (0, 0, 0, 0))
+        r = mem.query("SELECT SUM(kind!='ml_skip'), SUM(changed IS NOT NULL), SUM(changed=1), SUM(kind='human'), "
+                      "SUM(kind='ml_skip') FROM exp WHERE at>? AND at<=?", (t1 - 86400, t1))
+        n, known, ok, human, skip = (r[0] if r else (0, 0, 0, 0, 0))
         out["days"].append({"day": time.strftime("%d/%m", time.localtime(t1)), "taps": n or 0, "known": known or 0,
-                            "ok": ok or 0, "human": human or 0})
+                            "ok": ok or 0, "human": human or 0, "ml_skip": skip or 0})
     since = now - 86400
+    L = _inst if _inst is not None and _inst.mem is mem else Learner(mem, {})   # bo hoc dang chay (da tu kiem san)
     out["worst"] = [{"who": w, "n": n, "ok": ok} for w, n, ok in mem.query(
         "SELECT COALESCE(tpl, why), COUNT(*), SUM(changed) FROM exp WHERE at>? AND changed IS NOT NULL AND kind!='human' "
         "GROUP BY 1 HAVING COUNT(*)>=5 ORDER BY COUNT(*)-SUM(changed) DESC LIMIT 10", (since,))]
-    L = Learner(mem, {})
     out["dead"] = [{"who": k[0], "x": k[1] * GRID, "y": k[2] * GRID, "ok": v[0], "n": v[1]}
                    for k, v in L.stats.items() if v[1] >= 8 and v[0] / v[1] < 0.1][:20]
+    # J1: cham ML da chan (cho chet) 24h, theo ai cham + buoc
+    out["ml_skips"] = [{"who": w, "step": st, "why": r or "dead", "n": n} for w, st, r, n in mem.query(
+        "SELECT COALESCE(tpl, why), step, outcome, COUNT(*) FROM exp WHERE at>? AND kind='ml_skip' "
+        "GROUP BY 1, 2, 3 ORDER BY 4 DESC LIMIT 15", (since,))]
+    out["scoreboard"] = scoreboard(mem)
+    out["noop"] = noop_status(L)
     out["knn"] = dict(mem.query("SELECT label, COUNT(*) FROM screen_samples GROUP BY label"))
     # hop thoai "Roi tro choi?" bot tu bat (moi lan = 1 lan bam Huy) theo buoc, 24h -> web theo doi sau sua press_back
     out["exit_dialogs"] = [{"step": st, "n": n} for st, n in mem.query(
@@ -430,6 +581,59 @@ def summary(mem, days=3):
                 cands.append({"tpl": os.path.basename(d).replace("__", "/"), "hash": h, "ok": m["ok"], "fail": m["fail"]})
     out["candidates"] = cands
     return out
+
+
+def scoreboard(mem, days=7, now=None):
+    """M0 (lo trinh ML, docs/strategy/ml-roadmap.md): so do chung theo NGAY (gio may) -> list dict, cu -> moi.
+    taps/ok_pct: cham co ket qua (bo cham tay + cham ML chan); skip_*: ML chan theo ly do; visits / visit_min /
+    machine_h: luot ghe da xong, phut trung binh, may-gio (tran 48 = 2 luong x 24 h); errs: buoc loi + luot ghe loi /
+    ngat; hq: {may: cap nha chinh cuoi ngay} tu fact hq_history."""
+    now = time.time() if now is None else now
+    t_end = time.mktime(time.localtime(now)[:3] + (0, 0, 0, 0, 0, -1)) + 86400    # nua dem toi nay
+    hist = {}
+    try:
+        for inst, val in mem.query("SELECT inst, value FROM facts WHERE key='hq_history'"):
+            hist[inst] = sorted((float(t), int(lv)) for t, lv in json.loads(val))
+    except Exception:
+        pass
+    out = []
+    for d in range(days - 1, -1, -1):
+        t1 = t_end - d * 86400
+        t0 = t1 - 86400
+        r = mem.query("SELECT SUM(changed IS NOT NULL AND kind NOT IN ('human','ml_skip')), "
+                      "SUM(changed=1 AND kind NOT IN ('human','ml_skip')), "
+                      "SUM(kind='ml_skip' AND COALESCE(outcome,'dead')='dead'), SUM(kind='ml_skip' AND outcome='crop'), "
+                      "SUM(kind='ml_skip' AND outcome='score') FROM exp WHERE at>=? AND at<?", (t0, t1))
+        known, ok, sd, sc, ss = [v or 0 for v in (r[0] if r else (0,) * 5)]
+        v = mem.query("SELECT COUNT(*), SUM(ended-started), SUM(result IN ('error','interrupted')) FROM visits "
+                      "WHERE started>=? AND started<? AND ended IS NOT NULL", (t0, t1))
+        nv, dur, verr = [x or 0 for x in (v[0] if v else (0, 0, 0))]
+        e = mem.query("SELECT SUM(result='err'), SUM(result='warn') FROM runs WHERE started>=? AND started<?", (t0, t1))
+        rerr, rwarn = [x or 0 for x in (e[0] if e else (0, 0))]
+        hq = {}
+        for inst, h in hist.items():
+            before = [lv for t, lv in h if t < t1]
+            if before:
+                hq[inst] = before[-1]
+        out.append({"day": time.strftime("%d/%m", time.localtime(t0)), "taps": known, "ok": ok,
+                    "ok_pct": round(100 * ok / known, 1) if known else None,
+                    "skip_dead": sd, "skip_crop": sc, "skip_score": ss, "skips": sd + sc + ss,
+                    "visits": nv, "visit_min": round(dur / nv / 60, 1) if nv else None,
+                    "machine_h": round(dur / 3600, 1), "step_err": rerr, "step_warn": rwarn, "visit_err": verr,
+                    "hq": hq})
+    return out
+
+
+def noop_status(L, top=15):
+    """M1-1/2: khoa nao dang duoc phep chan (tu kiem bo-ra dat) -> list cho web / report."""
+    rows = []
+    keys = sorted(L.hist, key=lambda k: -sum(1 for t in L.hist[k] if not t[4]))[:40]   # khoa truot nhieu nhat
+    for key in keys:
+        L.noop_valid(key)
+        v = L._valid.get(key)
+        if v and v[4]:
+            rows.append({"key": key, "n": v[1], "on": v[2], "precision": v[3], "pred": v[4]})
+    return sorted(rows, key=lambda r: (-r["on"], -r["pred"]))[:top]
 
 
 def teach(mem, img, label, x=None, y=None):

@@ -24,6 +24,8 @@ def report(a):
     m = Memory(readonly=True)
     since = time.time() - a.hours * 3600
     rows = m.query("SELECT step, kind, tpl, why, x, y, changed, outcome FROM exp WHERE at>?", (since,))
+    skips = [r for r in rows if r[1] == "ml_skip"]
+    rows = [r for r in rows if r[1] != "ml_skip"]
     known = [r for r in rows if r[6] is not None]
     ok = sum(r[6] for r in known)
     print(f"== Kinh nghiem {a.hours} gio qua: {len(rows)} lan cham, biet ket qua {len(known)} ({pct(len(known), len(rows))})")
@@ -49,6 +51,13 @@ def report(a):
     print(f"\n== Cho chet (>= 8 lan, an < 10%): {len(dead)}")
     for (tpl, gx, gy), (o, t) in sorted(dead, key=lambda kv: -kv[1][1])[:15]:
         print(f"   {tpl:45s} @~{gx * learn.GRID},{gy * learn.GRID}  {o}/{t}")
+    g = {}
+    for r in skips:
+        k = f"{r[2] or r[3]} ({r[7] or 'dead'})"
+        g[k] = g.get(k, 0) + 1
+    print(f"\n== ML da chan {len(skips)} lan cham vao cho chet")
+    for k, v in sorted(g.items(), key=lambda kv: -kv[1])[:10]:
+        print(f"   {k:45s} {v}")
     nav = m.query("SELECT action, SUM(changed=0), SUM(changed IS NOT NULL) FROM nav WHERE at>? GROUP BY action", (since,))
     print("\n== goto (nav) truot theo hanh dong:", ", ".join(f"{a_} {pct(b or 0, c or 0)} ({c})" for a_, b, c in nav))
     lab = m.query("SELECT label, COUNT(*) FROM screen_samples GROUP BY label ORDER BY 2 DESC")
