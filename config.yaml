@@ -336,7 +336,16 @@ learn:                     # giai doan E+F (docs/bot/05-ke-hoach-hoc-may-mini.md
                            # (ti le < dead_rate VA truot lien tiep >= dead_min) -> KHONG cham; nut dong/quay lai common/* khong chan
   probe_min: 60            # J1: van cham thu lai cho chet sau N phut, gap doi moi lan thu truot ...
   probe_cap_h: 24          # ... toi da N gio. Thu lai an -> het chet
-  skip_exempt: []          # J1: anh mau / 'module.ham' / tien to (vd 'tutorial') khong bao gio chan
+  skip_exempt:             # J1/M1: anh mau / 'module.ham' / tien to (vd 'notify' = moi notify.*) khong bao gio chan
+    - play/btn_refresh     # nut lam moi xe: man doi it, de bi doan nham la vo ich
+    # chu du an 2026-11-28 (Tinh bao / Tuong cham do / VIP bi bo qua sau M1): nut xep quan doi vai o linh -> do nham
+    # 'khong tac dung' (gather/btn_recommended an 1/461) nhung bo qua thi xuat chinh doi hinh yeu / trong;
+    # notify.heroes truoc ML an 70 % ma bi chan theo o luoi (moi tuong ngoi cho do luc co luc khong cham do)
+    - gather/btn_recommended
+    - tutorial/btn_auto_formation
+    - play/btn_arena_recommend
+    - notify                # moi cham do / nhan qua / tuong / tinh bao trong notify.*
+    - rewards               # nhan qua, VIP
   skip_noop: true          # M1-1/2 (lo trinh ML, chu du an duyet 2026-11-27): doan cham vo ich theo anh vung cham
                            # (dHash 96x96) / diem khop, giong cac lan truot truoc -> khong gui cham, coi nhu da cham
   noop_hash_d: 4           # M1-1: hang xom = dHash lech <= N bit, cung o luoi +-1

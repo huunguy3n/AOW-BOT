@@ -66,6 +66,10 @@ def identify(img, v):
 def _identify(img, v):
     p = _find(v, img, "common/btn_cancel_exit")
     if p:
+        from bot import novice_popup
+        q = novice_popup.find(img, v)  # 28/11: bang het tan thu co nut Huy trung anh mau -> Xac nhan (nang cap tiep)
+        if q:
+            return "popup", ("common/btn_confirm", (q[0], q[1], 1.0))
         return "exit_dialog", ("common/btn_cancel_exit", p)
     p = unlock_popup.find(img, v)      # P13k: nut ban do van lo ra duoi popup -> phai xet truoc city / world
     if p:

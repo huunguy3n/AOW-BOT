@@ -71,8 +71,10 @@ def test_find_needs_both_button_and_text(monkeypatch):
 
 
 def test_exit_dialog_never_matches():
+    # 28/11/2026 anh that: bang het tan thu CUNG co nut Huy trung anh mau hop thoai thoat -> phan biet bang CHU
     img = paste(("common/btn_confirm", OK), ("common/btn_cancel_exit", CANCEL))
-    assert N.find(img, V, text=TEXT) is None
+    assert N.find(img, V, text="Roi tro choi? Ban co chac muon thoat") is None
+    assert N.find(img, V, text=TEXT) == OK
 
 
 def test_confirm_button_with_gem_never_matches():
@@ -233,7 +235,8 @@ def test_after_confirm_next_level_screen_not_tapped_again(env, monkeypatch):
     assert c.taps == [UP, OK]
 
 
-def test_exit_dialog_in_upgrade_flow_cancelled_never_confirmed(env):
+def test_exit_dialog_in_upgrade_flow_cancelled_never_confirmed(env, monkeypatch):
+    monkeypatch.setattr(N, "read_text", lambda img, p: "Roi tro choi? Ban co chac muon thoat")
     c = Ctx("upgrade", {("upgrade", UP): "exit", ("exit", CANCEL): "city"})
     build.upgrade_here(c)
     assert c.taps == [UP, CANCEL] and _logged(env) == 0
@@ -244,3 +247,43 @@ def test_other_confirm_dialog_not_confirmed(env, monkeypatch):
     c = Ctx("upgrade", {("upgrade", UP): "popup"})
     build.upgrade_here(c)
     assert OK not in c.taps and _logged(env) == 0
+
+
+# ---------- anh that 28/11/2026: nut "Huy" cua bang trung anh mau Huy cua hop thoai thoat ----------
+import os as _os  # noqa: E402
+
+import cv2 as _cv2  # noqa: E402
+import pytest as _pytest  # noqa: E402
+
+_REAL = _os.path.join("tests", "fixtures", "novice_popup", "hq7to8_confirm.png")
+_EXIT = _os.path.join("tests", "fixtures", "screens", "exit_dialog")
+
+
+def _vision():
+    from bot import ocr
+    from bot.vision import Vision
+    if not _os.path.exists(ocr.DEFAULT_CMD if hasattr(ocr, "DEFAULT_CMD") else "C:/Program Files/Tesseract-OCR/tesseract.exe"):
+        _pytest.skip("thieu Tesseract")
+    ocr.init("C:/Program Files/Tesseract-OCR/tesseract.exe")
+    return Vision("templates", 0.82)
+
+
+@_pytest.mark.skipif(not _os.path.exists(_REAL), reason="thieu anh fixture")
+def test_real_novice_popup_is_confirm_not_exit_dialog():
+    from bot import novice_popup, screens
+    v = _vision()
+    img = _cv2.imread(_REAL)
+    assert v.find(img, "common/btn_cancel_exit")             # dung la nut Huy trung anh mau hop thoai thoat
+    p = novice_popup.find(img, v)
+    assert p and abs(p[0] - 387) <= 10 and abs(p[1] - 631) <= 10    # nut "Xac nhan" ben phai
+    scr, det = screens.identify(img, v)
+    assert scr == "popup" and det[0] == "common/btn_confirm"
+
+
+@_pytest.mark.skipif(not _os.path.isdir(_EXIT), reason="thieu anh fixture")
+def test_real_exit_dialogs_still_exit():
+    from bot import screens
+    v = _vision()
+    files = [f for f in _os.listdir(_EXIT) if f.endswith(".png")]
+    for f in files:
+        assert screens.identify(_cv2.imread(_os.path.join(_EXIT, f)), v)[0] == "exit_dialog", f

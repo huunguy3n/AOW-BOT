@@ -14,7 +14,8 @@ from aowbot.domain import warday as W
 from aowbot.domain.policy import SHIELD_TAP as TAP, shield_spend as spent_amount
 
 log = logging.getLogger("aow")
-ROWS = {1: "defense/row_1h", 8: "defense/row_8h", 12: "defense/row_12h", 72: "defense/row_3d"}
+ROWS = {1: "defense/row_1h", 8: "defense/row_8h", 12: "defense/row_12h", 24: "defense/row_24h", 72: "defense/row_3d"}
+ROW_STEP = 105             # khoang cach doc giua 2 dong khien (anh bang 28/11/2026: 1h, 12h, 24h, 3d cach ~105 px)
 PRICE = dict(W.PRICE)   # 1h 500, 12h 4800, 3d 25200 kim cuong. Dong 8h = Hiep uoc hoa binh (mien phi) -> peace()
 PEACE_LABEL_DY = (-15, 24)  # chu "Mien phi" phia tren nut Dung cua dong Hiep uoc (y dong - 15, cao 24)
 FREE_RX = re.compile(r"mi\w{0,2}n\s*ph")
@@ -121,9 +122,37 @@ def parse_owned(text):
 
 def missing_tpls(v, hours):
     """Anh mau can de bat khien `hours` gio ma chua co (moi ten log 'thieu anh mau' qua tplneed, 1 lan/gio)."""
-    need = (("defense/btn_shield_icon", "icon khien thanh pho"), ("defense/title", "tieu de Bao Ho Chien Tranh"),
-            (ROWS[hours], f"dong khien {hours}h trong bang Bao Ho Chien Tranh"))
+    need = [("defense/btn_shield_icon", "icon khien thanh pho"), ("defense/title", "tieu de Bao Ho Chien Tranh")]
+    if hours == 24 and not tplneed.has(v, ROWS[24], "dong khien 24h (tam tim bang OCR duoi dong 12h)"):
+        need.append((ROWS[12], "dong khien 12h (moc de tim dong 24h)"))
+    else:
+        need.append((ROWS[hours], f"dong khien {hours}h trong bang Bao Ho Chien Tranh"))
     return [n for n, why in need if not tplneed.has(v, n, why)]
+
+
+def row24_y(y12, y3d, title_text):
+    """Ham thuan: y dong khien 24h khi chua co anh mau -> giua dong 12h va 3 ngay (hoac 12h + ROW_STEP), chi nhan
+    khi chu tieu de doc duoc o do co '24'. title_text(y) -> chu OCR tieu de quanh y. -> y | None."""
+    if y12 is None:
+        return None
+    y = (y12 + y3d) // 2 if y3d is not None and y3d - y12 > ROW_STEP * 1.5 else y12 + ROW_STEP
+    return y if re.search(r"24", title_text(y) or "") else None
+
+
+def find_row(ctx, img, hours):
+    """-> (x, y, score) dong khien `hours` | None. Dong 24h chua co anh mau -> tim bang OCR (row24_y)."""
+    if hours != 24 or tplneed.has(ctx.v, ROWS[24], ""):
+        return ctx.v.find(img, ROWS[hours], th=0.95)
+    r12 = ctx.v.find(img, ROWS[12], th=0.9)
+    if not r12:
+        return None
+    r3 = ctx.v.find(img, ROWS[72], th=0.85)
+    y = row24_y(r12[1], r3[1] if r3 else None,
+                lambda yy: ocr.text(img, (90, max(0, int(yy) - 14), 330, 28)))
+    if y is None:
+        return None
+    log.info("Dong khien 24h tim bang OCR @y=%d (chua co anh mau defense/row_24h)", y)
+    return (r12[0], int(y), 0.0)
 
 
 def shield(ctx, force=False, hours=None, allow_buy=None, extend=False, cap=_CAP_CFG, src="shield"):
@@ -136,7 +165,7 @@ def shield(ctx, force=False, hours=None, allow_buy=None, extend=False, cap=_CAP_
     cap = d.get("gem_cap_daily", 0) if cap is _CAP_CFG else cap
     if hours == 8:
         return peace(ctx)
-    if hours not in PRICE:
+    if hours not in PRICE and hours not in W.ITEM_ONLY:
         log.error("defense.shield_hours = %s khong hop le (chi %s) - khong bat khien", hours, sorted(ROWS))
         return "error"
     missing = missing_tpls(ctx.v, hours)
@@ -154,14 +183,17 @@ def shield(ctx, force=False, hours=None, allow_buy=None, extend=False, cap=_CAP_
         log.info("Dang con bao ho (%s) - khong can bat khien", ocr.text(img, ACTIVE_ROI))
         ctx.back_out()
         return "active"
-    row = ctx.v.find(img, ROWS[hours], th=0.95)
+    row = find_row(ctx, img, hours)
     if not row:
         log.warning("Khong thay dong khien %dh", hours)
         ctx.back_out()
         return "error"
     owned = parse_owned(ocr.text(img, (64, row[1] + 53, 22, 16), "0123456789", psm=8))
     btn = (469, row[1] + 27)
-    price = PRICE[hours]
+    price = PRICE.get(hours)
+    if price is None:               # dong chi co vat pham (24h): khong bao gio mua
+        buy = False
+        price = 10 ** 9
     act, why = shield_choice(owned, gems_before, price, _spent_today(ctx), cap, buy)
     if act not in TAP:
         log.warning("Khong bat khien %dh: %s", hours, why)

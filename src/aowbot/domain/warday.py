@@ -352,6 +352,10 @@ def window_now(c: Mapping[str, Any], notice_seen: float | None, now: float,
 # ---------- khien ngay chien tranh ----------
 # gia mua bang kim cuong (bang Bao Ho Chien Tranh tren #1, 2026-11-23)
 PRICE: Mapping[int, int] = MappingProxyType({1: 500, 12: 4800, 72: 25200})
+# dong chi dung VAT PHAM (khong co nut mua kim cuong): "Bao Ho Chien Tranh 24 tieng" (chu du an 2026-11-28: bot bo
+# qua vat pham 24h dang co roi mua khien 12h 4800 kim cuong vi chua biet dong nay)
+ITEM_ONLY: tuple[int, ...] = (24,)
+ROWS_H: tuple[int, ...] = tuple(sorted({*PRICE, *ITEM_ONLY}))
 
 
 @dataclass(frozen=True, slots=True)
@@ -406,7 +410,7 @@ def shield_options(need_s: float, buy: bool) -> list[tuple[int, bool]]:
     """Thu tu thu cac dong khien (gio, duoc mua?) de che need_s giay. Vat pham (khong ton kim cuong) truoc: dong nho
     nhat du che, roi dong lon hon, roi dong nho hon; sau do mua (neu cho): re hon trong 1h / 12h truoc. Khong mua 3d."""
     need_h = max(need_s, 1.0) / 3600
-    rows = sorted(PRICE)
+    rows = list(ROWS_H)
     fit = [h for h in rows if h >= need_h]
     small = [h for h in reversed(rows) if h < need_h]
     out = [(h, False) for h in fit + small]

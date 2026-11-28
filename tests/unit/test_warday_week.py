@@ -113,9 +113,11 @@ def test_plan_never_unshielded_through_the_day():
 
 
 def test_shield_options_items_first_then_buy():
-    assert W.shield_options(3 * 3600, False) == [(12, False), (72, False), (1, False)]
-    assert W.shield_options(30 * 60, False) == [(1, False), (12, False), (72, False)]
-    assert W.shield_options(20 * 3600, False) == [(72, False), (12, False), (1, False)]
+    # 28/11/2026: dong vat pham 24h (khong mua duoc) nam trong thu tu vat pham
+    assert W.shield_options(3 * 3600, False) == [(12, False), (24, False), (72, False), (1, False)]
+    assert W.shield_options(30 * 60, False) == [(1, False), (12, False), (24, False), (72, False)]
+    assert W.shield_options(20 * 3600, False) == [(24, False), (72, False), (12, False), (1, False)]
+    assert all(h != 24 for h, b in W.shield_options(20 * 3600, True) if b)   # 24h chi vat pham, khong mua
     o = W.shield_options(3 * 3600, True)
     assert o[-2:] == [(1, True), (12, True)]                          # 3 x 500 < 4800
     assert W.shield_options(20 * 3600, True)[-2:] == [(12, True), (1, True)]

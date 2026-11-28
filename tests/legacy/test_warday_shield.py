@@ -88,8 +88,9 @@ def test_war_shield_tries_options_in_order(monkeypatch):
         return "shielded" if (hours, allow_buy) == (1, True) else "no_item"
     monkeypatch.setattr(defense, "shield", fake)
     assert defense.war_shield(Ctx([]), 3 * 3600, buy=True, cap=None) == 1
-    war = [(12, False, None, "shield_war"), (72, False, None, "shield_war"), (1, False, None, "shield_war")]
-    assert calls[:3] == war
+    war = [(12, False, None, "shield_war"), (24, False, None, "shield_war"), (72, False, None, "shield_war"),
+           (1, False, None, "shield_war")]          # 24h: dong vat pham them 28/11/2026
+    assert calls[:4] == war
     assert calls[-1] == (1, True, None, "shield_war")
 
 

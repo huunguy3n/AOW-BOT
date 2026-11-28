@@ -398,6 +398,10 @@ class Ctx:
         p = self.v.find(img, "common/btn_cancel_exit")
         if not p:
             return False
+        from bot import novice_popup
+        if novice_popup.find(img, self.v):   # 28/11: nut Huy cua bang het tan thu trung anh mau -> KHONG phai thoat game
+            log.info("Bang het tan thu (khong phai hop thoai thoat) - khong bam Huy (%s)", why or "?")
+            return False
         log.warning("Hop thoai thoat game dang mo (%s, buoc %s) -> Huy", why or "?", getattr(self, "step", "?"))
         self.tap(p[0], p[1], wait=0.8, tpl="common/btn_cancel_exit")
         return True

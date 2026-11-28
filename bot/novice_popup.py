@@ -5,7 +5,10 @@ common/btn_confirm co y KHONG nam trong Ctx.POPUP_CLOSERS (hop thoai "Roi tro ch
 nhan rieng bang CHU, nhu P13k nhan theo tieu de: PHAI co CA HAI nut "Xac nhan" va chu "tan thu" phia tren nut.
 Hop thoai thoat dang mo, hoac nut co icon kim cuong -> khong phai bang nay, khong bam.
 
-Chua co anh that: is_novice_text() / find() la ham thuan (anh, chu OCR) -> test offline bang chu gia.
+Anh that 28/11/2026 (tests/fixtures/novice_popup/hq7to8_confirm.png): nut "Huy" cua bang nay khop anh mau
+common/btn_cancel_exit 0,993 (nut Huy cua hop thoai "Roi tro choi?") -> truoc day bot tuong la hop thoai thoat va bam
+HUY (huy luon nang cap). Gio: chu "tan thu" duoc xet TRUOC; co chu do thi khong bao gio coi la hop thoai thoat
+(find, _frame, Ctx.cancel_exit, screens._identify).
 """
 import logging
 import os
@@ -68,9 +71,9 @@ def read_text(img, btn):
 
 def find(img, v, text=None):
     """-> (x, y) nut "Xac nhan" cua bang het tan thu | None. text=None: tu OCR; truyen text: ham thuan."""
-    if not isinstance(img, np.ndarray) or img.ndim != 3 or v.find(img, EXIT):
+    if not isinstance(img, np.ndarray) or img.ndim != 3:
         return None
-    p = find_confirm(img, v)
+    p = find_confirm(img, v)          # hop thoai thoat cung co "Xac nhan" + "Huy": phan biet bang CHU (khong phai EXIT)
     if p is None or resources.has_gem(img, v, *p):
         return None
     return p if is_novice_text(read_text(img, p) if text is None else text) else None
@@ -89,7 +92,7 @@ def keep_frame(ctx, img):
 
 def _frame(ctx, img):
     """Hop thoai thoat game dang mo -> Huy TRUOC (Ctx.cancel_exit) roi chup lai."""
-    if isinstance(img, np.ndarray) and ctx.v.find(img, EXIT) and ctx.cancel_exit(img, SCOPE):
+    if isinstance(img, np.ndarray) and ctx.v.find(img, EXIT) and find(img, ctx.v) is None             and ctx.cancel_exit(img, SCOPE):
         return ctx.shot()
     return img
 
