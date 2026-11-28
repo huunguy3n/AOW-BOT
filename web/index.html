@@ -489,6 +489,12 @@ dialog.dlg::backdrop{background:rgba(15,23,42,.45)}
 
       <!-- M0: so do ML theo ngay -->
       <div class="panel"><div class="panel-h"><h2>Số đo ML theo ngày</h2><span class="spacer"></span><span class="hint-r">chạm ăn % · ML chặn · lượt ghé · máy-giờ (trần 48/ngày) · lỗi · cấp nhà chính</span></div><div class="tbl-wrap"><table class="dt" id="mlboard"></table></div></div>
+      <!-- M2: tran (bong), gia tri buoc, nha chinh dung yen - chi doc -->
+      <div class="two">
+        <div class="panel"><div class="panel-h"><h2>Nhà chính (M2-4)</h2><span class="spacer"></span><span class="hint-r">giờ chưa lên cấp · kế hoạch hiện tại · lần xây có việc</span></div><div class="tbl-wrap"><table class="dt" id="m2hq"></table></div></div>
+        <div class="panel"><div class="panel-h"><h2>Trận đánh (M2-1/2)</h2><span class="spacer"></span><span class="hint-r">7 ngày · xác suất thắng chỉ ghi, không đổi quyết định</span></div><div class="tbl-wrap"><table class="dt" id="m2battle"></table></div></div>
+      </div>
+      <div class="panel"><div class="panel-h"><h2>Giá trị bước (M2-3)</h2><span class="spacer"></span><span class="hint-r">3 ngày · lần làm được việc / phút · thứ tự đề xuất chỉ để so, bot chưa đổi</span></div><div class="tbl-wrap"><table class="dt" id="m2steps"></table></div><div class="faint" id="m2order" style="padding:6px 12px"></div></div>
       <!-- 3. bot hoc duoc gi -->
       <div class="two">
         <div class="panel"><div class="panel-h"><h2>Chạm trượt nhiều nhất</h2><span class="spacer"></span><span class="hint-r">24 giờ · ai chạm và tỉ lệ ăn</span></div><div class="tbl-wrap"><table class="dt" id="worst"></table></div></div>
@@ -1176,6 +1182,14 @@ function renderHoc(){
   // bot hoc duoc gi
   put($('#worst'), dtable([['Ai chạm'],['Lần',1],['Tỉ lệ ăn']], (H?.worst||[]).map(r => `<tr><td class="mono">${esc(r.who)}</td><td class="n">${r.n}</td><td>${meter(pctOf(r.ok, r.n))}</td></tr>`), 'Chưa có số liệu.'));
   put($('#waits'), dtable([['Thao tác'],['Mẫu',1],['Chờ p80',1]], (H?.waits||[]).map(w => `<tr><td class="mono">${esc(w.key)}</td><td class="n">${w.n}</td><td class="n">${w.p80}s</td></tr>`), 'Chưa đủ mẫu.'));
+  { const M2 = H?.m2 || {}, PL = {wait_builder:'chờ thợ', wait_resources:'thiếu tài nguyên', unreached:'không tới được màn nâng cấp', chain:'đang xây tiếp', reserved:'giữ thợ'};
+    put($('#m2hq'), dtable([['Máy'],['Cấp',1],['Giờ chưa lên',1],['Tình trạng'],['Kế hoạch'],['Xây có việc',1]], (M2.hq||[]).map(h => `<tr><td>#${h.inst}</td><td class="n">${h.level ?? '–'}</td><td class="n">${h.hours_since_up ?? '–'}</td><td>${h.stalled? '<b>đứng yên</b>' : 'ổn'}</td><td>${esc(PL[h.plan] || h.plan || '–')}</td><td class="n">${h.build_work} / ${h.build_runs}</td></tr>`), 'Chưa có số liệu.'));
+    const B = M2.battles || {};
+    put($('#m2battle'), dtable([['Loại'],['Quyết định'],['Kết quả'],['Số',1]], (B.by||[]).map(r => `<tr><td>${esc(r.kind)}</td><td>${esc(r.decision)}</td><td>${({win:'thắng',lose:'thua'})[r.result] || 'chưa biết'}</td><td class="n">${r.n}</td></tr>`)
+      .concat((B.models||[]).map(m => `<tr><td colspan="4" class="faint">${esc(m.kind)}: cần ta/địch ≈ ${m.ratio_80 ?? '–'} để thắng 80 % (n=${m.n})</td></tr>`)), 'Chưa ghi trận nào (cần khởi động lại bot).'));
+    put($('#m2steps'), dtable([['Bước'],['Lần chạy',1],['Làm được việc',1],['Phút',1],['Giá trị',1]], ((M2.steps||{}).values||[]).map(v => `<tr><td>${esc(lab(v.step))}</td><td class="n">${v.runs}</td><td class="n">${Math.round(v.work_rate*100)}%</td><td class="n">${v.mean_min}</td><td class="n">${v.value}</td></tr>`), 'Chưa có số liệu.'));
+    $('#m2order').textContent = (M2.steps||{}).order_suggest ? 'Đề xuất: ' + M2.steps.order_suggest.map(lab).join(' › ') : '';
+  }
   put($('#mlboard'), dtable([['Ngày'],['Chạm',1],['Ăn %',1],['ML chặn',1],['Lượt ghé',1],['Phút/lượt',1],['Máy-giờ',1],['Lỗi bước / lượt',1],['Nhà chính']],
     (H?.scoreboard||[]).slice().reverse().map(r => `<tr><td>${r.day}</td><td class="n">${r.taps}</td><td class="n">${r.ok_pct ?? '–'}</td><td class="n" title="chỗ chết / ảnh vùng chạm / điểm khớp">${r.skips} <span class="faint">(${r.skip_dead}/${r.skip_crop}/${r.skip_score})</span></td><td class="n">${r.visits}</td><td class="n">${r.visit_min ?? '–'}</td><td class="n">${r.machine_h}</td><td class="n">${r.step_err} / ${r.visit_err}</td><td class="mono">${Object.entries(r.hq||{}).map(([i,l]) => '#'+i+':'+l).join(' ')}</td></tr>`), 'Chưa có số liệu.'));
   put($('#mlnoop'), dtable([['Ai chạm'],['Mẫu',1],['Lần đoán',1],['Đúng',1],['Chặn']], (H?.noop||[]).map(r => `<tr><td class="mono">${esc(r.key)}</td><td class="n">${r.n}</td><td class="n">${r.pred}</td><td class="n">${r.precision!=null? Math.round(r.precision*1000)/10+'%' : '–'}</td><td>${r.on? 'bật' : 'tắt'}</td></tr>`), 'Chưa đủ dữ liệu.'));

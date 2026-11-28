@@ -456,6 +456,26 @@ def show_ml(mem, days, as_json=False):
               f"{r['skips']:5d} ({r['skip_dead']}/{r['skip_crop']}/{r['skip_score']}){'':4s} {r['visits']:4d}  "
               f"{r['visit_min'] if r['visit_min'] is not None else '-':>7}  {r['machine_h']:7}  "
               f"{r['step_err']:4d}/{r['visit_err']:<4d}  {hq}")
+    from bot import mlinsight
+    m2 = mlinsight.all(mem)
+    b = m2.get("battles") or {}
+    print("\n== M2-1 Tran 7 ngay (loai / quyet dinh / ket qua)")
+    for r in b.get("by", []):
+        print(f"   {r['kind']:10s} {r['decision']:12s} {r['result']:5s} {r['n']:4d}")
+    print("== M2-2 Xac suat thang (che do bong):", ", ".join(
+        f"{m['kind']} n={m['n']} can ta/dich {m['ratio_80']} de thang 80 %" for m in b.get("models", [])) or
+        "chua du mau (" + ", ".join(f"{d['kind']} con thieu {d['need']}" for d in b.get("data", [])) + ")")
+    s = m2.get("steps") or {}
+    print("\n== M2-3 Gia tri buoc 3 ngay (lam duoc viec / phut) - chi de xuat, runner KHONG doi thu tu")
+    for v in (s.get("values") or [])[:12]:
+        print(f"   {v['step']:13s} chay {v['runs']:4d}  lam duoc {100 * v['work_rate']:5.1f} %  "
+              f"{v['mean_min']:5.2f} phut  gia tri {v['value']:.2f}")
+    print("   de xuat:", " > ".join(s.get("order_suggest") or []))
+    print("\n== M2-4 Nha chinh")
+    for h in m2.get("hq") or []:
+        print(f"   #{h['inst']} cap {h['level']}  {h['hours_since_up']} gio chua len cap  "
+              f"{'DUNG YEN' if h['stalled'] else 'ok':8s} ke hoach: {h['plan']}  "
+              f"xay {h['build_work']}/{h['build_runs']}  {h['reasons']}")
     print("\n== Doan cham vo ich (M1-1/2): khoa duoc phep chan sau tu kiem bo-ra")
     for n in noop:
         print(f"   {'BAT' if n['on'] else 'tat'}  {n['key']:45s} mau {n['n']:4d}  doan {n['pred']:3d}  dung {n['precision']}")

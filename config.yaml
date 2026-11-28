@@ -364,6 +364,10 @@ learn:                     # giai doan E+F (docs/bot/05-ke-hoach-hoc-may-mini.md
   knn_max: 6000            # so mau kNN man hinh toi da nap tu memory.db
   dup_sim: 0.985           # mau moi giong mau cu cung nhan hon muc nay -> khong luu (giu kNN gon)
   watch_human: true        # chu du an cham/keo tay tren may bot dang chay -> chup anh truoc/sau -> logs/human/ (buoc 'co anh loi')
+ml:                        # M2 (lo trinh ML, chu du an 2026-11-28 "tich hop M2"; docs/strategy/ml-roadmap.md)
+  battle_log: true         # M2-1: ghi moi tran / quyet dinh danh-bo vao bang battle_ev (+ xac suat thang M2-2, che do
+                           # bong: chi ghi, KHONG doi quyet dinh danh). Thu tu buoc M2-3 va nha chinh dung yen M2-4: chi
+                           # bao cao (web tab Hoc & Agent, python tools/report_ro.py --ml), runner khong doi
 human_pause:               # P9-1 (live-run-2): chu cham tay lien tiep -> bot TAM DUNG, khong giam len thao tac cua chu
   enabled: true
   taps: 3                  # >= 3 thao tac tay (da loc cham cua bot) ...

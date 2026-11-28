@@ -99,6 +99,11 @@ bot/learn.py         Học máy mini (giai đoạn E+F): nhật ký kinh nghiệ
                      lạ trong goto → làm theo thao tác tay giống nhất của MỌI máy (`imitate.unknown_action`, nạp nền) —
                      **TẮT** (`learn.imitate_unknown` false): đo offline bỏ-1-máy trên 206 màn lạ đoán 16 lần, sai 13. M0: `learn.scoreboard` → web "Số đo ML theo ngày",
                      `python tools/report_ro.py --ml [ngày]`
+bot/battles.py       M2-1/2 (chủ dự án 2026-11-28): ghi mọi trận / quyết định đánh-bỏ vào bảng `battle_ev` + xác suất thắng
+                     chế độ bóng (`aowbot.domain.battle_model`). Gắn TỪ BÊN NGOÀI: `install()` (Runner) bọc campaign.battle,
+                     play.fight / power_check / _loot_result / run, notify.legion_march — hành vi không đổi; `ml.battle_log`
+bot/mlinsight.py     M2 chỉ-đọc: trận (M2-1/2), giá trị bước + thứ tự đề xuất (M2-3, `aowbot.domain.stepvalue`, runner KHÔNG
+                     đổi ORDER), nhà chính đứng yên (M2-4, `aowbot.domain.hqstall` + `hq_plan`) → web, `report_ro --ml`
 bot/steer.py         Lái quân theo màu; touch.py = Finger (sendevent); stream.py = FrameStream (screencap liên tục)
 bot/stepgate.py      P1: điều kiện trước khi chạy + giãn chu kỳ khi trả 0 (heal/campaign/warday/mainquest), hàm thuần trên trí nhớ
 bot/queues.py        Q0/P2: đọc hàng chờ "x/y" cột icon trái: ảnh chữ số templates/qdigits → OCR bỏ phiếu → chấm đỏ = rảnh

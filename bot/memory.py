@@ -55,6 +55,10 @@ CREATE TABLE IF NOT EXISTS gather_ev (
   inst INTEGER NOT NULL, at REAL NOT NULL, kind TEXT NOT NULL, rtype TEXT, level INTEGER, note TEXT);
 CREATE TABLE IF NOT EXISTS gem_ev (
   inst INTEGER NOT NULL, at REAL NOT NULL, src TEXT NOT NULL, n INTEGER NOT NULL, note TEXT);
+CREATE TABLE IF NOT EXISTS battle_ev (
+  id INTEGER PRIMARY KEY, inst INTEGER NOT NULL, at REAL NOT NULL, kind TEXT NOT NULL, step TEXT, decision TEXT,
+  pred TEXT, ours INTEGER, enemy INTEGER, p_win REAL, result TEXT, note TEXT);
+CREATE INDEX IF NOT EXISTS battle_kind_t ON battle_ev(kind, at);
 CREATE INDEX IF NOT EXISTS exp_tpl ON exp(tpl, x, y);
 CREATE INDEX IF NOT EXISTS runs_inst_t ON runs(inst, started);
 CREATE INDEX IF NOT EXISTS visits_inst_t ON visits(inst, started);
@@ -185,6 +189,17 @@ class Memory:
         report_ro tong hop theo nguon; nguon ngoai khien = vi pham ADR-0008. Khong ghi thong tin dang nhap."""
         self._exec("INSERT INTO gem_ev(inst, at, src, n, note) VALUES (?,?,?,?,?)",
                    (inst, time.time(), src, int(n), None if note is None else str(note)[:200]))
+
+    def log_battle(self, inst, kind, step=None, decision=None, pred=None, ours=None, enemy=None, p_win=None,
+                   result=None, note=None):
+        """M2-1: 1 tran / 1 quyet dinh danh-bo (kind: campaign, intel, expand, arena, loot, legion...).
+        decision: fight | skip | ...; pred: du doan cua game (win | lose | None); result: win | lose | None (chua biet).
+        p_win: xac suat thang cua M2-2 (che do bong, chi ghi)."""
+        self._exec("INSERT INTO battle_ev(inst, at, kind, step, decision, pred, ours, enemy, p_win, result, note) "
+                   "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                   (inst, time.time(), kind, step, decision, pred, ours, enemy,
+                    None if p_win is None else round(float(p_win), 4), result,
+                    None if note is None else str(note)[:200]))
 
     def log_perf(self, visit, inst, step, rows):
         """A-MEAS-1: tong hop bo dem hieu nang cua 1 buoc (bot/perf.py Perf.drain())."""

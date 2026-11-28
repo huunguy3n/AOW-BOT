@@ -94,6 +94,8 @@ def instance_names(ld):
 class Runner:
     def __init__(self, base_cfg, store, vision, agent=None):
         self.base_cfg, self.store, self.vision = base_cfg, store, vision
+        from bot import battles     # M2-1/2 (lo trinh ML): ghi moi tran vao battle_ev - boc ham tran, hanh vi khong doi
+        battles.install()
         # SCH-X: aowbot.app.agent.AgentHooks (main.py tao) - may co schedule.mode = 'agent' do agent quyet dinh
         self.agent = agent
         # P13h: do phan giai / DPI ky vong theo may (settings.json instances.N.ldplayer)

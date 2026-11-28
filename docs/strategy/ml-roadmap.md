@@ -147,3 +147,18 @@ Việc còn lại để nghiệm thu M1 (theo cách kiểm chủ dự án đã c
 - Chạy thật, so `report_ro.py --ml` trước/sau: chạm ăn % (mục tiêu ≥ 97 %), phút/lượt ghé, lỗi bước.
 - Theo dõi log `ML bo qua cham vo ich` — bước nào kẹt vì chặn thì thêm vào `learn.skip_exempt`.
 - M1-3: cần thêm mẫu tay có nhãn loại màn trước khi đo lại.
+
+---
+
+## 8. M2 đã tích hợp (28/11/2026, chủ dự án "tích hợp M2") — chế độ bóng, chưa đổi hành vi
+
+Chủ dự án duyệt M2 khi M1 chưa nghiệm thu. Để không làm lệch số đo M1, **mọi phần M2 chỉ ghi và báo cáo**; không phần nào đổi quyết định đánh/bỏ hay thứ tự bước của runner.
+
+| Mục | Đã làm | Bật quyết định thật khi |
+|---|---|---|
+| M2-1 ghi trận | Bảng `battle_ev` (memory.db). `bot/battles.py` bọc từ bên ngoài `campaign.battle` (chiến dịch, Tình báo, mở rộng lãnh thổ, phiến quân nhiệm vụ…), `play.fight` (đấu trường), `play.power_check` + `play._loot_result` (cướp xe: có cả lực chiến hộ vệ và ta), `notify.legion_march` (màn quân đoàn kiểu mới). Hàm gốc không sửa; công tắc `ml.battle_log` | — (chỉ ghi) |
+| M2-2 xác suất thắng | `aowbot.domain.battle_model`: hồi quy logistic theo ln(ta/địch), từng loại trận, cần ≥ 20 trận có kết quả + đủ hai lực chiến (≥ 3 thắng, ≥ 3 thua). Ghi `p_win` kèm mỗi trận, web hiện "cần ta/địch ≈ X để thắng 80 %" và độ chuẩn | Có độ chuẩn trên ≥ 50 trận mỗi loại; chủ dự án duyệt thay hệ số cố định (`loot.power_margin`…) |
+| M2-3 giá trị bước | `aowbot.domain.stepvalue`: lần làm được việc / phút chạy, thứ tự đề xuất giữ luật cứng (warday/shield/tutorial đầu, gather/observe cuối). Web + `report_ro --ml` | Chủ dự án chọn máy thử. Lưu ý: chỉ số "việc / phút" đánh giá thấp bước xây dựng (ít lần ra việc nhưng là đích chính) → cần trọng số theo mục tiêu nhà chính trước khi dùng |
+| M2-4 nhà chính đứng yên | `aowbot.domain.hqstall` + trạng thái `hq_plan`: giờ chưa lên cấp, đứng yên (≥ 24 h, cấp < 30), kế hoạch hiện tại. Web "Nhà chính (M2-4)" | — (chỉ báo cáo) |
+
+Số liệu đầu tiên (28/11): #2–#6 đứng cấp 7 khoảng 40 giờ. Kế hoạch nhà chính: #3, #4, #6 **thiếu tài nguyên**, #2 chờ thợ, #5 **không tới được màn nâng cấp**, #0 (cấp 9) đang xây tiếp. Bảng `battle_ev` bắt đầu có dữ liệu sau khi khởi động lại bot.

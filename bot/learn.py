@@ -561,6 +561,8 @@ def summary(mem, days=3):
         "GROUP BY 1, 2, 3 ORDER BY 4 DESC LIMIT 15", (since,))]
     out["scoreboard"] = scoreboard(mem)
     out["noop"] = noop_status(L)
+    from bot import mlinsight                       # M2: tran (bong), gia tri buoc, nha chinh dung yen - chi doc
+    out["m2"] = mlinsight.all(mem)
     out["knn"] = dict(mem.query("SELECT label, COUNT(*) FROM screen_samples GROUP BY label"))
     # hop thoai "Roi tro choi?" bot tu bat (moi lan = 1 lan bam Huy) theo buoc, 24h -> web theo doi sau sua press_back
     out["exit_dialogs"] = [{"step": st, "n": n} for st, n in mem.query(
